@@ -2839,7 +2839,32 @@ class Strategy:
                 # aligned (ct gate 0) byte-identical by construction. Sign-preserving snap.
                 _ct_mf_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day (noise-free fast-saturating)
                 _mf_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting (noise-immune integer gate)
-                if _ct_mf_str > 0.0 and _mf_churn > 0.0:
+                # Exp2 (this session, architectural): PROFIT-GATE the pre-EMA median (mirror
+                # of the _te_loss_gate on the EMA alpha, line ~2797). The 0be567b8 keep added
+                # the feed-forward 3-bar median on the raw target BEFORE the EMA to reject
+                # isolated AR(1) spikes (net rally +0.016). But this session's Exp1 diagnosis
+                # showed a median LAGS rising shrink sequences (median of 3 shrinking values
+                # = the middle = the LEAST-shrunk = highest -> delays the de-risk shrink ->
+                # holds ct losers bigger longer -> rally raw cost). The keep's net gain was
+                # positive because the spike-rejection stab benefit exceeded this lag cost
+                # ON AVERAGE across ct positions, but the lag cost is concentrated on LOSING
+                # ct positions (where the target is actively shrinking toward exit). GATE the
+                # median OFF for losing ct positions (mirror _te_loss_gate: losers track the
+                # raw shrinking target without median lag -> de-risk/exit sooner -> smaller
+                # realized losses -> rally raw up); keep the median ON for WINNING ct holds
+                # (where the target is stable/rising -> no shrink-lag, and the spike-rejection
+                # stab benefit is pure). This isolates the keep's stab benefit (winning ct)
+                # from its raw cost (losing ct), easing the stab/raw tension that walled all
+                # temporal smoothing. Uses the SAME _te_loss_gate signal (pos_pnl/|stop|,
+                # already computed for the EMA alpha at line ~2797) -> no new price-derived
+                # computation, just a new control-flow dependency at the median gate. Smooth
+                # ramp (the loss-gate is continuous tanh, not a boundary): partial median
+                # blend as pos_pnl crosses zero, full median in deep profit, no median in deep
+                # loss. Trend-aligned (ct gate 0 -> median skipped by construction) byte-
+                # identical; low-churn (_mf_churn 0 -> skipped) byte-identical.
+                _mf_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss (SAME signal as _te_loss_gate)
+                _mf_keep = 1.0 - _mf_loss_gate  # 1 profit (full median), 0 loss (no median)
+                if _ct_mf_str > 0.0 and _mf_churn > 0.0 and _mf_keep > 0.0:
                     _th = self._target_hist.get(symbol, [])
                     _th.append(target)
                     if len(_th) > 3:
@@ -2848,7 +2873,9 @@ class Strategy:
                     if len(_th) >= 3:
                         _med = float(np.median(_th))
                         if (_med > 0) == (target > 0) and _med != 0:
-                            target = _med
+                            # Blend raw<->median by _mf_keep: full median in profit (spike
+                            # rejection), raw in loss (no shrink-lag on de-risk/exit path).
+                            target = _med * _mf_keep + target * (1.0 - _mf_keep)
                 else:
                     self._target_hist[symbol] = []
                 if _te_alpha > 0.0:
