@@ -1435,30 +1435,6 @@ class Strategy:
                 _net_tilt = (_long_notional - _short_notional) / max(equity, 1e-10)
                 _net_tilt_shrink_bull = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
                 _net_tilt_shrink_bear = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((-_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
-                # Exp3 (this session, architectural): DIRECTIONAL portfolio-DD circuit-breaker
-                # (couples _port_dd_atten to the net-tilt SIGN). The _port_dd_atten (line ~451)
-                # is a single scalar applied UNIFORMLY to both bull and bear first-bar entries
-                # during a portfolio drawdown. But during a DD episode, an entry that ADDS to
-                # the existing net tilt (bull when book net-long, bear when net-short) piles
-                # directional risk onto an already-losing one-way book -> keep the full DD
-                # shrink. An entry that HEDGES (bear when net-long, bull when net-short) is
-                # DE-RISKING the book during the DD -> a hedge is exactly the trade that helps
-                # the DD recover, so partially RELIEVE the DD shrink on the hedge side. This
-                # is a NEW joint coupling of two portfolio-level signals (DD-fraction x net-
-                # tilt-direction) at the entry-size decision. Byte-identical at portfolio peak
-                # (dd_frac=0 -> _port_dd_atten=1.0 -> both sides 1.0 -> no shrink either way).
-                # Byte-identical when net_tilt ~0 (balanced book -> both sides add equally ->
-                # no hedge relief -> both keep base _port_dd_atten). Continuous tanh on the
-                # tilt-DIRECTION (no boundary). Shrink-side retains full base DD shrink; hedge-
-                # side gets up to 50% relief scaled by how strongly the entry hedges the tilt.
-                # General risk principle (no regime label): during portfolio DD, preferentially
-                # suppress risk-ADDING entries over risk-REDUCING entries. New cross-component
-                # data dep: the DD breaker's per-side strength depends on the net-tilt sign.
-                _dd_hedge_relief = 0.50  # max fractional relief of the DD shrink on the hedge side
-                _bull_hedges_tilt = max(0.0, np.tanh((-_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))  # bull hedges when book net-short
-                _bear_hedges_tilt = max(0.0, np.tanh((_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))   # bear hedges when book net-long
-                _port_dd_atten_bull = 1.0 - (1.0 - _port_dd_atten) * (1.0 - _dd_hedge_relief * _bull_hedges_tilt)
-                _port_dd_atten_bear = 1.0 - (1.0 - _port_dd_atten) * (1.0 - _dd_hedge_relief * _bear_hedges_tilt)
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
                 # validated volume as an exit-side exhaustion signal (bull +0.021). Mirror
                 # it to the ENTRY side: a fresh entry taken DURING a volume spike (z>2) is
@@ -1763,11 +1739,11 @@ class Strategy:
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten_bull * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
+                    target = size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten_bear * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
