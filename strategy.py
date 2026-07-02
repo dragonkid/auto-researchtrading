@@ -1785,7 +1785,7 @@ class Strategy:
                     # persist_boost work for mixed without leaking to rally).
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
-                    _entry_frac_boost_bull = 1.0 + 0.20 * _frac_trend_align * _frac_weak * _frac_dd_headroom
+                    _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
                     target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
