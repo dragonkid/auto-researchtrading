@@ -2357,36 +2357,13 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # STRUCTURAL_EXPLORATION: subsystem rewrite of the SOFT exit-pressure FUSION.
-                # Subsystem: the soft-pressure aggregation layer (how 5 weighted soft sources
-                # -- slope/pp/time/ve/vc -- combine into a single _soft_max pressure value
-                # feeding _exit_pressure). Old core mechanism: element-wise MAX of the
-                # weighted terms, plus a multi-source agreement attenuator (single-source
-                # spikes attenuated in chop). Why the old mechanism is at its structural
-                # ceiling: the MAX takes ONLY the single strongest source, so a position
-                # facing a MODERATE pp_pressure (small peak) AND a MODERATE time_pressure
-                # (post-max-hold) has _soft_max = max(moderate, moderate) = moderate -- the
-                # two signals do NOT reinforce. For mixed's tiny-peak exits (mixed exits via
-                # slope/pp/time at small peaks, 100pct WR tiny APY), the MAX means a small
-                # peak alone triggers exit even when no OTHER source confirms -- harvesting
-                # the micro-peak. The agreement attenuator was added to mute single-source
-                # spikes, but it only ATTENUATES (never lets two moderate sources reinforce
-                # to a stronger combined pressure that would hold the winner through a micro-
-                # peak). NEW core mechanism: CONVICTION-WEIGHTED PROBABILISTIC SOFT-OR --
-                # soft_max = 1 - product(1 - term_i) over the weighted terms. This is the
-                # natural fusion for INDEPENDENT exit signals: any single strong source still
-                # triggers (1 - (1-strong) ~ strong, ~MAX for one dominant source), BUT two
-                # MODERATE sources REINFORCE (1 - (1-0.4)*(1-0.4) = 0.64 > 0.4 = max), and the
-                # product form bounds the aggregate to [0,1] without a hard clip. Structurally
-                # distinct from MAX (single-source dominance) and from weighted-sum (unbounded
-                # linear addition with correlated-noise amplification). The soft-OR means a
-                # micro-peak pp alone (no time/slope confirmation) yields a WEAKER combined
-                # pressure than under MAX -> mixed's micro-peaks are less aggressively
-                # harvested -> bigger win capture; while a CONFIRMED peak (pp + slope + time
-                # all moderate) reinforces to a strong combined pressure -> decisive exit
-                # preserved. The agreement attenuator is REMOVED (subsumed: soft-OR already
-                # rewards multi-source confirmation via reinforcement, and already mutes
-                # single-source spikes via the product). voter_bias + sl max-blend unchanged.
+                # Architectural fusion change: element-wise MAX replaces weighted sum.
+                # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
+                # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
+                # noise in any shared input propagates to all 6, which then SUMS. Take
+                # only the most-pressing term (MAX with weights): eliminates correlated
+                # noise addition. Weights preserved so profit-side terms dominate when
+                # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
@@ -2394,15 +2371,30 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                 )
-                # Conviction-weighted probabilistic soft-OR: 1 - product(1 - clamp(term)).
-                # Each term clamped to [0,1] (they are weighted pressures, can exceed 1 via
-                # weights > 1; clamp preserves the probabilistic interpretation). The product
-                # of complements = P(at least one source fires) under independence.
-                _soft_or = 1.0
-                for _t in _soft_terms:
-                    _t_c = max(0.0, min(1.0, _t))
-                    _soft_or *= (1.0 - _t_c)
-                _soft_max = 1.0 - _soft_or
+                _soft_max = max(_soft_terms)
+                # Architectural: multi-source agreement attenuator on soft_max.
+                # When only ONE source contributes meaningfully (top-2 ratio low,
+                # i.e. dominant single source), attenuate up to 25% — single-source
+                # spikes are more often noise than real reversal. When TWO+ sources
+                # agree (top-2 ratio high), no attenuation. Continuous via tanh on
+                # second-highest/highest ratio. Multi-source CONFIRMATION as a
+                # noise filter is structurally different from EMA smoothing (time-
+                # axis) and threshold raising (boundary-axis) — operates on the
+                # pressure-source dimension. Top exit decision: 2nd-highest term
+                # ratio gates the strength of the MAX. New cross-source data dep.
+                _sorted_terms = sorted(_soft_terms, reverse=True)
+                _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
+                # Confirmation strength: 0 at single-source, 1 at full agreement
+                _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
+                # Branch step 2: chop-only gating. In trends (high abs(ret_long)),
+                # single-source pressure signals are real (slope reversal alone =
+                # genuine trend break). Mute the attenuator's effect by trend strength
+                # so it operates only in chop where single-source spikes ARE noise.
+                _chop_atten_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 in chop, 0 in trend
+                # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
+                # in trend approaches 1.0x always (no attenuation)
+                _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
+                _soft_max = _soft_max * _soft_atten
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
