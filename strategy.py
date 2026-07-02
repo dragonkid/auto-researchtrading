@@ -2821,7 +2821,7 @@ class Strategy:
                 # boost multiplies 0) byte-identical; low-churn (len<=1 -> churn boost ~0)
                 # byte-identical-ish.
                 _te_churn_boost = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
-                _te_alpha = min(0.99, _te_alpha * (1.0 + 0.60 * _te_churn_boost))  # branch step9: 0.40->0.60 (pre-EMA median makes input spike-free -> EMA can smooth harder)
+                _te_alpha = min(0.99, _te_alpha * (1.0 + 0.70 * _te_churn_boost))  # branch step7: 0.60->0.70 (monotone-gated pre-EMA filter step4 produces cleaner EMA input than always-3-median -> EMA can smooth harder; same lever as 0be567b8 keep step9)
                 # Exp3 / BRANCH step6: FEED-FORWARD 3-bar MEDIAN on the RAW target BEFORE
                 # the _target_ema (median-then-EMA, replaces the opener's post-EMA median).
                 # The _target_ema is a backward-looking LOW-PASS that raises rally stability
@@ -2913,19 +2913,10 @@ class Strategy:
                             _smooth = True
                         else:
                             _step_ratio = abs(_d2) / max(abs(_d1), 1e-12)
-                            # Branch step6: lower ramp-outlier ratio 3.0->2.0. Step4
-                            # (ratio 3.0) matched baseline composite but stab was a hair
-                            # below (-0.00008). Step5 (5-window median) caught 2-bar
-                            # clusters (stab +0.0006) but the wider median's lag cost raw
-                            # -0.0073 -> net negative. Step6 keeps the 3-window median (no
-                            # lag, step4 sweet spot) and lowers the ratio threshold to catch
-                            # MORE single-bar spikes (spikes 2x+ the ramp pace, not just 3x+)
-                            # -> more stab lifting above baseline. Risk: over-smoothing
-                            # genuine accelerations (rally ct-loser shrink ramps with
-                            # variable step sizes) -> raw cost. Ratio 2.0 is a moderate
-                            # tightening (vs 1.0 which would smooth near-every monotone bar
-                            # = the always-3-median lag wall).
-                            if _step_ratio > 2.0:
+                            # Branch step7: revert to step4 ratio 3.0 (step6 ratio 2.0
+                            # over-smoothed variable-step ramps -> raw cost). Ratio 3.0 is
+                            # the sweet spot (catches genuine 3x+ spikes, lets ramps through).
+                            if _step_ratio > 3.0:
                                 _smooth = True
                         if _smooth:
                             _med = float(np.median(_th[-3:]))
