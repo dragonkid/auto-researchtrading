@@ -2357,6 +2357,43 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp1 (architectural, indep): CROSS-SYMBOL (BTC market-leader) exit-pressure
+                # source. NEW cross-symbol data dep in the EXIT subsystem: all 5 existing soft
+                # sources (slope/pp/time/ve/vc) read OWN-SYMBOL price/volume only -- none sees
+                # the BROAD-MARKET regime. _btc_trend (BTC's 96-bar OLS log-HL2 slope*96, the
+                # market leader's multi-day direction) is already computed once per bar at the
+                # top of on_bar and routed into ENTRY sizing (lines ~1274-1297) but NEVER into
+                # the exit-pressure fusion. Routing it into exit pressure is a genuinely new
+                # control-flow / data dep at the exit subsystem (the 5-tuple -> 6-tuple soft
+                # fusion). Mechanism: when the held position is COUNTER to the market leader's
+                # multi-day trend (a long while BTC's 96-bar trend is down, or a short while
+                # BTC's trend is up), the position fights a broad-market regime headwind that
+                # the own-symbol slope/pp/time signals MISS -- the symbol's own 8-20-bar window
+                # may be oscillating/flat (masking the regime-level decline) while the leader's
+                # 96-bar trend reveals the true broad direction. This is a regime-level adverse
+                # exit signal orthogonal to every own-symbol primitive. Profit-side gated like
+                # _ve_pressure/_vc_pressure (lock gains / trim dead-capital winners facing a
+                # regime headwind; do NOT punish losers -- slope-against handles adverse own-
+                # symbol moves). Noise-robust by construction: _btc_trend is a 96-bar OLS slope
+                # over log-HL2 (each bar's AR(1) noise carries ~1/96 weight -> ~1/sqrt(96)
+                # attenuation, already validated noise-free at entry; fast-saturating /0.025
+                # scale puts mixed's solidly-negative BTC-trend (~-0.03 to -0.06 in the down
+                # year) in the FLAT saturated tail -> the pressure is a near-CONSTANT, not a
+                # noise-tracking amount). Continuous tanh, no decision boundary. Direction-
+                # agnostic general principle (no regime label): a position counter to the
+                # market leader's multi-day trend faces a broad-regime headwind -> trim.
+                # Targets mixed_2025 (binding floor, Sh0.839, 100pct long-in-a-down-year
+                # micro-peaks whose APY 4.6pct has huge headroom below the 5pct DD knee):
+                # mixed's longs are the counter-BTC-uptrend-at-multi-day dead capital that own-
+                # symbol signals miss; a regime-level trim raises mixed Sharpe/APY (the 11-36x
+                # dominant lever per v3 scoring) at preserved DD. Trend-aligned positions (BTC
+                # uptrend + long, BTC downtrend + short -> counter-term 0) byte-identical by
+                # construction (gate 0 -> _cross_pressure 0). Same magnitude cap 0.6 as
+                # _ve_pressure (vol-of-price expansion) for fusion parity.
+                _pos_dir_cross = 1.0 if current_pos > 0 else -1.0
+                _cross_adverse = max(0.0, np.tanh(-_pos_dir_cross * _btc_trend / 0.025))
+                _cross_pressure = 0.60 * _cross_adverse
+                _w_cross = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2370,6 +2407,7 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
+                    _w_cross * _cross_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
