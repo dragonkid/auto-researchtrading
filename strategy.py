@@ -2405,7 +2405,7 @@ class Strategy:
                 # distribution) and ~off in the sharp high-vol regime (bull continuation bars).
                 # Continuous tanh, no boundary. Byte-identical at vol_ratio>=1.3 (gate 0).
                 _cl_grind_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
-                _cl_pressure = 1.30 * _cl_adverse * _cl_grind_gate
+                _cl_pressure = 0.90 * _cl_adverse * _cl_grind_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
