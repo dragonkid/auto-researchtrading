@@ -2394,7 +2394,7 @@ class Strategy:
                 # long + close near low (close_loc->0) = distribution; short + close near high (->1)
                 _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
                 # adverse = (long & close near low) | (short & close near high)
-                _cl_adverse = max(0.0, np.tanh(((0.45 - _close_loc_e) if _pos_dir_cl > 0 else (_close_loc_e - 0.55)) / 0.15))
+                _cl_adverse = max(0.0, np.tanh(((0.40 - _close_loc_e) if _pos_dir_cl > 0 else (_close_loc_e - 0.60)) / 0.15))
                 # BRANCH step2: LOW-VOL-GRIND gate on the close-loc pressure. Opener leaked
                 # bull -0.0016: bull is a HIGH-VOL SHARP uptrend whose continuation bars often
                 # close off the high (normal pullback-within-uptrend that recovers fast) -> the
