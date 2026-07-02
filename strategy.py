@@ -2839,7 +2839,24 @@ class Strategy:
                 # aligned (ct gate 0) byte-identical by construction. Sign-preserving snap.
                 _ct_mf_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day (noise-free fast-saturating)
                 _mf_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting (noise-immune integer gate)
-                if _ct_mf_str > 0.0 and _mf_churn > 0.0:
+                # Exp1 (architectural, indep): EXTEND the pre-EMA feed-forward median to
+                # high-churn TREND-ALIGNED positions (the ct-only gate at the opener left
+                # them unsampled). For trend-aligned positions _te_alpha=0 (no EMA lag
+                # smoothing) so the emitted target is the RAW noisy resize path -> the
+                # isolated-AR(1)-spike variance that the EMA dampens for ct positions is
+                # NOT addressed for trend-aligned winners. rally's grinding uptrend is the
+                # high-churn trend-aligned population (burst entries len>=3, ret_vlong*pos_dir
+                # >0) -> its winning-long resize path carries the position-value cascade that
+                # caps rally stability below the 0.80 knee. Apply the SAME sign-preserving
+                # 3-bar median (zero-lag for monotone moves: median of 3 rising values = the
+                # middle -> tracks the rise; only isolated spikes get replaced by neighbors)
+                # to high-churn trend-aligned resizes too. ct path unchanged (still fires via
+                # _ct_mf_str); low-churn (crash/sideways/bull len<=1 -> _mf_churn~0) byte-
+                # identical by construction. The median is gated on _mf_churn (noise-immune
+                # integer) so no new price-derived boundary that flips under AR(1). New
+                # control flow: median filter applies to the union {ct OR trend-aligned} AND
+                # high-churn (was: ct-only AND high-churn).
+                if _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
                     _th.append(target)
                     if len(_th) > 3:
