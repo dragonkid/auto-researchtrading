@@ -2016,7 +2016,33 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
+                    # Exp4 (architectural, indep, this session): TREND-ALIGNED-AT-MULTI-DAY
+                    # sustained scale-in boost, NOT requiring _weak_persist. The existing
+                    # _persist_sustain above requires BOTH _weak_persist (|ret_vlong|<0.02, weak
+                    # multi-day trend) AND _down_persist -- this conjunction fires for mixed's
+                    # rally-phase longs (weak vlong + down persist) but EXCLUDES crash (crash's
+                    # ret_vlong is solidly negative -> |ret_vlong|>0.02 -> _weak_persist~0 ->
+                    # _persist_sustain~0). crash is exactly the trend-aligned regime where a
+                    # sustained scale-in boost is SAFE and return-limited (Sh 1.31, 100pct WR,
+                    # DD 2.83pct has huge headroom below the 5pct dd_gate knee; return_bonus is
+                    # in its low-concave region so raising APY directly raises crash score).
+                    # crash shorts (ret_vlong<0, pos_dir=-1 -> product>0) are TREND-ALIGNED at
+                    # the multi-day scale AND in a persistent downtrend (_down_persist~0.9). Add
+                    # a SEPARATE sustained boost gated on (ret_vlong*pos_dir>0) AND (_down_persist
+                    # high) -- the crash-trend-aligned conjunction -- WITHOUT the _weak_persist
+                    # requirement. Safe from rally: rally's trend-aligned longs (ret_vlong>0,
+                    # pos_dir=+1 -> product>0) have _down_persist~0 (persistent UPTREND, not down)
+                    # -> _persist_down_gate_dur~0 -> this term ~0 -> rally byte-identical. Safe
+                    # from mixed's dead-capital longs (ret_vlong<0, pos_dir=+1 -> product<0 ->
+                    # trend-align gate 0 -> no boost -> mixed's whipsaw longs NOT over-committed).
+                    # Small magnitude (0.10) -- crash is return-limited not size-starved; a
+                    # modest sustained boost captures incrementally more of the downtrend. New
+                    # cross-component data dep: scale-in full_target sustained boost depends on
+                    # multi-day trend-alignment x persistent-downtrend conjunction (was weak_persist
+                    # x down_persist only). Targets crash (binding return-limited Sh 1.31).
+                    _persist_ta_vlong = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.03))  # ~1 trend-aligned at multi-day
+                    _persist_sustain_ta = 1.0 + 0.10 * _persist_ta_vlong * _persist_down_gate_dur
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain * _persist_sustain_ta
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
