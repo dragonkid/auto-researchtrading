@@ -2743,47 +2743,7 @@ class Strategy:
                     # noise stays in the fade region -> DVP floor-lowering ~0 for sideways.
                     _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
                     _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
-                    # Exp2 (architectural, indep): REALIZED-MTM-EFFICIENCY floor-lower on
-                    # the opp-gate exit fraction. DISTINCT from _dvp24_floor_lower (keys
-                    # on volume-direction x multi-day-trend-ALIGNMENT, which SKIPS mixed's
-                    # held longs because mixed is a down year -> ret_vlong<0 for held longs
-                    # -> ret_vlong*pos_dir<0 -> _ret_vlong_term_og=0 -> floor_lower 0).
-                    # mixed's 100pct-WR rally-phase longs are counter-trend-at-multi-day
-                    # so EVERY trend-align-keyed ride-winners mechanism skips them. This
-                    # keys on the held position's OWN realized pos_pnl PATH efficiency
-                    # (the _pnl_path state, already maintained at line ~1757): a SMOOTH-
-                    # CLIMBING winner (high MTM-eff = |net|/sum|delta| over the 12-bar
-                    # pos_pnl path) is a genuine ongoing winner regardless of trend-align
-                    # -> lower the opp-gate exit fraction floor -> trim LESS of it on an
-                    # opp-voter spike -> ride the smooth winner longer -> bigger win.
-                    # Choppy dead-capital positions (low MTM-eff, mixed's wrong-side
-                    # whipsaw longs) keep the baseline floor (still trimmed fast). This
-                    # is the ride-winners direction for the population trend-align gates
-                    # miss. Gated on PROFIT (pos_pnl>0, only winners ride) + MTM-eff
-                    # (>0.5 = smooth climber) + LOW-VOL GRIND (_vlong_vol_gate, spares
-                    # bull high-vol sharp pullbacks whose fast bounces are exhaustion-
-                    # prone not ride-worthy). Shrink-side capped (floor 0.25, never 0 ->
-                    # always some trim on opp-spike). Smooth tanh on MTM-eff/0.15 (no
-                    # boundary); deep-saturated where it fires (near-constant, noise-free
-                    # per the validated safe-family lesson). Byte-identical when _pnl_path
-                    # < 4 samples (fresh entries) or profit/vol gates 0. New cross-
-                    # component data dep: opp-gate exit fraction depends on the held
-                    # position's own realized MTM-path efficiency (was volume-direction x
-                    # trend-align only). Targets mixed (binding floor, 100pct WR tiny
-                    # wins); spares bull (high vol), crash (ct shorts, pos_pnl trajectory
-                    # variable), sideways (low trend -> opp-gate rarely fires).
-                    _ppp_og = self._pnl_path.get(symbol, [])
-                    _mtm_eff_og = 0.0
-                    if len(_ppp_og) >= 4:
-                        _ppa_og = np.array(_ppp_og)
-                        _net_og = abs(_ppa_og[-1] - _ppa_og[0])
-                        _tot_og = float(np.sum(np.abs(np.diff(_ppa_og))))
-                        _mtm_eff_og = _net_og / max(_tot_og, 1e-10)  # [0,1]
-                    _og_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss/no-profit, ~1 deep profit
-                    _og_smooth = max(0.0, min(1.0, np.tanh((_mtm_eff_og - 0.50) / 0.15)))  # ~0 choppy, ~1 smooth climber
-                    _mtm_floor_lower = 0.15 * _vlong_vol_gate * _og_profit * _og_smooth
-                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower - _mtm_floor_lower
-                    _opp_exit_frac_grad = max(0.25, _opp_exit_frac_grad)  # floor 0.25 (never 0 -> always some trim on opp-spike)
+                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
