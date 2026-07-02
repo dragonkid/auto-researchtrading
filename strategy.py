@@ -2300,28 +2300,15 @@ class Strategy:
                 _vlong_boost_vb = 0.30 * _vlong_vol_gate * _ret_vlong_term_vb  # small additive boost when multi-day confirms AND low-vol grind
                 _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb)
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                # Exp1 (architectural simplification, indep): REMOVED _opp_trend_amp
-                # (second redundant trend-magnitude gate on the opp-bias exit term).
-                # _opp_trend_amp = 0.5 + 0.5*tanh(|ret_long|/0.04) ranged [0.5, ~1.0],
-                # halving opp_bias in chop. But _opp_atten (line ~2302) is ALREADY a
-                # trend-alignment gate on the SAME ret_long signal (via _ret_long_term_vb
-                # = tanh(ret_long*pos_dir/0.05), plus the multi-day _vlong_boost_vb). Two
-                # multiplicative gates on the same underlying ret_long = correlated-noise
-                # amplification at the opp-bias exit boundary: a noise-perturbed ret_long
-                # moves BOTH _opp_atten and _opp_trend_amp simultaneously -> the opp-bias
-                # contribution wobbles ~2x per unit of ret_long noise -> exit-timing
-                # divergence (stability penalty's root currency). Removing _opp_trend_amp
-                # (set to 1.0) leaves _opp_atten as the sole trend gate, halving the
-                # boundary noise on the opp-bias exit path. mixed_2025 (100pct WR, tiny
-                # wins) is most sensitive to exit-timing noise (any extra exit-timing
-                # wobble directly costs Sharpe at 100pct WR). Trend-aligned regimes
-                # (bull/crash/rally-longs) keep _opp_atten~1 -> opp-bias attenuated either
-                # way -> near byte-identical. ct positions (_opp_atten~0 -> opp-bias full)
-                # unaffected by _opp_trend_amp removal (product already ~0). The gate was
-                # load-bearing only for the chop mid-range where _opp_atten is partial.
-                # Follows the 12b6bc63 byte-identical-simplification precedent. If score
-                # holds/improves, simpler = better OOS generalization.
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
+                # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
+                # directional backing) — mute opp_bias contribution. In trends, opp-voter
+                # spikes carry reversal signal — full activation. Continuous tanh on
+                # abs(ret_long)/0.04. Symmetric counterpart to _chop_amp on own-side
+                # subtraction (chop amplifies own-side hold; chop also mutes opp-side
+                # exit-spike). Multi-variable: adds new factor to opp-side fusion.
+                _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
