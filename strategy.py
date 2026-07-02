@@ -1769,7 +1769,16 @@ class Strategy:
                 # PERSISTENT bear) -- the validated separator that isolates mixed's oscillating
                 # longs from crash's trend-aligned shorts. Gate the amplifier on it so crash
                 # (gate~0) is byte-identical to baseline while mixed (gate~1) keeps the gain.
-                _persist_dvp_amp = 1.0 + 0.50 * _persist_dvp_conv * _weak_persist * _persist_down_gate  # amplify-only, gated on weak_persist + down_gate (excludes crash)
+                # branch step3: TIGHTEN the down_gate onset for the DVP amplifier specifically
+                # (separate from the conviction-scale _persist_down_gate at 0.65). step2 used
+                # the shared _persist_down_gate (onset 0.65) but crash's consolidation stretches
+                # dip down_persist to ~0.65-0.75 -> partial gate firing -> crash still regressed
+                # -0.0014. Use a DEDICATED tighter onset (0.50) for the DVP amplifier so crash's
+                # dips to 0.65-0.75 dont fire (gate ~0 there) while mixed (down_persist~0.5)
+                # keeps full gate. Smooth tanh fade on the 0.50 knee (mixed 0.5 -> gate ~0.5
+                # -> partial amplification; crash dips 0.65+ -> gate ~0). Amplify-only.
+                _persist_dvp_down_gate = max(0.0, min(1.0, np.tanh((0.50 - _down_persist) / 0.10)))  # ~1 mixed (down_persist<0.5), ~0 crash dips (>0.6)
+                _persist_dvp_amp = 1.0 + 0.50 * _persist_dvp_conv * _weak_persist * _persist_dvp_down_gate  # amplify-only, gated on weak_persist + tight down_gate (excludes crash)
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale * _persist_dvp_amp
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
