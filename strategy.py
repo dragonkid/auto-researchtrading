@@ -1738,12 +1738,45 @@ class Strategy:
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
+                # Exp3 (architectural, indep): TREND-ALIGNED x DD-HEADROOM entry-frac
+                # BOOST. Exp1/Exp2 proved the 0.55 cap is inert (_entry_frac_dyn always
+                # below 0.55); the real lever is _entry_frac_dyn ITSELF (range ~0.37-0.49).
+                # The prior session's persist_boost amplifier raises mixed (weak-trend)
+                # but is inert for crash (strong-trend -> weak_persist~0). Crash is the
+                # SECOND-lowest regime (0.976, Sh1.31, 100pct WR, DD2.83pct huge headroom
+                # below 5pct knee, return-limited). NEW control-flow: boost _entry_frac_dyn
+                # for TREND-ALIGNED entries (entry direction matches ret_vlong sign) when
+                # the portfolio has DD headroom (at peak equity). Crash trend-aligned shorts
+                # (ret_vlong<0, bear entry -> aligned) get a larger first-bar commitment ->
+                # higher APY (return_bonus) at preserved Sharpe (100pct WR winners; Sharpe
+                # is scale-invariant so bigger trend-aligned entries raise return without
+                # lowering Sharpe, and DD stays below the 5pct knee). The DD-headroom gate
+                # spares rally pullback entries (rally pullbacks DRIVE the portfolio DD ->
+                # during pullback entries dd_frac>0 -> _port_dd_atten<1 -> boost gated off
+                # -> rally entry size unchanged -> rally DD stays 5.06pct). Trend-aligned
+                # crash entries mostly happen at peak (crash is low-DD) -> boost fires.
+                # Sideways (weak ret_vlong -> trend-align gate ~0) byte-identical. Bull
+                # trend-aligned longs at peak get the boost (bull DD 2.50pct has headroom;
+                # bull is Sh2.11 not return-limited so the gain is modest but safe). The
+                # boost is a NEW multiplier on _entry_frac_dyn (not the cap): raises the
+                # first-bar frac directly. Gated on multi-day trend-alignment (fast-
+                # saturating /0.02 ret_vlong*pos_dir, near-constant noise-free per the
+                # validated ct-gate lesson) x DD-headroom (the validated _port_dd_frac
+                # signal, EMA-smoothed noise-robust). Direction-agnostic (uses entry
+                # direction sign). New cross-component data dep: _entry_frac_dyn depends
+                # on trend-alignment x portfolio DD-headroom (was vol-only).
+                _frac_dd_headroom = 1.0 - max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K))))
+                _frac_trend_align = 0.0  # set per-entry-direction below
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
+                    _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with multi-day uptrend
+                    _entry_frac_boost_bull = 1.0 + 0.10 * _frac_trend_align * _frac_dd_headroom
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    _frac_trend_align = max(0.0, np.tanh(-ret_vlong / 0.02))  # bear short aligned with multi-day downtrend
+                    _entry_frac_boost_bear = 1.0 + 0.10 * _frac_trend_align * _frac_dd_headroom
+                    target = -size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bear) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
