@@ -2355,7 +2355,7 @@ class Strategy:
                 _vol_mean_e = float(np.mean(_vol_arr_e))
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
-                _vc_pressure = 0.60 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))  # branch step4: 0.50->0.60 (vol-gate protects mixed, raise high-vol harvest magnitude)
+                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
                 # BRANCH OPENER (architectural, builds on this-session Exp2 signal):
                 # VOL-REGIME GATE on _vc_pressure. Exp2 (DISABLE _vc_pressure entirely)
