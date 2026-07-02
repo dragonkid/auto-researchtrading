@@ -2606,7 +2606,31 @@ class Strategy:
                         # earned by trading WITH the long-window trend, not by path shape.
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
-                        _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
+                        # Exp3 (architectural, indep, this session): MULTI-DAY trend-align on
+                        # the de-risk cushion (replaces 20-bar ret_long*pos_dir). PARALLEL of
+                        # the Exp4 keep (which switched _ts_supp at line ~2491 from ret_long to
+                        # ret_vlong for the SAME structural reason): the 20-bar _dr_align lets
+                        # mixed's whipsaw longs (ret_vlong<0 but ret_long>0 during local
+                        # bounces) earn the convex cushion -> held through giveback -> the
+                        # oscillating ~breakeven dead-capital drag that is mixed's binding floor
+                        # (Sh 0.84, 100pct-long-in-a-down-year). Switching _dr_align to multi-day
+                        # ret_vlong*pos_dir (the validated 96-bar multi-day trend, fast-saturating
+                        # /0.04) aligns the cushion with the SAME scale the tp-harvest _ts_supp
+                        # already uses: mixed longs (ret_vlong<0, pos_dir=+1 -> product<0) ->
+                        # _dr_align~0 -> no cushion -> LINEAR fast cut through giveback -> exit
+                        # mixed's whipsaw longs faster. Trend-aligned regimes preserved: bull
+                        # longs (ret_vlong>0,+1 -> product>0) cushion kept; crash shorts
+                        # (ret_vlong<0,-1 -> product>0) cushion kept; rally longs (ret_vlong>0,
+                        # +1 -> product>0) cushion kept. rally pullback shorts (ret_vlong>0,-1
+                        # -> product<0) lose the cushion -> desired fast cut (losers). The
+                        # 20-bar ret_long and 96-bar ret_vlong AGREE for trend-aligned regimes
+                        # (both product>0); they DISAGREE only for counter-trend-at-multi-day-
+                        # but-bouncing-locally positions = exactly mixed's oscillating longs
+                        # (the same population the Exp4 fix targeted on _ts_supp). ret_vlong is
+                        # already computed (96-bar OLS, noise-robust). Smooth tanh, no new
+                        # boundary. New cross-timescale data dep at the de-risk ramp: cushion
+                        # trend-alignment now keys on multi-day (was 20-bar).
+                        _dr_align = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.04))  # 0 ct-at-multi-day, 1 trend-aligned-at-multi-day
                         # Exp4 (architectural, indep): SLOPE-CONFIRMATION gate on the de-risk
                         # convex cushion. The cushion (k>1 -> hold near full size through
                         # moderate giveback, the validated stability lever) was gated only on
