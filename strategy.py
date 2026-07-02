@@ -2703,6 +2703,31 @@ class Strategy:
                     _trend_align_og = min(1.0, _trend_align_og + 0.30 * _vlong_vol_gate * _ret_vlong_term_og)
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
+                    # Exp5 (architectural, indep, this session): MULTI-DAY-CT OVERRIDE on the
+                    # opp-gate graduated-exit path. The graduated path (partial exit) preserves
+                    # a residual position through opp-voter spikes for trend-aligned+in-profit
+                    # WINNERS (crash shorts, bull longs). But it ALSO preserves residual for
+                    # positions that are trend-aligned at the 20-bar scale but COUNTER-TREND at
+                    # the multi-day scale: mixed's whipsaw longs during local bounces (ret_long>0
+                    # -> _trend_align_og high, but ret_vlong<0 -> the position is counter-trend
+                    # at the multi-day scale). The residual re-oscillates -> mixed's binding floor
+                    # (Sh 0.84, oscillating ~breakeven dead capital). Force BINARY full exit
+                    # (cut _grad_gate toward 0) when the position is multi-day counter-trend
+                    # (ret_vlong*pos_dir<0), so mixed's whipsaw longs exit FULLY on the opp-gate
+                    # instead of partially. PARALLEL of the Exp4 keep on _ts_supp (which switched
+                    # the tp-harvest suppression to multi-day ret_vlong*pos_dir for the same
+                    # structural reason: 20-bar trend-align MISSES multi-day CT). Trend-aligned
+                    # regimes preserved: crash shorts (ret_vlong<0,pos_dir=-1 -> product>0 ->
+                    # no override -> graduated kept); bull longs (product>0 -> graduated kept);
+                    # rally longs (product>0 -> graduated kept). rally pullback shorts (ret_vlong>0,
+                    # pos_dir=-1 -> product<0 -> override -> binary full exit = desired, losers).
+                    # mixed's whipsaw longs (ret_vlong<0, pos_dir=+1 -> product<0 -> override ->
+                    # binary full exit -> no residual re-oscillation). Smooth tanh fade on the
+                    # multi-day-CT strength (fast-saturating /0.02 -> near-constant where it fires,
+                    # noise-free per the validated safe-family lesson). New cross-timescale data
+                    # dep at the opp-gate exit path: graduated-vs-binary now keys on multi-day CT.
+                    _ct_vlong_og = max(0.0, np.tanh(-ret_vlong * _pos_dir_og / 0.02))  # ~0 trend-aligned-at-multi-day, ~1 ct-at-multi-day
+                    _grad_gate = _grad_gate * (1.0 - _ct_vlong_og)
                     # Exp2 (architectural, indep): 24-bar OWN-DVP-CONFIRMATION on the
                     # opp-gate exit-FRACTION FLOOR (the uncapped lever). Prior-session
                     # own-DVP branch: 12-bar DVP lowering this floor moved mixed +0.005338
