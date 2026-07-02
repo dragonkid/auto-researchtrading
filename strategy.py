@@ -1685,11 +1685,10 @@ class Strategy:
                 _dvp_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
                 _dvp_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
                 _dvp_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
-                _dvp_bear_vlong = max(0.0, np.tanh(-ret_vlong / 0.03))  # multi-day downtrend (symmetric; fires for crash persistent bear)
                 _dvp_bull_conv = max(0.0, np.tanh(_dvp / 0.15))   # buy-side volume pressure
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
-                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_vlong * _dvp_bear_conv
+                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
                 # bar size boost. The DURATION-fraction _weak_persist (sanctioned
                 # untested separator, results.tsv line 1476) gates a small first-bar
@@ -1738,60 +1737,7 @@ class Strategy:
                 # Amplify-only (floor 1.0 baseline MAG).
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
-                # Exp5 (architectural, indep): OWN-DVP-CONFIRMATION amplifier on the
-                # persist_boost magnitude. The _persist_boost fires for mixed (weak_persist
-                # high, the fe6acd4d keep mechanism) and is the entry-side mixed lever
-                # (entries bypass the grid so this is NOT grid-absorbed unlike the
-                # sustain path). mixed is 100pct WR (Sh0.839 APY4.6pct DD2.77pct -- the
-                # binding floor with HUGE DD headroom below the 5pct knee). Per scoring v3
-                # return_bonus = log(2+APY/10), raising mixed's APY at preserved Sharpe is
-                # the highest-leverage score move (APY gain dominates 11-36x). Amplify the
-                # persist boost magnitude when the own-12-bar DVP CONFIRMS the entry
-                # direction (buy-side for long, sell-side for short): a weak-trend bounce
-                # entry with own-volume confirmation is a higher-quality bounce (real
-                # participation, not a fade) -> bigger first-bar commitment -> higher APY
-                # at preserved Sharpe (mixed is 100pct WR so bigger winners = pure APY
-                # gain). Gated on _weak_persist (the validated mixed isolator) so trend
-                # regimes (weak_persist~0) are byte-identical. Deep-saturated /0.15
-                # (near-constant where it fires, noise-free per validated safe-family).
-                # Amplify-only (floor at baseline PERSIST_BOOST_MAG; never shrinks). New
-                # cross-component data dep: persist_boost magnitude depends on own-DVP x
-                # weak_persist interaction (was weak_persist x conviction only). Direction-
-                # agnostic (own-side DVP confirms own-side entry). Max +50pct magnitude
-                # at full DVP confirmation + full weak_persist.
-                _persist_dvp_dir = _dvp if (_bull_ready and _bull_admit) else -_dvp  # own-side DVP (buy for long entry, sell for short)
-                _persist_dvp_conv = max(0.0, np.tanh(_persist_dvp_dir / 0.15))  # [0, ~1] deep-saturated
-                # branch step4: MULTI-DAY TREND-CONFIRMATION gate on the DVP amplifier
-                # (the crash-leak fix). step2 (down_gate) crash still regressed -0.0014;
-                # step3 (tighter down_gate) was byte-identical -> crash leak is NOT from
-                # down_persist dips. Re-analysis: crash's LOSING entries are dead-cat-bounce
-                # LONGS during the persistent bear (ret_vlong<0). The amplifier fired on
-                # these (buy-side DVP confirms the bounce + weak_persist>0 in crash weak-
-                # trend stretches) -> bigger crash dead-cat longs -> lower crash Sharpe.
-                # FIX: gate the amplifier on multi-day trend-confirmation of the ENTRY
-                # direction -- _dvp_bull_vlong (ret_vlong>0) for long entries,
-                # _dvp_bear_vlong (ret_vlong<0) for short entries. mixed's winning longs
-                # form during RALLY PHASES (ret_vlong>0 during up-legs) -> _dvp_bull_vlong
-                # fires -> amplifier ON -> mixed gain kept. crash's dead-cat longs
-                # (ret_vlong<0) -> _dvp_bull_vlong=0 -> amplifier OFF -> crash leak fixed.
-                # crash's trend-aligned SHORTS (ret_vlong<0, the winners) get _dvp_bear_vlong
-                # firing -> amplifier ON -> bigger crash shorts -> higher crash APY (crash
-                # return-limited Sh1.31 DD2.83pct huge headroom -> HELPS crash). Symmetric
-                # multi-day confirmation (no regime label). Defined _dvp_bear_vlong at the
-                # DVP block (was missing in step3 -> -999 on short entries).
-                _persist_dvp_vlong = _dvp_bull_vlong if (_bull_ready and _bull_admit) else _dvp_bear_vlong  # multi-day trend confirmation of entry direction
-                _persist_dvp_conv = _persist_dvp_conv * _persist_dvp_vlong  # gate on multi-day trend confirmation
-                # branch step2: gate the DVP amplifier on _persist_down_gate (the validated
-                # mixed/crash separator). step1 (opener) fired the amplifier on weak_persist
-                # alone, which let crash's brief weak-trend consolidation stretches (within
-                # the persistent bear) fire the amplifier -> crash regressed -0.002 (the
-                # offset that kept composite sub-noise). _persist_down_gate is ~1.0 for mixed
-                # (down_persist~0.5, OSCILLATING down year) and ~0 for crash (down_persist~0.9,
-                # PERSISTENT bear) -- the validated separator that isolates mixed's oscillating
-                # longs from crash's trend-aligned shorts. Gate the amplifier on it so crash
-                # (gate~0) is byte-identical to baseline while mixed (gate~1) keeps the gain.
-                _persist_dvp_amp = 1.0 + 1.03 * _persist_dvp_conv * _weak_persist * _persist_down_gate  # branch step12: magnitude 1.03 (fine-tune peak between 1.00 and 1.05)
-                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale * _persist_dvp_amp
+                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
