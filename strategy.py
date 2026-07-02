@@ -1760,6 +1760,26 @@ class Strategy:
                 # at full DVP confirmation + full weak_persist.
                 _persist_dvp_dir = _dvp if (_bull_ready and _bull_admit) else -_dvp  # own-side DVP (buy for long entry, sell for short)
                 _persist_dvp_conv = max(0.0, np.tanh(_persist_dvp_dir / 0.15))  # [0, ~1] deep-saturated
+                # branch step4: MULTI-DAY TREND-CONFIRMATION gate on the DVP amplifier
+                # (the crash-leak fix). step3 (tighter down_gate) was byte-identical ->
+                # crash regression is NOT from down_persist dips. Re-analysis: crash's
+                # losing entries are DEAD-CAT-BOUNCE LONGS during the persistent bear
+                # (ret_vlong<0). The amplifier fires on these because crash weak-trend
+                # stretches have weak_persist>0 AND buy-side DVP confirms the bounce ->
+                # bigger crash dead-cat longs -> bigger realized losses -> lower crash
+                # Sharpe (the -0.0014 regression). FIX: gate the amplifier on multi-day
+                # trend-confirmation of the ENTRY direction -- _dvp_bull_vlong (ret_vlong>0)
+                # for long entries, _dvp_bear_vlong (ret_vlong<0) for short entries. mixed's
+                # winning longs form during RALLY PHASES (ret_vlong>0 during up-legs) ->
+                # _dvp_bull_vlong fires -> amplifier ON -> mixed gain kept. crash's dead-cat
+                # longs form during the persistent bear (ret_vlong<0) -> _dvp_bull_vlong=0 ->
+                # amplifier OFF -> crash leak fixed. crash's trend-aligned SHORTS
+                # (ret_vlong<0, the winners) get _dvp_bear_vlong firing -> amplifier ON
+                # for crash shorts -> bigger crash shorts -> higher crash APY (crash is
+                # return-limited Sh1.31 DD2.83pct huge headroom -> this HELPS crash not
+                # hurts it). Symmetric multi-day confirmation (no regime label).
+                _persist_dvp_vlong = _dvp_bull_vlong if (_bull_ready and _bull_admit) else _dvp_bear_vlong  # multi-day trend confirmation of entry direction
+                _persist_dvp_conv = _persist_dvp_conv * _persist_dvp_vlong  # gate on multi-day trend confirmation
                 # branch step2: gate the DVP amplifier on _persist_down_gate (the validated
                 # mixed/crash separator). step1 (opener) fired the amplifier on weak_persist
                 # alone, which let crash's brief weak-trend consolidation stretches (within
