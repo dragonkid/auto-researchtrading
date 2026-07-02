@@ -2309,23 +2309,19 @@ class Strategy:
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
-                # Architectural: volatility-expansion exit pressure (5th source).
-                # When recent 6-bar realized vol substantially exceeds 18-bar
-                # realized vol (vol-of-vol expansion), the price regime has
-                # shifted — earlier slope/peak/time signals may be stale. Compute
-                # vol_expansion = vol_6 / vol_18, smooth via tanh, contribute
-                # smooth pressure [0, 0.6]. Acts as a regime-shift detector
-                # orthogonal to slope (direction) and pp (magnitude). New
-                # data-dependent exit pressure term in the fusion sum.
-                _vol_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
-                _vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
-                _vol_expansion = _vol_6 / _vol_18
-                # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
-                _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
-                # Profit-side weight: only fire when in profit (lock gains on
-                # regime shift); don't punish losing positions for vol expansion
-                # since slope-against already handles adverse moves.
-                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # Exp1 (architectural simplification, indep): REMOVED _ve_pressure
+                # (vol-of-price expansion, 6/18-bar realized-vol ratio). Hypothesis:
+                # it is redundant with _vc_pressure (volume-climax, 20-bar z-score) --
+                # both are profit-side-only vol-exhaustion detectors firing on the
+                # same rally-top / crash-capitulation signature. Under the MAX-fusion
+                # only the larger term fires per bar, so the two rarely co-contribute;
+                # the price-expansion signal ve captures is also implicitly read by
+                # _sl_slope_pressure (slope reverses on expansion) and _pp_pressure
+                # (giveback rises on expansion). If _vc_pressure (the newer, distinct
+                # volume-based exhaustion signal) subsumes ve, the strategy is simpler
+                # (one fewer soft source + its 2 np.std window reads) with score held
+                # -> better OOS generalization. Code-structure removal: -1 soft source
+                # + -1 fusion-tuple entry + -2 vol-window reads. _vc_pressure retained.
                 # Exp3 (architectural simplification, this session): removed the dead
                 # _ep_pressure (early-profit-lock) and _ar_pressure (adverse-recovery)
                 # terms. Both were already zeroed (_ep_pressure=0.0 since the
@@ -2368,7 +2364,6 @@ class Strategy:
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
                     _w_time * _time_pressure,
-                    _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                 )
                 _soft_max = max(_soft_terms)
