@@ -2108,6 +2108,38 @@ class Strategy:
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
+                # Exp3 (architectural, indep): TRAJECTORY-ADAPTIVE giveback band. WIDEN the
+                # pp_band for CLIMBERS (pos_pnl still making new highs = ongoing trend ->
+                # tolerate giveback, ride the pullback) and TIGHTEN for STAGNATORS (micro-peak
+                # formed, PnL flat near a local high -> lock the gain before the oscillation
+                # gives it back). Mechanism for the binding floor mixed_2025 (Sh0.839, 100pct
+                # WR, +0.09pct/trade micro-peaks): mixed's tiny wins stagnate at the micro-peak
+                # -> tighter band -> pp_pressure fires on less giveback -> locks the peak sooner
+                # -> less per-cycle giveback -> higher mixed Sharpe (the APY/Sharpe lever, 11-
+                # 36x dominant over DD per v3 scoring). For trend winners (bull/crash/rally
+                # grinding): climbing -> wider band -> ride pullback noise without premature
+                # trailing (addresses the giveback wall from the ride-CLIMBERS side, distinct
+                # from the walled ride-winners-LONGER-by-time side). Uses the 12-bar _pnl_path
+                # (already maintained): climb rate = fraction of last 6 samples that made a new
+                # rolling high. High climb -> widen (max +30pct of base), low climb -> tighten
+                # (max -25pct). Continuous via tanh, no boundary. New cross-subsystem data dep
+                # (pos_pnl trajectory) at the pp_band. Distinct from line-1839 discard (climb
+                # rate routed to _max_hold / time-pressure) -- this routes the SAME trajectory
+                # signal to the pp/giveback PATH, a different subsystem. Direction-agnostic.
+                _pp_hist_e = self._pnl_path.get(symbol, [])
+                if len(_pp_hist_e) >= 4:
+                    _recent6 = _pp_hist_e[-6:]
+                    _run_max = -1e18
+                    _new_hi = 0
+                    for _v in _recent6:
+                        if _v >= _run_max:
+                            _new_hi += 1
+                        _run_max = max(_run_max, _v)
+                    _climb_rate = _new_hi / max(len(_recent6), 1)  # [0,1], ~1 climbing, ~0.3 stagnating
+                    # climb>0.5 -> widen (ride), climb<0.5 -> tighten (lock). Saturate around 0.5.
+                    _traj_band_adj = 0.30 * np.tanh((_climb_rate - 0.5) / 0.20)  # [-0.30, +0.30]-ish
+                    _pp_band = _pp_band * (1.0 + _traj_band_adj)
+                    _pp_band = max(0.05, min(0.40, _pp_band))
                 # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
                 # down from its peak, shrink the effective giveback tolerance so pp_pressure
                 # harvests winners faster (locks gains) -> caps DD from riding winners through
