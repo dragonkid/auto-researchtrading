@@ -2892,7 +2892,15 @@ class Strategy:
                         # k*MAD threshold; floor so a zero-MAD (perfectly flat or monotone-
                         # constant) window never triggers (== comparison would be == on
                         # exact tie -> use > strict; flat window -> deviation 0 -> no replace).
-                        _h_thresh = 3.0 * _h_mad
+                        # Branch step2: k 3.0->1.5. Step1 (k=3.0) showed rally stab +0.0017
+                        # (cleaner EMA input) BUT raw -0.0493: k=3 too LOOSE -- only rejects
+                        # >3-sigma deviations, letting mid-range AR(1) noise pass that the
+                        # always-3-median rejected unconditionally -> mid-range noise enters
+                        # EMA state -> EMA lag on wobble is back -> raw down. Tighten k to
+                        # 1.5 to reject more spikes (recover 3-median raw protection) while
+                        # preserving zero monotone lag (monotone step/MAD ratio ~1.0-1.4 <<
+                        # 1.5). Tighter k (1.0) would over-reject monotone ramps.
+                        _h_thresh = 1.5 * _h_mad
                         if _h_thresh > 0.0 and abs(target - _h_med) > _h_thresh:
                             if (_h_med > 0) == (target > 0) and _h_med != 0:
                                 target = _h_med
