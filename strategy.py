@@ -2428,6 +2428,24 @@ class Strategy:
                 _cl_chop_gate = max(0.0, min(1.0, (_cl_chop - 0.20) / 0.30))  # ~0 smooth (<0.2 chop), ~1 choppy (>0.5)
                 _cl_pressure = 1.20 * _cl_adverse * _cl_grind_gate * _cl_chop_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
+                # BRANCH step11: CROSS-SYMBOL BTC-trend exit source (re-attempt of Exp1, now
+                # chop+grind GATED). Exp1 (opener of independent exploration, discarded) added a
+                # BTC-trend cross exit source ungated -> rally -0.0015 (fired on ct pullback
+                # shorts) and mixed byte-identical (BTC-trend not solidly adverse). Here the
+                # cross source is gated by the SAME _cl_grind_gate + _cl_chop_gate that protect
+                # the close-loc source: it fires ONLY on choppy low-vol dead capital (mixed's
+                # longs), NOT on rally's high-vol ct shorts (grind gate 0) nor smooth sideways
+                # (chop gate 0). The cross source adds a REGIME-LEVEL adverse dimension (BTC
+                # multi-day trend) orthogonal to the close-loc INTRABAR distribution: mixed's
+                # longs face BOTH intrabar distribution AND a broad-market regime headwind (BTC
+                # 96-bar trend weakly adverse during mixed's down phases) -> the two sources
+                # fire on different bars -> MAX picks the stronger -> more mixed bars get a trim
+                # -> higher mixed Sharpe. Profit-side gated; fast-saturating /0.04 (broader
+                # than Exp1's /0.025 since mixed's BTC-trend is only weakly adverse); 0.50 max.
+                _pos_dir_xs = 1.0 if current_pos > 0 else -1.0
+                _xs_adverse = max(0.0, np.tanh(-_pos_dir_xs * _btc_trend / 0.04))
+                _xs_pressure = 0.50 * _xs_adverse * _cl_grind_gate * _cl_chop_gate
+                _w_xs = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2442,6 +2460,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_cl * _cl_pressure,
+                    _w_xs * _xs_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
