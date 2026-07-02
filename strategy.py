@@ -2190,29 +2190,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp2 (architectural, indep): INVERSE profit-magnitude time-pressure --
-                # SMALL-PROFIT EARLY-HARVEST. Prior sessions walled the ride-winners-LONGER
-                # direction (max_hold extension via trend-align/slope-conf/profit-magnitude ->
-                # giveback widens -> Sh drops). This tests the INVERSE: SHORTEN max_hold when
-                # the position has only a SMALL profit, so the micro-peak is locked BEFORE the
-                # oscillation gives it back. Mechanism for the binding floor mixed_2025 (Sh0.839,
-                # 100pct WR, avg +0.09pct/trade = micro-oscillation peak harvesting): mixed's
-                # tiny-win positions are harvested by time-pressure at ~10 bars; shortening to
-                # ~8 bars for SMALL-profit positions locks the micro-peak before the next
-                # oscillation trough -> less giveback per cycle -> higher mixed Sharpe (the APY/
-                # Sharpe lever the v3 scoring incentivizes, dominant 11-36x over DD). GATE to
-                # spare trend winners (whose small EARLY profit should NOT be cut -- they
-                # develop into large trend wins): the shortening fires only when trend is WEAK
-                # (chop = mixed/sideways regime, rsi_trend_str low) AND profit is small-and-
-                # positive. In strong trends (bull/crash/rally grinding), rsi_trend_str high ->
-                # _weak_trend_w ~0 -> byte-identical. In loss (pos_pnl<0), profit-gate 0 ->
-                # losers keep baseline hold (slope-against handles them). Continuous tanh, no
-                # boundary; direction-agnostic (no regime label); new cross-subsystem data dep
-                # (pos_pnl magnitude) at the time-pressure activation. Max 2.0 bars shorter.
-                _profit_frac_tp = max(0.0, pos_pnl / abs(STOP_LOSS_PCT))  # 0 loss/flat, rises with profit
-                _small_prof_gate = max(0.0, 1.0 - np.tanh(_profit_frac_tp / 0.6))  # ~1 small profit, ->0 once profit > ~0.6*stop
-                _weak_trend_w = 1.0 - rsi_trend_str  # ~1 chop, ~0 strong trend
-                _max_hold -= 2.0 * _small_prof_gate * _weak_trend_w
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
