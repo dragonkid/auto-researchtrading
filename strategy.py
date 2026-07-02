@@ -2190,30 +2190,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp4 (architectural, indep): TREND-ALIGNED-AT-MULTI-DAY small-profit
-                # early-harvest. Builds on Exp2 this session (small-profit early-harvest helped
-                # bull +0.0043 REAL but hurt mixed -0.021 because the gate fired on mixed's pure
-                # chop). FIX: replace Exp2's weak-LOCAL-trend gate (1-rsi_trend_str, which is
-                # ~1 for BOTH bull's within-trend chop AND mixed's pure chop -- inseparable)
-                # with a TREND-ALIGNED-AT-MULTI-DAY gate (ret_vlong*pos_dir>0). This fires on
-                # bull/crash/rally trend-aligned positions whose LOCAL trend is choppy (a pullback
-                # within an ongoing trend = lock the small chop win before giveback) while SPARING
-                # mixed (mixed is a multi-day DOWN year; its held longs have ret_vlong<0 ->
-                # counter-trend-at-multi-day -> gate ~0 -> byte-identical, avoiding Exp2's -0.021
-                # mixed regression). Uses the validated 96-bar ret_vlong trend-align separator
-                # (same family as _ts_supp line ~2491, _opp_atten line ~2301, _ct_hold_sat line
-                # ~2177 -- all proven to separate trend-aligned regimes from mixed's ct longs).
-                # Mechanism: a trend-aligned position with a SMALL profit facing local chop is
-                # at a within-trend micro-peak -> shorter hold locks it before the pullback gives
-                # it back -> higher bull/sideways Sharpe. Trend-aligned with LARGE profit keeps
-                # baseline hold (gate on small-profit only). Losers: profit-gate 0 -> baseline.
-                # Continuous tanh, no boundary; new cross-timescale data dep (ret_vlong x pos_dir
-                # x pos_pnl) at time-pressure activation. Max 2.0 bars shorter.
-                _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
-                _ta_vlong_tp = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.04))  # ~1 trend-aligned-at-multi-day, ~0 ct (mixed)
-                _profit_frac_tp = max(0.0, pos_pnl / abs(STOP_LOSS_PCT))  # 0 loss, rises with profit
-                _small_prof_gate = max(0.0, 1.0 - np.tanh(_profit_frac_tp / 0.6))  # ~1 small profit, ->0 >~0.6*stop
-                _max_hold -= 2.0 * _small_prof_gate * _ta_vlong_tp
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
