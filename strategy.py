@@ -2393,30 +2393,7 @@ class Strategy:
                 _chop_atten_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 in chop, 0 in trend
                 # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
                 # in trend approaches 1.0x always (no attenuation)
-                # Exp5 (architectural, indep): PROFIT-MAGNITUDE-AWARE agreement attenuator.
-                # Strengthen the single-source attenuation for SMALL-PROFIT positions: a
-                # marginally-profitable position is more vulnerable to a noise-driven single-
-                # source exit (one slope spike closing a tiny winner prematurely -> locks a
-                # sub-fee win, adds return variance). For LARGE-PROFIT positions, keep baseline
-                # attenuation (real single-source reversals should still fire -- a deep winner
-                # facing a sole slope-against is a genuine trend break). Mechanism for the
-                # binding floor mixed_2025 (Sh0.839, 100pct WR, +0.09pct/trade micro-peaks):
-                # mixed's tiny-win exits are TIME-PRESSURE-driven (confirmed this session via
-                # Exp3 -- pp_band unreachable for mixed); when time-pressure is the SOLE soft
-                # source (no slope/pp/ve/vc agreeing), the attenuator currently cuts it 25pct
-                # in chop. Strengthening to 40pct for small-profit lets the micro-peak FULLY
-                # develop before a single-source time-pressure exit fires -> addresses the
-                # Exp2/Exp4 finding that mixed's rally-phase longs need the FULL hold, WITHOUT
-                # shortening (Exp2/Exp4 walled: shortening trend-aligned-small-profit positions
-                # regresses mixed -0.021/-0.033 because it cuts development). Here the lever is
-                # the OPPOSITE: make the single-source exit HARDER (not easier) for small-profit
-                # -> full development -> larger wins -> higher Sharpe. Losers: profit-gate 0 ->
-                # baseline 0.25 (losers SHOULD exit on single-source slope-against). Continuous
-                # tanh on pos_pnl/|stop|, no boundary. New cross-subsystem data dep (pos_pnl
-                # magnitude) at the agreement attenuator. Max 0.40 attenuation at small profit.
-                _prof_atten_w = max(0.0, 1.0 - np.tanh(max(0.0, pos_pnl) / abs(STOP_LOSS_PCT) / 0.6))  # ~1 small profit, ->0 large
-                _atten_mag = 0.25 + 0.15 * _prof_atten_w  # 0.25 baseline/large/loss, up to 0.40 small-profit
-                _soft_atten = 1.0 - _atten_mag * (1.0 - _agree_gate) * _chop_atten_w
+                _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
