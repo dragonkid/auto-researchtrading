@@ -868,8 +868,27 @@ class Strategy:
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
             _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
-            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
+            # Exp3 (architectural, indep): CONVICTION-MAGNITUDE-DEPENDENT accumulator decay.
+            # The readiness EMA currently uses a FIXED rho (0.5) regardless of the incoming
+            # margin magnitude. A near-zero margin (noise) decays the accumulator at the SAME
+            # rate as a strong-conviction margin -- so a single noise-bar of positive margin
+            # persists as long as a genuine conviction signal. Make the EFFECTIVE decay rate
+            # depend on the incoming margin MAGNITUDE: strong-conviction margins (large
+            # |margin|) persist LONGER (rho raised, slower decay -> readiness rebuilds faster
+            # after a conviction sequence -> earlier re-entry on strong signals); weak/noise
+            # margins (|margin|~0) decay faster (rho lowered -> noise does not persist ->
+            # filter is tighter on noise-driven re-entries). Continuous tanh on |margin|/0.30
+            # (the same scale _persist_boost uses); rho in [0.30, 0.70]. New cross-component
+            # data dep: entry-accumulator decay rate depends on conviction margin magnitude.
+            # Mechanism for the binding floor mixed (100pct WR, tiny APY): faster readiness
+            # rebuild after STRONG-conviction winning exits -> captures a few more high-
+            # conviction micro-wins -> APY up; tighter on noise -> no extra noise entries.
+            _mag_b = max(0.0, min(1.0, np.tanh(abs(_bull_margin) / 0.30)))
+            _mag_s = max(0.0, min(1.0, np.tanh(abs(_bear_margin) / 0.30)))
+            _rho_b = 0.30 + 0.40 * _mag_b  # [0.30, 0.70]
+            _rho_s = 0.30 + 0.40 * _mag_s
+            _acc_b = _rho_b * _acc_b + (1.0 - _rho_b) * _bull_margin
+            _acc_s = _rho_s * _acc_s + (1.0 - _rho_s) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
             _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
