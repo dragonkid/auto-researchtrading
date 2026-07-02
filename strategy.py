@@ -2322,10 +2322,32 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # BRANCH step3: shared VOL-REGIME GATE for the volume/vol-expansion exit
+                # sources (_ve, _vc). Defined once here (before _w_ve/_w_vc) so both
+                # profit-side weights read the same gate. High-vol (vol_ratio>=1.2) -> 1.0
+                # (bull sharp tops keep the load-bearing harvest); low-vol (vol_ratio<=0.8)
+                # -> 0 (mixed down-year chop fades both sources -> non-peak noise cuts
+                # removed). Continuous tanh on (vol_ratio-0.8)/0.4 (no boundary).
+                _exit_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 0.8) / 0.4)))
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # BRANCH step3: VOL-REGIME GATE on _ve_pressure (same family as step1's
+                # _vc gate). _ve_pressure fires on vol_6/vol_18 expansion >1.3 -- a
+                # regime-shift detector. In LOW-vol chop (mixed's down-year, vol_ratio
+                # <0.8), a vol_6/vol_18 spike is CHOP noise (vol regime hasn't genuinely
+                # shifted -- mixed's vol is structurally low and bursts are micro-noise),
+                # and firing _ve there cuts mixed's tiny winners on noise. In HIGH-vol
+                # (bull sharp tops, vol_ratio>1.0), a vol_expansion spike IS a genuine
+                # regime shift (vol-of-vol expansion at a top) -> harvest is real. Apply
+                # the SAME high-vol ramp (vol_ratio-0.8)/0.4 to _w_ve: full at high vol
+                # (bull keeps the load-bearing _ve harvest), faded to 0 at low vol (mixed
+                # spared the noise-driven cuts). _ve removal (prior session) regressed bull
+                # -0.010 -> _ve is load-bearing for bull; the vol-gate preserves bull while
+                # sparing mixed (same separation as step1 _vc). Continuous tanh, no new
+                # boundary. New: _ve weight depends on vol regime (was profit-side only).
+                _w_ve = _w_ve * _exit_vol_gate
                 # Exp3 (architectural simplification, this session): removed the dead
                 # _ep_pressure (early-profit-lock) and _ar_pressure (adverse-recovery)
                 # terms. Both were already zeroed (_ep_pressure=0.0 since the
@@ -2377,9 +2399,9 @@ class Strategy:
                 # keep the harvest, rally's low-vol grind bars get it faded. Targets mixed
                 # (the +0.0013 signal) while preserving bull (the -0.0234 load-bearing
                 # harvest). New cross-component data dep: _vc_pressure weight depends on
-                # vol regime (was profit-side only).
-                _vc_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 0.8) / 0.4)))
-                _w_vc = _w_vc * _vc_vol_gate
+                # vol regime (was profit-side only). Step3: shares _exit_vol_gate defined
+                # at the _ve block above (single shared vol-regime gate for both sources).
+                _w_vc = _w_vc * _exit_vol_gate
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
