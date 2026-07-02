@@ -2405,7 +2405,28 @@ class Strategy:
                 # distribution) and ~off in the sharp high-vol regime (bull continuation bars).
                 # Continuous tanh, no boundary. Byte-identical at vol_ratio>=1.3 (gate 0).
                 _cl_grind_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
-                _cl_pressure = 0.90 * _cl_adverse * _cl_grind_gate
+                # BRANCH step5: MTM-PATH-CHOP gate (replaces pure magnitude push). Step4 showed
+                # the grind gate protects bull (high-vol) but NOT sideways which is ALSO low-vol
+                # grind -> magnitude 1.30 over-trimmed sideways mean-reversion chop (stab 1.0->
+                # 0.915). The validated sideways/mixed separator is the held position's MTM-path
+                # efficiency (the _pnl_path signal, line ~3073): sideways winners are SMOOTH
+                # climbers (high MTM-eff -> chop~0), mixed's dead-capital longs are CHOPPY
+                # whipsaws (low MTM-eff -> chop~1). Gate the close-loc pressure on chop so it
+                # fires only on choppy held positions (mixed dead capital) and spares smooth
+                # sideways winners (chop~0 -> gate 0 -> byte-identical). This is the SAME
+                # separator the emission throttle uses; it cleanly distinguishes the two low-vol
+                # regimes by the held position's OWN trajectory, not by market regime. Compute
+                # chop inline (the _pnl_path state is maintained at line ~1757, before this block).
+                _cl_pp = self._pnl_path.get(symbol, [])
+                _cl_chop = 0.0
+                if len(_cl_pp) >= 4:
+                    _cl_ppa = np.array(_cl_pp)
+                    _cl_net = abs(_cl_ppa[-1] - _cl_ppa[0])
+                    _cl_tot = float(np.sum(np.abs(np.diff(_cl_ppa))))
+                    _cl_mtm_eff = _cl_net / max(_cl_tot, 1e-10)
+                    _cl_chop = max(0.0, min(1.0, 1.0 - _cl_mtm_eff))
+                _cl_chop_gate = max(0.0, min(1.0, (_cl_chop - 0.20) / 0.30))  # ~0 smooth (<0.2 chop), ~1 choppy (>0.5)
+                _cl_pressure = 1.10 * _cl_adverse * _cl_grind_gate * _cl_chop_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
