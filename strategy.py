@@ -2370,7 +2370,7 @@ class Strategy:
                 # vol_ratio>=1.2 (bull sharp tops keep the harvest), fading to 0 at
                 # vol_ratio<=0.8 (mixed/rally low-vol chop -> _vc_pressure OFF -> mixed's
                 # non-peak volume-spike cuts removed -> mixed Sh up). Continuous tanh on
-                # (vol_ratio-0.8)/0.4 (no boundary; the validated vol-regime separator
+                # (vol_ratio-0.8)/0.4 -> step2: lower onset 0.8->0.6, sharper /0.3 (no
                 # family used by _grind_gate, _sq vol-gate, _pp band). rally (vol_ratio
                 # ~0.7-0.9 in grinding stretches, higher in pullbacks) gets partial->full
                 # activation: rally's genuine volume-climax tops (high-vol pullback bars)
@@ -2378,7 +2378,7 @@ class Strategy:
                 # (the +0.0013 signal) while preserving bull (the -0.0234 load-bearing
                 # harvest). New cross-component data dep: _vc_pressure weight depends on
                 # vol regime (was profit-side only).
-                _vc_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 0.8) / 0.4)))
+                _vc_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 0.6) / 0.3)))
                 _w_vc = _w_vc * _vc_vol_gate
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
