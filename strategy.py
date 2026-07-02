@@ -2489,40 +2489,6 @@ class Strategy:
                     # tanh, no new decision boundary. ret_vlong is already computed (96-bar OLS,
                     # noise-robust). Targets mixed (binding); protects all trend-aligned regimes.
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
-                    # Exp4 (this session, architectural): MTM-PATH-EFFICIENCY factor on _ts_supp
-                    # (4th multiplicative factor, couples the tp-harvest trend-extension suppression
-                    # to the held position's mark-to-market path shape -- a NEW joint data dep).
-                    # The existing _ts_supp 3-factor product suppresses tp-harvest (lets winners run)
-                    # based on MAE-cleanliness x multi-day-trend-align x deep-peak. But mixed's
-                    # oscillating longs (the binding floor's dead-capital book) form deep peaks during
-                    # local bounces that pass the multi-day ret_vlong-align factor (ret_vlong<0 for the
-                    # down year BUT the held LONG sees pos_dir=+1 x ret_vlong<0 -> product<0 -> factor 0
-                    # -> NO suppression -> full harvest already, per the prior keep). HOWEVER the MAE
-                    # factor is ~1 for these (clean MAE, mean 0 per the prior diagnostic) and the deep-
-                    # peak factor ~1 -> _ts_supp ~= 0 already for mixed ct longs. The lever here is on
-                    # the TREND-ALIGNED deep-peak winners (bull/rally longs) where _ts_supp ~= 1
-                    # (suppression ON, let-run): a SMOOTH MTM path (high efficiency = genuine grinding
-                    # trend extension) should KEEP suppression (real trend -> let run); a CHOPPY MTM
-                    # path (low efficiency = the position is whipsawing even though trend-aligned at the
-                    # multi-day scale) should RELIEVE suppression (harvest the choppy peak -> lock gains
-                    # before the whipsaw gives back). This is a NEW joint dep: tp-harvest suppression
-                    # depends on the MTM-path shape (was MAE x trend x peak only). MTM-path-efficiency
-                    # = |net|/sum|delta| over the 12-bar pos_pnl path (already maintained at line ~1757,
-                    # READ here fresh). Smooth climber -> eff~1 -> factor~1 (keep suppression); choppy
-                    # -> eff~0 -> factor~0 (relieve suppression -> harvest). Byte-identical when the
-                    # position is too young for a 4-bar path (len<4 -> factor 1.0, no relief). Continuous
-                    # tanh, no boundary. Targets the trend-aligned choppy-peak population (rally pullback
-                    # longs that whipsaw) without touching ct or young positions.
-                    _ppp_ts = self._pnl_path.get(symbol, [])
-                    _ts_path_factor = 1.0  # default: no relief (keep suppression)
-                    if len(_ppp_ts) >= 4:
-                        _ppa_ts = np.array(_ppp_ts)
-                        _net_ts = abs(_ppa_ts[-1] - _ppa_ts[0])
-                        _tot_ts = float(np.sum(np.abs(np.diff(_ppa_ts))))
-                        _mtm_eff_ts = _net_ts / max(_tot_ts, 1e-10)  # [0,1]
-                        # Relief rises as path efficiency FALLS (choppy); full suppression kept when smooth.
-                        _ts_path_factor = max(0.0, min(1.0, np.tanh(_mtm_eff_ts / 0.30)))
-                    _ts_supp = _ts_supp * _ts_path_factor
                     # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
                     # trend-extension harvest suppression. _ts_supp normally PREVENTS
                     # harvesting clean trend-aligned deep-peak winners (let them run).
