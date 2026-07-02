@@ -2888,7 +2888,34 @@ class Strategy:
                         # Non-monotone: diffs have opposite strict sign (a direction change
                         # = spike/reversal embedded in the window).
                         _is_monotone = (_d1 >= 0 and _d2 >= 0) or (_d1 <= 0 and _d2 <= 0)
+                        # Branch step4: HYBRID gate. Step3 (pure monotone gate) recovered
+                        # rally raw (+0.0420 vs step2) but lost a little stab (-0.0017 vs
+                        # step2): isolated spikes that occur DURING an otherwise-monotone
+                        # ramp pass through un-rejected (the window is monotone incl the
+                        # spike if the spike is in the ramp's direction = a step JUMP). Add
+                        # a ramp-outlier guard: on a MONOTONE window, additionally smooth
+                        # when the newest step |d2| is much larger than the prior step |d1|
+                        # (a spike-on-ramp: the bar jumped far further than the ramp's own
+                        # pace -> likely an AR(1) noise spike riding the ramp, not a genuine
+                        # acceleration). Ratio |d2|/max(|d1|,eps) > 3 = d2 is 3x+ the prior
+                        # step -> smooth to the median (which on a monotone 3-window is the
+                        # middle value, dropping the spike back toward the ramp's pace). Keep
+                        # raw only when monotone AND d2 is a normal-sized ramp step (inlier
+                        # of the ramp's own pace). This recovers the spike rejection that
+                        # the pure monotone gate missed WITHOUT reintroducing 3-median's
+                        # blanket lag (normal ramp steps still pass through, zero lag).
+                        # Smooth ratio threshold (3.0) -- far above any genuine ramp
+                        # acceleration (rally ct-loser shrink ramps have near-constant
+                        # |d1|~|d2| step sizes since the EMA shrink is gradual), so genuine
+                        # ramps pass; only noise-spike bars (|d2| >> |d1|) get smoothed.
+                        _smooth = False
                         if not _is_monotone:
+                            _smooth = True
+                        else:
+                            _step_ratio = abs(_d2) / max(abs(_d1), 1e-12)
+                            if _step_ratio > 3.0:
+                                _smooth = True
+                        if _smooth:
                             _med = float(np.median(_th))
                             if (_med > 0) == (target > 0) and _med != 0:
                                 target = _med
