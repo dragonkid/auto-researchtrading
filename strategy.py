@@ -2395,7 +2395,17 @@ class Strategy:
                 _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
                 # adverse = (long & close near low) | (short & close near high)
                 _cl_adverse = max(0.0, np.tanh(((0.40 - _close_loc_e) if _pos_dir_cl > 0 else (_close_loc_e - 0.60)) / 0.15))
-                _cl_pressure = 0.60 * _cl_adverse
+                # BRANCH step2: LOW-VOL-GRIND gate on the close-loc pressure. Opener leaked
+                # bull -0.0016: bull is a HIGH-VOL SHARP uptrend whose continuation bars often
+                # close off the high (normal pullback-within-uptrend that recovers fast) -> the
+                # close-loc trim sold dip-recovery bars. The validated bull/mixed+rally separator
+                # is VOL REGIME (the MTM-chop throttle's _grind_gate, the scale-in quantization
+                # keep separator): bull-2021 HIGH-vol sharp vs mixed/rally LOW-vol grind. Gate the
+                # close-loc pressure on low vol_ratio so it fires in the calm grind (mixed/rally
+                # distribution) and ~off in the sharp high-vol regime (bull continuation bars).
+                # Continuous tanh, no boundary. Byte-identical at vol_ratio>=1.3 (gate 0).
+                _cl_grind_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
+                _cl_pressure = 0.60 * _cl_adverse * _cl_grind_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
