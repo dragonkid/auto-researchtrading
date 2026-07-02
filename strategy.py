@@ -2426,7 +2426,21 @@ class Strategy:
                     _cl_mtm_eff = _cl_net / max(_cl_tot, 1e-10)
                     _cl_chop = max(0.0, min(1.0, 1.0 - _cl_mtm_eff))
                 _cl_chop_gate = max(0.0, min(1.0, (_cl_chop - 0.20) / 0.30))  # ~0 smooth (<0.2 chop), ~1 choppy (>0.5)
-                _cl_pressure = 1.10 * _cl_adverse * _cl_grind_gate * _cl_chop_gate
+                # BRANCH step9: COUNTER-TREND-AT-MULTI-DAY gate. The close-loc trim fires on
+                # distribution bars; for mixed's longs in a down year (counter-trend at multi-
+                # day, ret_vlong<0 for held longs) the distribution is a real regime-level exit
+                # signal. For rally's longs in an uptrend (trend-aligned, ret_vlong>0), bars
+                # closing off-high are normal pullback-within-uptrend that recover -> trimming
+                # them costs rally raw. Gate the close-loc pressure on COUNTER-TREND-AT-MULTI-
+                # DAY (ret_vlong*pos_dir<0, the validated mixed/rally separator used by _ts_supp
+                # and the emission throttle) so it fires on mixed's wrong-side longs (ct) and
+                # spares rally's trend-aligned longs. Fast-saturating /0.02 (near-constant,
+                # noise-free). With rally protected by the ct gate, the trim focuses on mixed's
+                # dead capital -> higher mixed Sharpe at preserved rally. Crash shorts (ret_vlong<0,
+                # pos_dir=-1 -> product>0 trend-aligned) byte-identical (ct gate 0).
+                _pos_dir_cl_mt = 1.0 if current_pos > 0 else -1.0
+                _cl_ct_gate = max(0.0, np.tanh(-_pos_dir_cl_mt * ret_vlong / 0.02))
+                _cl_pressure = 1.10 * _cl_adverse * _cl_grind_gate * _cl_chop_gate * _cl_ct_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
