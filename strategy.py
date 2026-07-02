@@ -1791,24 +1791,7 @@ class Strategy:
                 # longs from crash's trend-aligned shorts. Gate the amplifier on it so crash
                 # (gate~0) is byte-identical to baseline while mixed (gate~1) keeps the gain.
                 _persist_dvp_amp = 1.0 + 1.00 * _persist_dvp_conv * _weak_persist * _persist_down_gate  # branch step7: magnitude 1.00 (between step5 0.80 best and step6 1.20 overshot)
-                # branch step11: COMPLEMENTARY crash-shorts DVP amplifier as a SEPARATE
-                # ADDITIVE term (step10 was inert because it was multiplied through
-                # _weak_persist which is ~0 for crash). crash is return-limited (Sh1.31,
-                # APY13.6pct, DD2.83pct huge headroom below 5pct knee). For SHORT entries
-                # in a PERSISTENT downtrend (_down_persist>0.75 = crash ~0.9, excludes bull
-                # transient dips ~0.3) AND multi-day downtrend confirmed (_dvp_bear_vlong,
-                # ret_vlong<0) AND sell-side DVP confirms the short, ADD a separate boost
-                # term that does NOT depend on _weak_persist (crash has strong trend ->
-                # weak_persist~0). crash shorts are trend-aligned winners (100pct WR) so
-                # bigger crash shorts = more return = higher APY = return_bonus (dominant
-                # score lever). Symmetric to the mixed long amplifier (which fires for
-                # weak_persist + bull_vlong for longs). Additive (not multiplicative through
-                # weak_persist). Gated to short entries only (the crash trade). Amplify-only.
-                _persist_dvp_bear_dir = -_dvp  # sell-side DVP for short entries
-                _persist_dvp_bear_conv = max(0.0, np.tanh(_persist_dvp_bear_dir / 0.15))
-                _persist_dvp_downhigh = max(0.0, np.tanh((_down_persist - 0.75) / 0.12))  # ~0 bull dips, ~1 crash persistent bear
-                _persist_dvp_crash_add = 0.10 * _persist_dvp_bear_conv * _persist_dvp_downhigh * _dvp_bear_vlong * (0.0 if (_bull_ready and _bull_admit) else 1.0)  # short-entry only, additive
-                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale * _persist_dvp_amp + _persist_dvp_crash_add
+                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale * _persist_dvp_amp
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
