@@ -2493,28 +2493,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp2 (architectural, indep): CONSENSUS-REVERSAL as a 7th soft exit source.
-                # NEW exit-pressure source + NEW cross-component data dep: the portfolio cross-
-                # symbol trend-consensus signal (currently entry-only + persist_boost) now feeds
-                # the exit-pressure MAX fusion as a soft source. When the broad-market consensus
-                # direction STRONGLY opposes the position direction (all 3 symbols trending
-                # against the held position -- a portfolio-level reversal signal), contribute a
-                # soft pressure term so the exit fires at the broad-market turn. Distinct from
-                # Exp1 (giveback-eff tightening, absorbed by the coarse giveback band): this
-                # ADDS to _soft_max directly via the MAX fusion, so it cannot be absorbed by a
-                # band threshold. Profit-side only (lock gains at broad tops; slope-against
-                # already handles losers). Mechanism: mixed's oscillating longs and crash's
-                # recovery-bounce shorts top out at broad-market reversal bars where the 3-
-                # symbol consensus flips against the position -- the precise bars where locking
-                # realized beats letting paper ride. Byte-identical when consensus absent
-                # (<2 symbols), consensus_dir == 0, or consensus ALIGNS with pos_dir (rally/bull
-                # grind: all 3 up, consensus_dir=+1=long pos_dir -> reversal 0 -> rally/bull
-                # byte-identical). Continuous tanh on strength; direction-agnostic + bilateral.
-                _pos_dir_pd = 1.0 if current_pos > 0 else -1.0
-                _consensus_reversal = _consensus_strength * max(0.0, -_pos_dir_pd * _consensus_dir)
-                # Activate only at meaningful consensus-reversal strength; saturate near full.
-                _cr_pressure = 0.45 * max(0.0, min(1.0, np.tanh((_consensus_reversal - 0.50) / 0.20)))
-                _w_cr = max(0.0, _pnl_scale)  # profit-side only (lock gains at broad reversal)
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2528,7 +2506,6 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
-                    _w_cr * _cr_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
