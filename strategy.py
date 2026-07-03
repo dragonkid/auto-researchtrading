@@ -1821,22 +1821,7 @@ class Strategy:
                     _frac_trend_align_bear = max(0.0, np.tanh(-ret_vlong / 0.02))  # bear short aligned with multi-day downtrend
                     _frac_strong = 1.0 - _weak_persist  # ~1 strong trend (crash), ~0 weak trend (mixed)
                     _entry_frac_boost_bear = 1.0 + 0.15 * _frac_trend_align_bear * _frac_strong
-                    # Branch step1: RAISE the cap to 0.60 ONLY for the boosted bear entry
-                    # (unboosted cap stays 0.55 everywhere else). Exp3 showed the boost is
-                    # INERT for crash because crash's _entry_frac_dyn sits at/near 0.55 (the
-                    # cap IS binding for crash's low-vol grind entries, contradicting the
-                    # keep summary's general '_entry_frac_dyn always below 0.55' which held
-                    # for the general case but not crash specifically). _entry_frac_dyn *
-                    # 1.15 = 0.55*1.15 = 0.6325 -> capped to 0.55 = byte-identical (boost
-                    # absorbed). Raising the cap to 0.60 for the boosted case lets the boost
-                    # take effect: 0.55*1.15 = 0.6325 -> capped to 0.60 (boost partially
-                    # applies, +0.05 frac = +9pct of entry size). Isolated to the boosted bear
-                    # entry (the cap relief is conditional on _entry_frac_boost_bear > 1.0);
-                    # all other entries (bull, unboosted bear) keep the 0.55 cap. Per the
-                    # keep summary's lead (b): raising the cap for the boost case lets the
-                    # crash amplifier through.
-                    _bear_cap = 0.55 + 0.05 * max(0.0, _entry_frac_boost_bear - 1.0)  # 0.55 unboosted, up to 0.60 boosted
-                    target = -size * min(_bear_cap, _entry_frac_dyn * _entry_frac_boost_bear) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bear) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
