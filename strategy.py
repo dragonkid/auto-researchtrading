@@ -1790,7 +1790,18 @@ class Strategy:
                 # _persist_sustain, so amplifying it may reach mixed through the sustain path
                 # that the entry-frac boost couldn't). Byte-identical when consensus absent or
                 # entry opposes consensus or weak_persist~0 (rally/crash). Direction-agnostic.
-                _persist_consensus_amp = 1.0 + 0.30 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir if (_bull_ready and _bull_admit) else -_consensus_dir)
+                # branch step1: DD-HEADROOM GATE on the amplification magnitude (the f6e19151
+                # keep's validated DD-headroom conditioning applied to the amp factor). Mixed's
+                # modest-APY longs got over-sustained at mag 0.30 (DD rose 2.95->3.04 toward the
+                # 5pct knee -> stab/raw tension -> score down despite Sh+APY up). Sideways GAINED
+                # at 0.30 (lower DD headroom -> no tension). The separator is portfolio DD: when
+                # DD is rising (mixed's DD episodes), reduce the amplification toward the keep's
+                # 0.20 level so mixed's longs dont over-ride bounces; at peak (sideways low-DD
+                # chop) keep full 0.30. _port_dd_frac available at line 450 (main scope). At peak
+                # (dd_frac~0) gate=1.0 -> full 0.30; at deep DD gate ~0.67 -> effective ~0.20.
+                # Continuous tanh, leverage-coupled scale (DD-LEVEL invariant), no boundary.
+                _amp_dd_gate = 1.0 - 0.33 * max(0.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K)))
+                _persist_consensus_amp = 1.0 + 0.30 * _amp_dd_gate * _consensus_strength * _weak_persist * max(0.0, _consensus_dir if (_bull_ready and _bull_admit) else -_consensus_dir)
                 _persist_boost = (1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale) * _persist_consensus_amp
                 # Exp3 (architectural, indep): TREND-ALIGNED x DD-HEADROOM entry-frac
                 # BOOST. Exp1/Exp2 proved the 0.55 cap is inert (_entry_frac_dyn always
