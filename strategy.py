@@ -2361,7 +2361,15 @@ class Strategy:
                 # tanh, no boundary; floor 0 preserves the counter-trend byte-
                 # identical property.
                 _pp_ratio_hold = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                _hold_pp_gate = 1.0 - max(0.0, min(1.0, np.tanh((_pp_ratio_hold - 0.8) / 0.2)))
+                # Branch step5: TIGHTEN the long peak-gate knee 0.8->1.0 (fire only for
+                # truly pre-peak longs, peak<1.0*_pp_min). step1 (knee 0.8) gained mixed
+                # +0.0088 but bull/sideways regressed from over-holding pre-peak longs
+                # in the 0.8-1.0*_pp_min band. Tighter knee spares more bull/sideways
+                # longs while keeping mixeds broad-bounce longs (lower peaks). shorts
+                # already ungated in step3 -- but step3 was byte-identical to step1 for
+                # crash, so dropping the short asymmetry and just tightening the long
+                # gate is the cleaner test of the long-path ceiling.
+                _hold_pp_gate = 1.0 - max(0.0, min(1.0, np.tanh((_pp_ratio_hold - 1.0) / 0.15)))
                 _max_hold *= 1.0 + 0.12 * _consensus_hold_ext * _hold_pp_gate
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
