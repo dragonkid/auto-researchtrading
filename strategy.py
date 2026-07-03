@@ -1800,7 +1800,7 @@ class Strategy:
                 # This is a DIFFERENT separator than DD-headroom (which was near-inert: mixed's
                 # amplification bars are at portfolio peak dd_frac~0 -> gate 1 -> no modulation).
                 # |ret_vlong| separates sideways (flat) from mixed (down) directly at the signal.
-                _amp_mag = 0.20 + 0.10 * max(0.0, 1.0 - max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.005) / 0.007))))
+                _amp_mag = 0.20 + 0.10 * max(0.0, 1.0 - max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.005) / 0.005))))
                 _persist_consensus_amp = 1.0 + _amp_mag * _consensus_strength * _weak_persist * max(0.0, _consensus_dir if (_bull_ready and _bull_admit) else -_consensus_dir)
                 _persist_boost = (1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale) * _persist_consensus_amp
                 # Exp3 (architectural, indep): TREND-ALIGNED x DD-HEADROOM entry-frac
