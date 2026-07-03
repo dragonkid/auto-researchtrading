@@ -2382,7 +2382,19 @@ class Strategy:
                 # protection). pos_dir sign near-binary, noise-free.
                 _is_short = 1.0 if current_pos < 0 else 0.0
                 _hold_pp_gate = _is_short + (1.0 - _is_short) * _hold_pp_gate_long
-                _max_hold *= 1.0 + 0.12 * _consensus_hold_ext * _hold_pp_gate
+                # Branch step4: ASYMMETRIC MAGNITUDE. step3 confirmed shorts dont help
+                # crash directly (the exp1 crash gain was a portfolio-state artifact,
+                # unreproducible via the short path). The only DIRECT gain is mixed
+                # +0.0088 via longs (peak-gated). Raise the LONG-path magnitude 0.12->0.18
+                # to amplify mixed's gain (the binding floor) while keeping the short
+                # path at 0.12 (no direct benefit, no reason to amplify). Mixed's
+                # broad-bounce longs that dont reach deep peaks get more extension ->
+                # hold the confirmed-broad-market bounce longer -> more APY at preserved
+                # Sharpe (mixed is return-limited at Sh0.89, DD2.95pct huge headroom
+                # below 5pct knee). Long peak-gate still protects bull/rally deep-peak
+                # winners from over-hold.
+                _hold_mag = 0.12 + 0.06 * (1.0 - _is_short)
+                _max_hold *= 1.0 + _hold_mag * _consensus_hold_ext * _hold_pp_gate
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
