@@ -2192,36 +2192,6 @@ class Strategy:
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
-                # Exp1 (architectural, indep): MULTI-DAY-TREND-ALIGN x DD-HEADROOM
-                # attenuation of pp-pressure giveback harvest. The keep note's UNTESTED
-                # lead (a): crash (2nd-lowest 0.976, Sh1.31, APY13.6pct, DD2.83pct huge
-                # headroom below the 5pct knee, 100pct WR, return-limited) via a NEW exit
-                # path. The giveback-tightening (PORT_DD_GIVEBACK_TIGHTEN, already in
-                # baseline) harvests FASTER during DD (caps DD) -- the OPPOSITE direction.
-                # This adds the complementary lever: at PORTFOLIO PEAK (dd_frac~0) AND when
-                # the position is TREND-ALIGNED AT THE MULTI-DAY SCALE (ret_vlong*pos_dir>0),
-                # SOFTEN the pp-pressure giveback harvest so trend-aligned winners ride
-                # multi-day bounces longer -> higher APY -> return_bonus (Sharpe is scale-
-                # invariant so riding a confirmed trend winner raises return without lowering
-                # Sharpe; DD stays below the 5pct knee for low-DD trend regimes). The DD-
-                # headroom gate is the keep's VALIDATED structural insight (_frac_dd_headroom
-                # signal, EMA-smoothed noise-robust): it activates ONLY at peak equity (low
-                # DD) -- during rally pullbacks (the DD source) dd_frac>0 -> gate ~0 ->
-                # pp_pressure unchanged -> rally DD stays 5.06pct (byte-identical for the
-                # DD-driving regime). The multi-day trend-align gate (fast-saturating /0.01
-                # ret_vlong*pos_dir, near-constant noise-free per the validated ct-gate lesson)
-                # spares ct positions (mixed's wrong-side longs: ret_vlong<0, pos_dir=+1 ->
-                # product<0 -> gate 0 -> full pp_pressure -> still harvested). crash trend-
-                # aligned shorts (ret_vlong<0, pos_dir=-1 -> product>0 -> gate ~1) at peak
-                # (crash low-DD) -> pp_pressure softened -> ride downtrend bounces longer ->
-                # higher crash APY. bull trend-aligned longs (product>0) at peak (bull DD
-                # 2.50pct headroom) -> modest gain. New cross-component data dep: pp-pressure
-                # giveback harvest depends on (multi-day trend-alignment x portfolio DD-
-                # headroom). Continuous tanh on both gates (no new decision boundary);
-                # direction-agnostic (uses pos_dir sign). Max 25pct softening.
-                _pp_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _pp_ta = max(0.0, np.tanh(_pp_pos_dir * ret_vlong / 0.01))  # ~0 ct, ~1 trend-aligned-at-multi-day
-                _pp_pressure = _pp_pressure * (1.0 - 0.25 * _pp_ta * _frac_dd_headroom)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
