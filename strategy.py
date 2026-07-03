@@ -2326,6 +2326,29 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp1 (architectural, indep): CONSENSUS-ALIGNED max_hold EXTENSION.
+                # NEW data dep in the time-pressure subsystem: max_hold (in BAR units)
+                # is currently own-symbol-only. The portfolio cross-symbol trend consensus
+                # (3-symbol 20-bar ret_long sign-agreement, _consensus_strength /
+                # _consensus_dir, computed once per bar at the top of on_bar) is a
+                # validated broad-market signal (ed884a7b keep: it amplifies the persist
+                # boost at entry). When the broad-market consensus direction AGREES with
+                # the held position direction (a trend-aligned-AND-broad-confirmed
+                # position), the position is a higher-conviction trend bet -> let it run
+                # LONGER before time-pressure fires (capture more of the broad move).
+                # This is the consensus signal's EXIT-side counterpart (the ed884a7b keep
+                # note's UNTESTED lead (c), distinct from the walled consensus-REVERSAL
+                # exit -- this only EXTENDS, never shortens; counter-trend / no-consensus
+                # positions are byte-identical via the floor-at-0 gate). Deep-saturated
+                # signals: _consensus_strength (|sum|-2 knee -> near-constant 1.0 where
+                # it fires, noise-free per the validated safe-family lesson) and the
+                # _consensus_dir x pos_dir sign product (both near-binary). The magnitude
+                # mirrors _vol_hold_ext's +12pct ceiling so the two extensions compose
+                # multiplicatively without one dominating. Direction-agnostic general
+                # principle (no regime label); floor 0 -> byte-identical when consensus
+                # absent, weak, or opposes position.
+                _consensus_hold_ext = max(0.0, _consensus_strength) * max(0.0, _consensus_dir * (1.0 if current_pos > 0 else -1.0))
+                _max_hold *= 1.0 + 0.12 * _consensus_hold_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
