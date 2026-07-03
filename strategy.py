@@ -1810,8 +1810,17 @@ class Strategy:
                 # direction AGREES with the broad-market consensus direction. Small +0.06 max,
                 # deep-saturated (|sum|-2 gate -> near-constant where it fires, noise-free).
                 # Byte-identical when consensus absent (<2 symbols) or entry opposes consensus.
-                _consensus_boost_bull = 1.0 + 0.06 * _consensus_strength * max(0.0, _consensus_dir)
-                _consensus_boost_bear = 1.0 + 0.06 * _consensus_strength * max(0.0, -_consensus_dir)
+                # Branch step1: GATE on _weak_persist (the validated mixed/rally separator
+                # from the f6e19151 keep). Opener fired the boost for rally's grinding uptrend
+                # (BTC/ETH/SOL all agree -> consensus=+1 -> boost on rally longs -> over-
+                # committed -> rally -0.0166, DD 5.06->5.11pct past knee). rally has STRONG
+                # multi-day uptrend (ret_vlong solidly positive -> _weak_persist~0); mixed has
+                # WEAK/oscillating multi-day trend -> _weak_persist~1. Gate the boost on
+                # _weak_persist so it fires for mixed's broad-market bounce-phase longs (the
+                # +0.0049 gain source) NOT rally's grinding uptrend (the leak source). Same
+                # structural property that solved the entry-frac boost rally-leak wall.
+                _consensus_boost_bull = 1.0 + 0.06 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
+                _consensus_boost_bear = 1.0 + 0.06 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
