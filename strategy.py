@@ -497,7 +497,7 @@ class Strategy:
                 _cc = bar_data[_csym].history["close"].values
                 _csign = 1.0 if _cc[-1] > _cc[-LONG_WINDOW] else (-1.0 if _cc[-1] < _cc[-LONG_WINDOW] else 0.0)
                 _consensus_sign += _csign
-            _consensus_strength = max(0.0, min(1.0, np.tanh((abs(_consensus_sign) - 1.5) / 1.0)))
+            _consensus_strength = max(0.0, min(1.0, np.tanh((abs(_consensus_sign) - 2.0) / 1.0)))
             _consensus_dir = 1.0 if _consensus_sign > 0 else (-1.0 if _consensus_sign < 0 else 0.0)
         else:
             _consensus_strength = 0.0
@@ -1819,8 +1819,26 @@ class Strategy:
                 # _weak_persist so it fires for mixed's broad-market bounce-phase longs (the
                 # +0.0049 gain source) NOT rally's grinding uptrend (the leak source). Same
                 # structural property that solved the entry-frac boost rally-leak wall.
+                # Branch step5: BEAR-SIDE consensus boost gated on _down_persist (the validated
+                # crash/bear separator) instead of _weak_persist. Crash has STRONG multi-day
+                # DOWNTREND (ret_vlong persistently negative -> _weak_persist~0 BUT
+                # _down_persist~0.9). The bull-side _weak_persist gate (correct for mixed)
+                # BLOCKS the bear-side boost for crash entirely -> crash byte-identical (the
+                # f6e19151 keep's entry-frac boost was also inert for crash). Use a SEPARATE
+                # gate for the bear side: _down_persist isolates crash (persistent downtrend
+                # ~0.9) from bull (transient pullback dips ~0.3, same structural property that
+                # made the down_persist duration-count work in the fe6acd4d keep). Crash
+                # trend-aligned shorts on broad-market DOWN-LEGS (consensus_dir=-1, all 3
+                # symbols down together during multi-month bear) get a bigger first-bar
+                # commitment -> higher APY (return-limited floor 0.976, Sh1.31, DD2.83pct
+                # huge headroom below 5pct knee). 100pct WR winners -> Sharpe scale-invariant
+                # -> return_bonus at preserved Sharpe. Byte-identical when consensus absent,
+                # entry opposes consensus, or _down_persist~0 (bull/sideways). Direction-
+                # agnostic general principle (no regime label): broad-market downtrend
+                # confirmation raises crash short entry quality. New cross-component data dep:
+                # bear-side consensus boost depends on _down_persist (was weak_persist).
                 _consensus_boost_bull = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
-                _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
+                _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _down_persist * max(0.0, -_consensus_dir)
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
