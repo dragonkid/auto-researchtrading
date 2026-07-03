@@ -497,7 +497,7 @@ class Strategy:
                 _cc = bar_data[_csym].history["close"].values
                 _csign = 1.0 if _cc[-1] > _cc[-LONG_WINDOW] else (-1.0 if _cc[-1] < _cc[-LONG_WINDOW] else 0.0)
                 _consensus_sign += _csign
-            _consensus_strength = max(0.0, min(1.0, np.tanh((abs(_consensus_sign) - 2.0) / 1.0)))
+            _consensus_strength = max(0.0, min(1.0, np.tanh((abs(_consensus_sign) - 1.5) / 1.0)))
             _consensus_dir = 1.0 if _consensus_sign > 0 else (-1.0 if _consensus_sign < 0 else 0.0)
         else:
             _consensus_strength = 0.0
@@ -1819,8 +1819,8 @@ class Strategy:
                 # _weak_persist so it fires for mixed's broad-market bounce-phase longs (the
                 # +0.0049 gain source) NOT rally's grinding uptrend (the leak source). Same
                 # structural property that solved the entry-frac boost rally-leak wall.
-                _consensus_boost_bull = 1.0 + 0.14 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
-                _consensus_boost_bear = 1.0 + 0.14 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
+                _consensus_boost_bull = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
+                _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
