@@ -1840,9 +1840,9 @@ class Strategy:
                     # x trend-strength (was vol-only). Direction-agnostic framing: a trend-
                     # aligned STRONG-trend entry (either direction) gets a bigger first-bar
                     # commitment at the trend-strength complement of the weak-trend boost.
-                    _frac_trend_align_bear = max(0.0, np.tanh(-ret_vlong / 0.02))  # bear short aligned with multi-day downtrend
+                    _frac_trend_align_bear = max(0.0, np.tanh(-ret_vlong / 0.04))  # branch step4: widened /0.02->/0.04 to fire on more bear entries
                     _frac_strong = 1.0 - _weak_persist  # ~1 strong trend (crash), ~0 weak trend (mixed)
-                    _entry_frac_boost_bear = 1.0 + 0.15 * _frac_trend_align_bear * _frac_strong
+                    _entry_frac_boost_bear = 1.0 + 0.30 * _frac_trend_align_bear * _frac_strong  # branch step4: raised 0.15->0.30 to test if boost can reach crash at all
                     target = -size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bear) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
