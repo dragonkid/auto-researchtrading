@@ -1837,8 +1837,8 @@ class Strategy:
                 # agnostic general principle (no regime label): broad-market downtrend
                 # confirmation raises crash short entry quality. New cross-component data dep:
                 # bear-side consensus boost depends on _down_persist (was weak_persist).
-                _consensus_boost_bull = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
-                _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _down_persist * max(0.0, -_consensus_dir)
+                _consensus_boost_bull = 1.0 + 0.12 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
+                _consensus_boost_bear = 1.0 + 0.12 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
