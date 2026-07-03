@@ -1504,8 +1504,37 @@ class Strategy:
                 _vol_rise = max(0.0, min(1.0, np.tanh(_vol_trend_r / 0.30)))  # 0 flat/decline, 1 deep rising
                 _vol_rise_align_bull = _vol_rise * max(0.0, np.tanh(ret_long / 0.04))      # bull aligned with uptrend
                 _vol_rise_align_bear = _vol_rise * max(0.0, np.tanh(-ret_long / 0.04))     # bear aligned with downtrend
-                _vol_rise_boost_bull = 1.0 + 0.08 * _vol_rise_align_bull
-                _vol_rise_boost_bear = 1.0 + 0.08 * _vol_rise_align_bear
+                # Exp (architectural, indep): PORTFOLIO-DD-HEADROOM gate on the vol-rise
+                # trend-aligned entry boost. The f6e19151 keep proved the structural insight
+                # that conditioning an entry-SIZE boost on portfolio DD-headroom (peak equity
+                # gate, _frac_dd_headroom) LOWERS return_vol per unit return: bigger entries
+                # are timed at the portfolio's BEST moments (low DD) -> the marginal return
+                # per unit of return_volatility is higher -> Sharpe up WITHOUT return_vol rise
+                # -> std DROPS (vs an unconditioned boost that fires regardless of DD state).
+                # That keep applied the gate to the bull-side entry-frac boost (mixed gained
+                # +0.0117, std -0.0036) but the gate was NOT extended to OTHER entry-size paths.
+                # The vol-rise boost (Exp5) fires for crash's trend-aligned SHORTS on rising
+                # capitulation volume -- a path the entry-frac boost (gated on _weak_persist~0
+                # for crash) does NOT reach. Crash is the second-lowest regime (0.976, Sh1.306,
+                # return-limited, DD2.83pct huge headroom below the 5pct knee); the entry-frac
+                # boost is inert for crash per the 3084bcf2 branch (emission grid absorbs). The
+                # vol-rise boost reaches crash via a different multiplier in the entry chain
+                # (volume-confirmation, not _entry_frac_dyn). Gating it on DD-headroom: at peak
+                # equity (crash is low-DD, mostly at peak) the boost fires FULL (+0.08 -> bigger
+                # trend-aligned crash shorts -> more APY at preserved Sharpe, DD stays below 5pct
+                # knee); during portfolio DD (rally pullbacks = the DD source) the boost is GATED
+                # OFF -> no over-commitment during drawdown. NEW cross-component data dep: the
+                # vol-rise boost magnitude depends on portfolio DD-headroom (was vol x trend-
+                # align only). Byte-identical when _frac_dd_headroom=1.0 (peak equity, the
+                # common case for crash/sideways/bull); the gate only MODULATES during DD
+                # episodes (rally pullbacks), where it shrinks the boost to cut over-commitment.
+                # Crash's trend-aligned shorts mostly happen at peak (crash is low-DD) -> boost
+                # fires at full strength -> the APY gain is isolated to crash's best moments.
+                # Sparing (the boost is +0.08 max; the gate only reduces it during DD). Same
+                # _frac_dd_headroom formula as the f6e19151 keep (validated scale 0.005*LEVERAGE_K).
+                _frac_dd_headroom_vr = 1.0 - max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K))))
+                _vol_rise_boost_bull = 1.0 + 0.08 * _vol_rise_align_bull * _frac_dd_headroom_vr
+                _vol_rise_boost_bear = 1.0 + 0.08 * _vol_rise_align_bear * _frac_dd_headroom_vr
                 # Exp6 (architectural, indep): OWN-volume-rise x PARTNER-alt-price-agreement
                 # conjunction boost on ALT entries. Completes the {own,BTC,partner}x{vol,price}
                 # agreement grid: Exp1 = BTC-vol x BTC-price -> alt; Exp3 = partner-vol x
