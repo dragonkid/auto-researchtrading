@@ -869,20 +869,6 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
-            # Branch step7: CONSENSUS-GATED ADMISSION SOFTENER. A different code path than
-            # the size boost (step2): lower the admission threshold slightly when broad-market
-            # consensus agrees with entry direction AND weak_persist (mixed separator). Raises
-            # mixed raw via COUNT (more broad-trend bounce entries admitted) not SIZE -> avoids
-            # the stab/raw tension ceiling that blocks the size-boost magnitude at 0.10. Rally
-            # protected by _weak_persist~0 (gate off -> byte-identical). Crash protected by
-            # _weak_persist~0 (strong downtrend). Sideways: weak ret_vlong -> _weak_persist
-            # moderate, consensus modest -> small softener. Max -8% threshold relaxation when
-            # full consensus (3-agree) + weak_persist~1 + entry agrees. Continuous tanh, no
-            # new boundary (composes with the existing multiplicative strong_min chain).
-            _consensus_admit_soften_bull = 1.0 - 0.08 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
-            _consensus_admit_soften_bear = 1.0 - 0.08 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
-            _bull_strong_min *= _consensus_admit_soften_bull
-            _bear_strong_min *= _consensus_admit_soften_bear
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
@@ -1788,7 +1774,24 @@ class Strategy:
                 # Amplify-only (floor 1.0 baseline MAG).
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
-                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
+                # Branch step8: CONSENSUS-AMPLIFIED persist_boost. Phase-3-style combination
+                # of two validated mixed-targeting mechanisms: the persist_boost amplifier
+                # (fe6acd4d keep, weak_persist-gated) AND the portfolio consensus boost
+                # (step2, broad-market agreement). The persist_boost already fires for mixed
+                # (weak_persist~1) at magnitude PERSIST_BOOST_MAG * conv_scale. Amplify its
+                # magnitude by a SMALL factor (max +20%) when broad-market consensus ALSO
+                # agrees with the entry direction (the same consensus_dir signal, weak_persist-
+                # gated). Mechanism: a mixed bounce-phase long confirmed by BOTH persistent
+                # weak multi-day trend AND broad-market 3-symbol consensus is a higher-quality
+                # broad-trend entry -> larger persist_boost magnitude captures more of the
+                # confirmed broad move -> higher mixed APY via the persist_boost path (DIFFERENT
+                # from the entry-frac path that step2 used; the two paths compose multiplicatively
+                # on the first-bar size but the persist_boost ALSO sustains through scale-in via
+                # _persist_sustain, so amplifying it may reach mixed through the sustain path
+                # that the entry-frac boost couldn't). Byte-identical when consensus absent or
+                # entry opposes consensus or weak_persist~0 (rally/crash). Direction-agnostic.
+                _persist_consensus_amp = 1.0 + 0.20 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir if (_bull_ready and _bull_admit) else -_consensus_dir)
+                _persist_boost = (1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale) * _persist_consensus_amp
                 # Exp3 (architectural, indep): TREND-ALIGNED x DD-HEADROOM entry-frac
                 # BOOST. Exp1/Exp2 proved the 0.55 cap is inert (_entry_frac_dyn always
                 # below 0.55); the real lever is _entry_frac_dyn ITSELF (range ~0.37-0.49).
