@@ -2348,7 +2348,21 @@ class Strategy:
                 # principle (no regime label); floor 0 -> byte-identical when consensus
                 # absent, weak, or opposes position.
                 _consensus_hold_ext = max(0.0, _consensus_strength) * max(0.0, _consensus_dir * (1.0 if current_pos > 0 else -1.0))
-                _max_hold *= 1.0 + 0.12 * _consensus_hold_ext
+                # Branch step1: GATE the extension on peak-maturity. Exp1 over-held
+                # bull winners (bull DD 2.50->3.00, Sh 2.11->1.99): once a position
+                # reaches a deep peak (peak_pnl >= _pp_min -> _pp_activation 1.0),
+                # pp_pressure/tp_harvest ALREADY manage the exit -> extending time-
+                # pressure over-holds through pullbacks. The extension should help
+                # positions where time-pressure is the BINDING exit (early/moderate
+                # profit, peak < _pp_min -- the crash confirmed-trend-short profile:
+                # return-limited, exits before deep peak). Smooth fade on _pp_ratio
+                # (peak_pnl/_pp_min): full extension below 0.8*_pp_min (pre-peak),
+                # fades to 0 by 1.2*_pp_min (deep peak -> pp/tp manage). Continuous
+                # tanh, no boundary; floor 0 preserves the counter-trend byte-
+                # identical property.
+                _pp_ratio_hold = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
+                _hold_pp_gate = 1.0 - max(0.0, min(1.0, np.tanh((_pp_ratio_hold - 0.8) / 0.2)))
+                _max_hold *= 1.0 + 0.12 * _consensus_hold_ext * _hold_pp_gate
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
