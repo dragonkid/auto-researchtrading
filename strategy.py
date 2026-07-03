@@ -383,6 +383,10 @@ class Strategy:
         # scale-in resizes of burst ct re-entries cascade most under AR(1) noise). Trend-
         # aligned positions (ct gate 0) byte-identical by construction. Reset on full exit.
         self._target_hist = {}
+        # Exp2 branch step5: per-symbol cached hysteresis cell for the feed-forward
+        # held-level quantizer. Sticky cell choice (only switches on committed move
+        # past 0.7*lattice) eliminates midpoint transition noise. Reset on full exit.
+        self._hq_cell = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -2982,33 +2986,39 @@ class Strategy:
                 if _hq_gate > 0.0:
                     _hq_lattice = 0.03 * equity * BASE_POSITION_SIZE
                     if _hq_lattice > 0:
-                        # branch step1-2: SOFT-QUANTIZATION replacing hard round. The
-                        # opener's hard round created a STEP FUNCTION at lattice midpoints
-                        # -> rally stability DROPPED -0.0030 (the rounded value flips
-                        # between cells under AR(1) at the midpoint boundary). Steps1-2
-                        # S-curve (cell_center + span*tanh((target-cell)/span)) at
-                        # softness 0.25 (near-identity no-op) and 0.10 (still caused
-                        # step-boundary noise, stab -0.0028). The S-curve still has a
-                        # transition REGION near the midpoint where the output moves
-                        # between cells -> AR(1) perturbation across that region still
-                        # shifts the output enough to track. Step3: SNAP-TO-CENTER-ONLY
-                        # -- quantize ONLY when target is NEAR a cell center (the stable
-                        # band), and pass through the RAW target when near the midpoint
-                        # (the unstable band). Quantization strength =
-                        #   1 - tanh(|offset_from_center| / (lattice*0.22))
-                        # full snap at cell center (offset 0), fading to 0 (raw) by
-                        # |offset| ~ lattice*0.5 (midpoint). This eliminates the
-                        # transition-region noise: near the center the output is pinned
-                        # to the center (stable); near the midpoint the output IS the raw
-                        # target (no quantization, no flip). The raw +0.0050 gain came
-                        # from the cell-center snap (collapsing wobble to a stable level);
-                        # the stab -0.0030 cost came from the midpoint transition. Step3
-                        # keeps the center snap (raw gain) and removes the midpoint
-                        # transition (stab cost). Feed-forward preserved (no state, no lag).
-                        _hq_cell = round(target / _hq_lattice) * _hq_lattice
+                        # branch step5: HYSTERESIS quantizer. Steps1-4 established that
+                        # ANY position-dependent quantization mapping (hard round, S-curve,
+                        # snap-to-center tanh fade) couples raw gain with stab cost: where
+                        # the mapping's derivative d(output)/d(input) is high (transition
+                        # region near midpoint), AR(1) input noise amplifies into output
+                        # noise -> rally stab -0.0029; where derivative is 0 (cell center)
+                        # the wobble is attenuated -> rally raw +0.0050. The raw gain and
+                        # stab cost are coupled via the derivative. Step5 BREAKS the
+                        # coupling with HYSTERESIS: cache the current cell per-symbol and
+                        # make it STICKY -- only switch cells when the target has committed
+                        # to a new cell (|target - cached_cell_center| > 0.7*lattice, well
+                        # past the midpoint). Within the sticky cell, snap toward center
+                        # with the tanh fade (raw gain from center attenuation). The cell
+                        # choice no longer flips at the midpoint under AR(1) -- it requires
+                        # a COMMITTED move past 0.7*lattice, so sub-lattice AR(1) wobble
+                        # (<<0.5*lattice) never switches the cell -> no transition-region
+                        # output noise -> stab recovered while keeping the center-snap raw
+                        # gain. The hysteresis state is per-symbol, reset on full exit
+                        # (added to the exit-state-clear list). Feed-forward in the snap
+                        # (no EMA lag); the hysteresis is a sticky CELL CHOICE (discrete
+                        # state, not temporal smoothing). Distinct from temporal EMAs.
+                        _hq_nearest = round(target / _hq_lattice) * _hq_lattice
+                        _hq_cached = self._hq_cell.get(symbol, _hq_nearest)
+                        # Hysteresis: switch cell only on committed move past 0.7*lattice
+                        # from the cached center (well past the 0.5 midpoint).
+                        if abs(target - _hq_cached) > 0.7 * _hq_lattice:
+                            _hq_cell = _hq_nearest
+                            self._hq_cell[symbol] = _hq_cell
+                        else:
+                            _hq_cell = _hq_cached
                         _hq_offset = abs(target - _hq_cell)
-                        _hq_snap = 1.0 - np.tanh(_hq_offset / max(_hq_lattice * 0.40, 1e-10))  # 1 at center, 0 at midpoint
-                        _hq_quant = target + (_hq_cell - target) * _hq_snap  # blend toward cell center by snap strength
+                        _hq_snap = 1.0 - np.tanh(_hq_offset / max(_hq_lattice * 0.40, 1e-10))
+                        _hq_quant = target + (_hq_cell - target) * _hq_snap
                         if (_hq_quant > 0) == (target > 0) and _hq_quant != 0:
                             target = target * (1.0 - _hq_gate) + _hq_quant * _hq_gate
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
@@ -3273,7 +3283,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._hq_cell):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
