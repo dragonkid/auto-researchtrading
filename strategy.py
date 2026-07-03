@@ -1790,7 +1790,38 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    # Exp3 (architectural, indep): TREND-ALIGNED x STRONG-TREND bear
+                    # entry-frac boost. The f6e19151 keep's entry-frac boost is BULL-side
+                    # only, gated on _weak_persist (mixed's persistently-weak multi-day
+                    # trend). It is inert for crash (bear side has no boost; AND crash is
+                    # a STRONG downtrend -> _weak_persist~0 -> the weak-trend gate would
+                    # kill any boost anyway). Crash is the SECOND-lowest regime (0.976,
+                    # Sh1.31, 100pct WR, DD2.83pct huge headroom below 5pct knee, return-
+                    # limited). This adds the BEAR-side structural COMPLEMENT: a boost
+                    # gated on trend-alignment (bear entry aligned with multi-day downtrend
+                    # = crash shorts) x STRONG trend (1-_weak_persist, the complement of
+                    # the bull-side weak gate). NO DD-headroom gate: crash bear entries
+                    # happen DURING portfolio DD (equity falling in the crash) -> the DD-
+                    # headroom gate (_frac_dd_headroom, used by the bull-side keep) is INERT
+                    # for crash (branch step2 confirmed: bear-side boost with DD-headroom
+                    # gate was inert for crash due to EMA-lag phantom DD AND the structural
+                    # fact that crash entries happen during DD). The trend-align gate is the
+                    # safety: rally pullback bear entries are COUNTER-TREND (ret_vlong>0
+                    # -> _frac_trend_align_bear~0 -> boost off -> rally protected); sideways
+                    # (ret_vlong~0) -> boost off; bull (ret_vlong>0) -> bear side rare/off;
+                    # mixed (ret_vlong~0 oscillating) -> boost off. crash (ret_vlong strongly
+                    # negative) -> _frac_trend_align_bear~1 AND _weak_persist~0 -> (1-weak)
+                    # ~1 -> boost fires. Same 0.15 magnitude as the bull-side keep (its
+                    # confirmed optimum). Byte-identical for every regime except crash (the
+                    # only strong-downtrend regime with trend-aligned bear entries). New
+                    # cross-component data dep: bear entry-frac depends on trend-alignment
+                    # x trend-strength (was vol-only). Direction-agnostic framing: a trend-
+                    # aligned STRONG-trend entry (either direction) gets a bigger first-bar
+                    # commitment at the trend-strength complement of the weak-trend boost.
+                    _frac_trend_align_bear = max(0.0, np.tanh(-ret_vlong / 0.02))  # bear short aligned with multi-day downtrend
+                    _frac_strong = 1.0 - _weak_persist  # ~1 strong trend (crash), ~0 weak trend (mixed)
+                    _entry_frac_boost_bear = 1.0 + 0.15 * _frac_trend_align_bear * _frac_strong
+                    target = -size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bear) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
