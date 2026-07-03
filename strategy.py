@@ -2982,26 +2982,33 @@ class Strategy:
                 if _hq_gate > 0.0:
                     _hq_lattice = 0.03 * equity * BASE_POSITION_SIZE
                     if _hq_lattice > 0:
-                        # branch step1: SOFT-QUANTIZATION S-curve replacing hard round.
-                        # The opener's hard round(target/lattice)*lattice created a STEP
-                        # FUNCTION at lattice midpoints -- the rounded value flips between
-                        # cells under AR(1) perturbation at the midpoint (the step boundary
-                        # is noise-sensitive) -> rally stability DROPPED -0.0030 despite
-                        # raw +0.0050 (the no-lag property held but the step noise offset it).
-                        # Replace with a smooth saturating S-curve that is FLAT (zero slope)
-                        # near cell centers (stable, attenuates sub-lattice wobble) AND
-                        # smoothly transitions between cells (no step boundary at the
-                        # midpoint -> no discrete flip under AR(1)). The S-curve:
-                        #   cell_center + lattice * softness * tanh((target - cell_center) / (lattice * softness))
-                        # As softness -> 0 this approaches hard round; at softness=0.25 the
-                        # transition band is 25pct of the lattice around the midpoint (smooth).
-                        # Within +/- softness of the cell center the output is approximately
-                        # the cell center (high-freq attenuation); near the midpoint it
-                        # smoothly interpolates. No state, no lag (feed-forward preserved).
+                        # branch step1-2: SOFT-QUANTIZATION replacing hard round. The
+                        # opener's hard round created a STEP FUNCTION at lattice midpoints
+                        # -> rally stability DROPPED -0.0030 (the rounded value flips
+                        # between cells under AR(1) at the midpoint boundary). Steps1-2
+                        # S-curve (cell_center + span*tanh((target-cell)/span)) at
+                        # softness 0.25 (near-identity no-op) and 0.10 (still caused
+                        # step-boundary noise, stab -0.0028). The S-curve still has a
+                        # transition REGION near the midpoint where the output moves
+                        # between cells -> AR(1) perturbation across that region still
+                        # shifts the output enough to track. Step3: SNAP-TO-CENTER-ONLY
+                        # -- quantize ONLY when target is NEAR a cell center (the stable
+                        # band), and pass through the RAW target when near the midpoint
+                        # (the unstable band). Quantization strength =
+                        #   1 - tanh(|offset_from_center| / (lattice*0.22))
+                        # full snap at cell center (offset 0), fading to 0 (raw) by
+                        # |offset| ~ lattice*0.5 (midpoint). This eliminates the
+                        # transition-region noise: near the center the output is pinned
+                        # to the center (stable); near the midpoint the output IS the raw
+                        # target (no quantization, no flip). The raw +0.0050 gain came
+                        # from the cell-center snap (collapsing wobble to a stable level);
+                        # the stab -0.0030 cost came from the midpoint transition. Step3
+                        # keeps the center snap (raw gain) and removes the midpoint
+                        # transition (stab cost). Feed-forward preserved (no state, no lag).
                         _hq_cell = round(target / _hq_lattice) * _hq_lattice
-                        _hq_softness = 0.10
-                        _hq_span = _hq_lattice * _hq_softness
-                        _hq_quant = _hq_cell + _hq_span * np.tanh((target - _hq_cell) / max(_hq_span, 1e-10))
+                        _hq_offset = abs(target - _hq_cell)
+                        _hq_snap = 1.0 - np.tanh(_hq_offset / max(_hq_lattice * 0.22, 1e-10))  # 1 at center, 0 at midpoint
+                        _hq_quant = target + (_hq_cell - target) * _hq_snap  # blend toward cell center by snap strength
                         if (_hq_quant > 0) == (target > 0) and _hq_quant != 0:
                             target = target * (1.0 - _hq_gate) + _hq_quant * _hq_gate
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
