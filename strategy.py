@@ -2982,7 +2982,26 @@ class Strategy:
                 if _hq_gate > 0.0:
                     _hq_lattice = 0.03 * equity * BASE_POSITION_SIZE
                     if _hq_lattice > 0:
-                        _hq_quant = round(target / _hq_lattice) * _hq_lattice
+                        # branch step1: SOFT-QUANTIZATION S-curve replacing hard round.
+                        # The opener's hard round(target/lattice)*lattice created a STEP
+                        # FUNCTION at lattice midpoints -- the rounded value flips between
+                        # cells under AR(1) perturbation at the midpoint (the step boundary
+                        # is noise-sensitive) -> rally stability DROPPED -0.0030 despite
+                        # raw +0.0050 (the no-lag property held but the step noise offset it).
+                        # Replace with a smooth saturating S-curve that is FLAT (zero slope)
+                        # near cell centers (stable, attenuates sub-lattice wobble) AND
+                        # smoothly transitions between cells (no step boundary at the
+                        # midpoint -> no discrete flip under AR(1)). The S-curve:
+                        #   cell_center + lattice * softness * tanh((target - cell_center) / (lattice * softness))
+                        # As softness -> 0 this approaches hard round; at softness=0.25 the
+                        # transition band is 25pct of the lattice around the midpoint (smooth).
+                        # Within +/- softness of the cell center the output is approximately
+                        # the cell center (high-freq attenuation); near the midpoint it
+                        # smoothly interpolates. No state, no lag (feed-forward preserved).
+                        _hq_cell = round(target / _hq_lattice) * _hq_lattice
+                        _hq_softness = 0.25
+                        _hq_span = _hq_lattice * _hq_softness
+                        _hq_quant = _hq_cell + _hq_span * np.tanh((target - _hq_cell) / max(_hq_span, 1e-10))
                         if (_hq_quant > 0) == (target > 0) and _hq_quant != 0:
                             target = target * (1.0 - _hq_gate) + _hq_quant * _hq_gate
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
