@@ -2535,7 +2535,31 @@ class Strategy:
                     # distinguishes a genuine trend extension from a counter-trend bounce). Continuous
                     # tanh, no new decision boundary. ret_vlong is already computed (96-bar OLS,
                     # noise-robust). Targets mixed (binding); protects all trend-aligned regimes.
-                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
+                    _ts_supp_mae = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2))))
+                    _ts_supp_ta = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                    # Exp2 (architectural, indep): WEAK-PERSIST-gated STRENGTHENING of the
+                    # tp-harvest trend-align suppression. The keep's _weak_persist duration-
+                    # count (validated mixed/rally separator: ~1 mixed/crash persistent weak-
+                    # trend context, ~0 rally transient dips) gates a STRENGTHENING of the
+                    # multi-day trend-align factor toward saturation. Without this, mixed's
+                    # rally-phase longs (ret_vlong~0.04-0.08, pos_dir=+1 -> trend-align factor
+                    # ~0.46-0.76, LINEAR region not saturated) and crash's trend-aligned shorts
+                    # (similar range) get PARTIAL tp-harvest suppression -> trims at deep peaks
+                    # -> caps APY (both regimes are return-limited: mixed APY4.7pct Sh0.86,
+                    # crash APY13.6pct Sh1.31, both with huge DD headroom below the 5pct knee).
+                    # Strengthen the trend-align factor toward 1.0 when _weak_persist is high
+                    # -> fuller suppression -> ride deeper peaks -> higher APY at preserved
+                    # Sharpe (100pct WR winners; scale-invariant) and preserved DD (the _dd_tp
+                    # _relax below STILL weakens suppression during DD -> caps DD, so this does
+                    # NOT remove the DD cap -- avoids the Exp1 lever-farming trap). rally
+                    # (_weak_persist~0) -> factor unchanged -> byte-identical. bull
+                    # (_weak_persist~0) -> byte-identical. sideways (_weak_persist~0) ->
+                    # byte-identical. New cross-component data dep: tp-harvest trend-extension
+                    # suppression depends on _weak_persist (the keep's validated separator).
+                    # Smooth additive boost capped at 1.0 (no new boundary). Direction-agnostic
+                    # (uses pos_dir sign via the underlying trend-align factor).
+                    _ts_supp_ta = min(1.0, _ts_supp_ta + 0.30 * _weak_persist * _ts_supp_ta)
+                    _ts_supp = _ts_supp_mae * _ts_supp_ta * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
                     # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
                     # trend-extension harvest suppression. _ts_supp normally PREVENTS
                     # harvesting clean trend-aligned deep-peak winners (let them run).
