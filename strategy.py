@@ -1792,17 +1792,15 @@ class Strategy:
                 # entry opposes consensus or weak_persist~0 (rally/crash). Direction-agnostic.
                 # branch step2: GATE the magnitude raise on |ret_vlong| (the sideways/mixed
                 # separator). Mixed is a DOWN year (ret_vlong persistently negative -> over-
-                # sustain at higher mag rides bounces -> DD up -> stab/raw tension -> score down).
+                # sustain at 0.30 rides bounces -> DD up -> stab/raw tension -> score down).
                 # Sideways is FLAT (ret_vlong ~0 -> no directional over-ride risk -> tolerates
-                # higher magnitude -> APY up + DD down). At |ret_vlong|<0.005 (sideways flat)
-                # gate ~1 -> full ceiling; at |ret_vlong|>0.025 (mixed trending) gate ~0 ->
+                # higher magnitude -> APY up + DD down at 0.30). At |ret_vlong|<0.01 (sideways
+                # flat) gate ~1 -> full 0.30; at |ret_vlong|>0.03 (mixed trending) gate ~0 ->
                 # effective ~0.20 (keep level, mixed protected). Continuous tanh, no boundary.
-                # branch step5: RAISE the ceiling 0.30->0.40 on the tight |ret_vlong|<0.005 gate
-                # (step3 optimum). Sideways flat bars tolerate higher magnitude (the keep's 0.20
-                # sideways gain came with Sh down -0.094, APY dominated). Tests whether sideways
-                # can absorb 0.40 on its narrowest flat bars for more APY gain. Mixed protected
-                # by the tight gate (|ret_vlong|>0.01 -> 0.20).
-                _amp_mag = 0.20 + 0.20 * max(0.0, 1.0 - max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.005) / 0.005))))
+                # This is a DIFFERENT separator than DD-headroom (which was near-inert: mixed's
+                # amplification bars are at portfolio peak dd_frac~0 -> gate 1 -> no modulation).
+                # |ret_vlong| separates sideways (flat) from mixed (down) directly at the signal.
+                _amp_mag = 0.20 + 0.10 * max(0.0, 1.0 - max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.005) / 0.005))))
                 _persist_consensus_amp = 1.0 + _amp_mag * _consensus_strength * _weak_persist * max(0.0, _consensus_dir if (_bull_ready and _bull_admit) else -_consensus_dir)
                 _persist_boost = (1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale) * _persist_consensus_amp
                 # Exp3 (architectural, indep): TREND-ALIGNED x DD-HEADROOM entry-frac
