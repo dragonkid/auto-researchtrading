@@ -328,22 +328,6 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
-        # Branch step2: sustain the entry-frac boost (bull OR bear) through scale-in
-        # (cached at entry, deterministic). Exp3 opener showed the bear-side trend-align
-        # strong-trend boost fires for crash's first bar BUT crash is byte-identical
-        # because scale-in ramps full_target back to un-boosted size over 2-3 bars
-        # (step1 cap-relief proved the cap is NOT the issue; the boost IS applied to the
-        # first-bar target but lost after scale-in). Caching the entry-time boost
-        # multiplier (bull OR bear) and multiplying into full_target keeps the position
-        # bigger for the WHOLE hold -> higher APY for trend-aligned winners (crash 100pct
-        # WR; Sharpe is scale-invariant so bigger trend-aligned entries raise return
-        # without lowering Sharpe; crash DD 2.83pct has huge headroom below 5pct knee).
-        # Mirrors the validated _conc_held / _vol_held sustain pattern. Reset on full
-        # exit; default 1.0 (no effect). NOTE: Exp2 (independent, reverted) tried this
-        # for the BULL side and regressed mixed (-0.0149, stab/raw tension from mixed's
-        # oscillating longs). The BEAR side targets crash (clean trend, not oscillating)
-        # so the stab/raw tension that walled the bull side may not apply here.
-        self._entry_frac_boost_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1805,48 +1789,10 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    # Branch step3: cache 1.0 for BULL side (revert bull-side sustain).
-                    # Step2 showed sustaining the bull-side boost regresses mixed -0.0149
-                    # (stab/raw tension from oscillating longs). The bull-side boost is
-                    # correctly NOT sustained (the keep's entry-only boost is the right
-                    # magnitude). Cache 1.0 so scale-in is byte-identical for bull/mixed.
-                    self._entry_frac_boost_held[symbol] = 1.0
                 elif _bear_ready and _bear_admit:
-                    # Exp3 (architectural, indep): TREND-ALIGNED x STRONG-TREND bear
-                    # entry-frac boost. The f6e19151 keep's entry-frac boost is BULL-side
-                    # only, gated on _weak_persist (mixed's persistently-weak multi-day
-                    # trend). It is inert for crash (bear side has no boost; AND crash is
-                    # a STRONG downtrend -> _weak_persist~0 -> the weak-trend gate would
-                    # kill any boost anyway). Crash is the SECOND-lowest regime (0.976,
-                    # Sh1.31, 100pct WR, DD2.83pct huge headroom below 5pct knee, return-
-                    # limited). This adds the BEAR-side structural COMPLEMENT: a boost
-                    # gated on trend-alignment (bear entry aligned with multi-day downtrend
-                    # = crash shorts) x STRONG trend (1-_weak_persist, the complement of
-                    # the bull-side weak gate). NO DD-headroom gate: crash bear entries
-                    # happen DURING portfolio DD (equity falling in the crash) -> the DD-
-                    # headroom gate (_frac_dd_headroom, used by the bull-side keep) is INERT
-                    # for crash (branch step2 confirmed: bear-side boost with DD-headroom
-                    # gate was inert for crash due to EMA-lag phantom DD AND the structural
-                    # fact that crash entries happen during DD). The trend-align gate is the
-                    # safety: rally pullback bear entries are COUNTER-TREND (ret_vlong>0
-                    # -> _frac_trend_align_bear~0 -> boost off -> rally protected); sideways
-                    # (ret_vlong~0) -> boost off; bull (ret_vlong>0) -> bear side rare/off;
-                    # mixed (ret_vlong~0 oscillating) -> boost off. crash (ret_vlong strongly
-                    # negative) -> _frac_trend_align_bear~1 AND _weak_persist~0 -> (1-weak)
-                    # ~1 -> boost fires. Same 0.15 magnitude as the bull-side keep (its
-                    # confirmed optimum). Byte-identical for every regime except crash (the
-                    # only strong-downtrend regime with trend-aligned bear entries). New
-                    # cross-component data dep: bear entry-frac depends on trend-alignment
-                    # x trend-strength (was vol-only). Direction-agnostic framing: a trend-
-                    # aligned STRONG-trend entry (either direction) gets a bigger first-bar
-                    # commitment at the trend-strength complement of the weak-trend boost.
-                    _frac_trend_align_bear = max(0.0, np.tanh(-ret_vlong / 0.04))  # branch step4: widened /0.02->/0.04 to fire on more bear entries
-                    _frac_strong = 1.0 - _weak_persist  # ~1 strong trend (crash), ~0 weak trend (mixed)
-                    _entry_frac_boost_bear = 1.0 + 0.30 * _frac_trend_align_bear * _frac_strong  # branch step4: raised 0.15->0.30 to test if boost can reach crash at all
-                    target = -size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bear) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._entry_frac_boost_held[symbol] = _entry_frac_boost_bear  # Branch step2: cache for scale-in sustain
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2117,27 +2063,7 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    # Branch step2: SUSTAIN the entry-frac boost through scale-in. The Exp3
-                    # opener's bear-side boost fires for crash's first bar BUT crash is
-                    # byte-identical because scale-in ramps full_target back to un-boosted
-                    # size over 2-3 bars (step1 cap-relief proved the cap is NOT the issue).
-                    # Caching the entry-time boost multiplier (bull OR bear, set at entry
-                    # above) and multiplying into full_target keeps the position bigger for
-                    # the WHOLE hold -> higher APY for trend-aligned winners. crash: 100pct
-                    # WR trend-aligned shorts -> bigger sustained short captures more of the
-                    # downtrend -> higher APY (return_bonus) at preserved Sharpe (scale-
-                    # invariant) and DD stays below 5pct knee (DD 2.83pct -> ~3.25pct at 15pct
-                    # bigger, still huge headroom). Mirrors the validated _conc_held /
-                    # _vol_held sustain pattern. NOTE: Exp2 (independent, reverted) tried
-                    # this for the BULL side and regressed mixed (-0.0149, stab/raw tension
-                    # from mixed's oscillating longs). The BEAR side targets crash (clean
-                    # trend, not oscillating) so the stab/raw tension may not apply. The
-                    # bull-side cache is also populated (the keep's _entry_frac_boost_bull for
-                    # mixed) but mixed's oscillating longs would face the same stab/raw
-                    # tension as Exp2 -> bull-side sustain may regress mixed again (to be
-                    # measured). Byte-identical for entries with no boost (cached 1.0).
-                    _entry_frac_boost_held = self._entry_frac_boost_held.get(symbol, 1.0)
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain * _entry_frac_boost_held
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -3275,7 +3201,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._entry_frac_boost_held, self._pnl_path, self._target_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
