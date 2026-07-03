@@ -1819,8 +1819,8 @@ class Strategy:
                 # _weak_persist so it fires for mixed's broad-market bounce-phase longs (the
                 # +0.0049 gain source) NOT rally's grinding uptrend (the leak source). Same
                 # structural property that solved the entry-frac boost rally-leak wall.
-                _consensus_boost_bull = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
-                _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
+                _consensus_boost_bull = 1.0 + 0.14 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
+                _consensus_boost_bear = 1.0 + 0.14 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
