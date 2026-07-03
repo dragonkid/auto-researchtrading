@@ -2982,7 +2982,13 @@ class Strategy:
                 _pos_dir_hq = 1.0 if current_pos > 0 else -1.0
                 _ct_hq = max(0.0, np.tanh(-_pos_dir_hq * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
                 _win_hq = max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))  # 0 losing, ~1 winning
-                _hq_gate = _churn_dz * _ct_hq * _win_hq  # [0,1], fires only on high-churn ct winners
+                # step6: gate to DEEP churn only (len>=3, the keep 3a2e1537 binding
+                # population). Steps1-5 used _churn_dz (ramps from len=1.5). The stab cost
+                # may be from marginal-churn ct positions where the cascade is mild;
+                # narrowing to deep churn (where the cascade is worst) keeps the raw gain
+                # on the binding population while sparing marginal ct.
+                _hq_deep_churn = max(0.0, np.tanh((len(_eh) - 2.5) / 0.5))  # ~0 len<=2, ~1 len>=3
+                _hq_gate = _hq_deep_churn * _ct_hq * _win_hq  # [0,1], fires only on deep-churn ct winners
                 if _hq_gate > 0.0:
                     _hq_lattice = 0.03 * equity * BASE_POSITION_SIZE
                     if _hq_lattice > 0:
