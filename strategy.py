@@ -1790,18 +1790,7 @@ class Strategy:
                 # _persist_sustain, so amplifying it may reach mixed through the sustain path
                 # that the entry-frac boost couldn't). Byte-identical when consensus absent or
                 # entry opposes consensus or weak_persist~0 (rally/crash). Direction-agnostic.
-                # branch step2: GATE the magnitude raise on |ret_vlong| (the sideways/mixed
-                # separator). Mixed is a DOWN year (ret_vlong persistently negative -> over-
-                # sustain at 0.30 rides bounces -> DD up -> stab/raw tension -> score down).
-                # Sideways is FLAT (ret_vlong ~0 -> no directional over-ride risk -> tolerates
-                # higher magnitude -> APY up + DD down at 0.30). At |ret_vlong|<0.01 (sideways
-                # flat) gate ~1 -> full 0.30; at |ret_vlong|>0.03 (mixed trending) gate ~0 ->
-                # effective ~0.20 (keep level, mixed protected). Continuous tanh, no boundary.
-                # This is a DIFFERENT separator than DD-headroom (which was near-inert: mixed's
-                # amplification bars are at portfolio peak dd_frac~0 -> gate 1 -> no modulation).
-                # |ret_vlong| separates sideways (flat) from mixed (down) directly at the signal.
-                _amp_mag = 0.20 + 0.10 * max(0.0, 1.0 - max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.005) / 0.005))))
-                _persist_consensus_amp = 1.0 + _amp_mag * _consensus_strength * _weak_persist * max(0.0, _consensus_dir if (_bull_ready and _bull_admit) else -_consensus_dir)
+                _persist_consensus_amp = 1.0 + 0.20 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir if (_bull_ready and _bull_admit) else -_consensus_dir)
                 _persist_boost = (1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale) * _persist_consensus_amp
                 # Exp3 (architectural, indep): TREND-ALIGNED x DD-HEADROOM entry-frac
                 # BOOST. Exp1/Exp2 proved the 0.55 cap is inert (_entry_frac_dyn always
