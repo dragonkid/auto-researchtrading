@@ -1873,6 +1873,32 @@ class Strategy:
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
+                # Exp2 (architectural, indep): PORTFOLIO-DD-HEADROOM-gated scale-in PACE
+                # boost. The f6e19151 keep proved the structural insight that conditioning
+                # an entry decision on portfolio DD-headroom (peak equity gate) LOWERS
+                # return_vol per unit return: bigger/sooner commitment at the portfolio's
+                # BEST moments (low DD) -> the marginal return per unit of return_volatility
+                # is higher -> Sharpe up WITHOUT return_vol rise -> std DROPS. That keep
+                # applied the gate to the entry-SIZE (entry-frac boost, mixed gained +0.0117,
+                # std -0.0036). Here we apply the SAME gate to a DIFFERENT decision path: the
+                # scale-in PACE (timing, not size). At peak equity (_frac_dd_headroom~1), reach
+                # full size SOONER (subtract up to 0.5 bars from _entry_full_bars_dyn) ->
+                # captures more of the trend move at the portfolio's best moments -> more APY
+                # at low DD (Sharpe up, return_vol unaffected since the position is at peak
+                # where DD risk is lowest). During portfolio DD (_frac_dd_headroom~0), KEEP
+                # the baseline pace (no acceleration -> less commitment during drawdown, the
+                # safe default). NEW cross-component data dep: scale-in pace depends on
+                # portfolio DD-headroom (was rsi_trend_str + win_accel + vov only). Distinct
+                # from the win-accel (trend-aligned + slope-conf + winning) -- this fires for
+                # ALL held positions at peak equity (including mixed's wrong-side longs which
+                # the win-accel excludes since they are not in profit early); the DD-headroom
+                # gate is the portfolio-state condition, orthogonal to position-state. Sparing
+                # magnitude (0.5 bars max, half the win-accel's 1.2; floored at _accel_floor
+                # so it cannot push below the existing floor -- composes with win-accel via
+                # max(floor, ...)). Byte-identical during DD (gate 0 -> no change); only fires
+                # at peak equity. Uses _port_dd_frac (in scope from line 450, top of on_bar).
+                _frac_dd_headroom_pace = 1.0 - max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K))))
+                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 0.5 * _frac_dd_headroom_pace)
                 # Exp4 (architectural, indep): VOL-OF-VOL regime scale-in pace modulation,
                 # COUNTER-TREND-AT-MULTI-DAY GATED (refinement of Exp2 which applied to all
                 # positions and catastrophically regressed rally -0.369 by slowing rally's
