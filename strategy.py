@@ -2360,8 +2360,28 @@ class Strategy:
                 # fades to 0 by 1.2*_pp_min (deep peak -> pp/tp manage). Continuous
                 # tanh, no boundary; floor 0 preserves the counter-trend byte-
                 # identical property.
+                # Branch step3: BILATERAL-ASYMMETRIC gating. step1's peak-maturity gate
+                # is the RIGHT tool for LONGS (bull/rally peaked longs are near-terminal
+                # -> protect; mixed pre-peak bounce longs -> fire, +0.0088 mixed gain)
+                # but the WRONG tool for SHORTS: crash's exp1 gain (+0.0119) came from
+                # trend-aligned shorts whose retracement peaks (even at peak~_pp_min)
+                # are NOT terminal -- the downtrend continues -> extension captures more
+                # of the trend. So gate the extension with peak-maturity for LONGS only
+                # (keep step1's mixed gain and bull/rally protection), and apply the
+                # FULL ungated extension for SHORTS (recover the crash gain). The
+                # direction-asymmetry is mechanistically grounded: a retracement peak
+                # in a downtrend (crash short) is a temporary bounce, not a trend end;
+                # a peak in an uptrend (bull/rally long) is more often near-terminal
+                # (the trend exhausts). pos_dir sign (near-binary, noise-free) is the
+                # discriminator. Continuous tanh blend at pos_dir~0 (rare, byte-identical
+                # region for cash positions which never reach this code path).
                 _pp_ratio_hold = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                _hold_pp_gate = 1.0 - max(0.0, min(1.0, np.tanh((_pp_ratio_hold - 0.8) / 0.2)))
+                _hold_pp_gate_long = 1.0 - max(0.0, min(1.0, np.tanh((_pp_ratio_hold - 0.8) / 0.2)))
+                # Branch step3: full ungated extension for SHORTS (recover crash gain),
+                # peak-maturity-gated for LONGS (keep step1 mixed gain + bull/rally
+                # protection). pos_dir sign near-binary, noise-free.
+                _is_short = 1.0 if current_pos < 0 else 0.0
+                _hold_pp_gate = _is_short + (1.0 - _is_short) * _hold_pp_gate_long
                 _max_hold *= 1.0 + 0.12 * _consensus_hold_ext * _hold_pp_gate
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
