@@ -1785,7 +1785,29 @@ class Strategy:
                     # persist_boost work for mixed without leaking to rally).
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
-                    _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
+                    # Exp1 (architectural, indep): REALIZED-RETURN-VOL regime gate on the
+                    # entry-frac boost magnitude. The f6e19151 keep note's UNTESTED lead (b):
+                    # "raising the boost magnitude above 0.15 via a DIFFERENT gate that
+                    # avoids the stab/raw tension (e.g. gating on LOWER return_vol periods)."
+                    # The keep's step7 (mag 0.20 uniform) overshot: mixed Sharpe AND APY UP
+                    # but mixed score DROPPED (stab/raw tension -- bigger entries raise
+                    # return_vol disproportionately -> score down despite Sh/APY up). The
+                    # hypothesis: the tension comes from the bars where the bigger entry
+                    # lands on a NOISY realization -- raising return_vol per unit return.
+                    # Gate the magnitude UP only when REALIZED vol is LOW (calm period):
+                    # the calm bars can absorb a bigger entry without return_vol rising
+                    # disproportionately (low per-bar variance -> bigger size scales return
+                    # not vol). vol_ratio (realized_vol/_target_vol_dyn, both already
+                    # computed) < 0.8 = calm; ramp magnitude 0.15 (at vol_ratio>=1.0) up to
+                    # 0.20 (at vol_ratio<=0.7). Continuous tanh, no boundary. NEW cross-
+                    # component data dep: entry-frac boost magnitude depends on realized vol
+                    # regime (was fixed 0.15). The keep's DD-headroom gate + _weak_persist
+                    # gate + trend-align gate are RETAINED (so rally/crash protections
+                    # intact); this only modulates the magnitude on the bars that already
+                    # pass all three gates. Byte-identical for non-mixed (boost off) and
+                    # at vol_ratio>=1.0 (mag stays 0.15 = keep value).
+                    _frac_mag = 0.15 + 0.05 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.3))
+                    _entry_frac_boost_bull = 1.0 + _frac_mag * _frac_trend_align * _frac_weak * _frac_dd_headroom
                     target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
