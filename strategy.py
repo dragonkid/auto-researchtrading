@@ -1790,7 +1790,7 @@ class Strategy:
                 # _persist_sustain, so amplifying it may reach mixed through the sustain path
                 # that the entry-frac boost couldn't). Byte-identical when consensus absent or
                 # entry opposes consensus or weak_persist~0 (rally/crash). Direction-agnostic.
-                _persist_consensus_amp = 1.0 + 0.20 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir if (_bull_ready and _bull_admit) else -_consensus_dir)
+                _persist_consensus_amp = 1.0 + 0.30 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir if (_bull_ready and _bull_admit) else -_consensus_dir)
                 _persist_boost = (1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale) * _persist_consensus_amp
                 # Exp3 (architectural, indep): TREND-ALIGNED x DD-HEADROOM entry-frac
                 # BOOST. Exp1/Exp2 proved the 0.55 cap is inert (_entry_frac_dyn always
