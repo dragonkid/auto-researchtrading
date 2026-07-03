@@ -3007,7 +3007,7 @@ class Strategy:
                         # transition (stab cost). Feed-forward preserved (no state, no lag).
                         _hq_cell = round(target / _hq_lattice) * _hq_lattice
                         _hq_offset = abs(target - _hq_cell)
-                        _hq_snap = 1.0 - np.tanh(_hq_offset / max(_hq_lattice * 0.22, 1e-10))  # 1 at center, 0 at midpoint
+                        _hq_snap = 1.0 - np.tanh(_hq_offset / max(_hq_lattice * 0.40, 1e-10))  # 1 at center, 0 at midpoint
                         _hq_quant = target + (_hq_cell - target) * _hq_snap  # blend toward cell center by snap strength
                         if (_hq_quant > 0) == (target > 0) and _hq_quant != 0:
                             target = target * (1.0 - _hq_gate) + _hq_quant * _hq_gate
