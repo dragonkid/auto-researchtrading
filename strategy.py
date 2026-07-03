@@ -2250,9 +2250,30 @@ class Strategy:
                 # deep pullbacks. At 5x (rally DD near the 8pct knee) DD relief may now outweigh
                 # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
+                # Exp1 (architectural, indep): CONSENSUS-REVERSAL giveback tightening.
+                # NEW cross-component data dep on the exit subsystem: the portfolio cross-
+                # symbol trend-consensus signal (_consensus_strength x _consensus_dir,
+                # currently used ONLY on entry size + persist_boost amplifier) now also feeds
+                # the exit giveback harvest. When the broad-market consensus direction
+                # OPPOSES the position direction (a portfolio-level reversal signal -- all 3
+                # symbols trending against the held position), tighten the giveback tolerance
+                # so pp_pressure harvests winners FASTER at the broad-market turn -> lock
+                # realized gains before the position gives back in the adverse broad move.
+                # Mechanism: crash tops coincide with broad-market capitulation bounces (all 3
+                # symbols reverse up against crash shorts); mixed's oscillating longs top out
+                # at broad-market local peaks where the 3-symbol consensus flips down. These
+                # are the precise bars where locking gains beats letting winners run. The
+                # signal is direction-agnostic and bilateral. Byte-identical when consensus
+                # absent (<2 symbols), consensus_dir == 0, or consensus ALIGNS with pos_dir
+                # (rally grind: all 3 up, consensus_dir=+1=long pos_dir -> reversal 0 -> rally
+                # byte-identical; bull grind likewise). Continuous tanh on strength, no new
+                # decision boundary. Targets mixed/crash (genuine broad reversal turns);
+                # protects rally/bull/sideways trend-aligned winners via the alignment gate.
+                _consensus_reversal = _consensus_strength * max(0.0, -(1.0 if current_pos > 0 else -1.0) * _consensus_dir)
+                _pp_tighten_consensus = 1.0 - 0.15 * _consensus_reversal
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _pp_tighten_consensus
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
