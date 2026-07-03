@@ -2360,18 +2360,8 @@ class Strategy:
                 # fades to 0 by 1.2*_pp_min (deep peak -> pp/tp manage). Continuous
                 # tanh, no boundary; floor 0 preserves the counter-trend byte-
                 # identical property.
-                # Branch step2: RAISE the fade knee. step1 (knee 0.8->1.2) recovered
-                # bull/rally/sideways AND gained mixed +0.0088 above baseline, but LOST
-                # the exp1 crash gain (crash back to byte-identical baseline). Crash's
-                # exp1 gain came from positions that DO reach peak>=_pp_min (the peak
-                # is a retracement high in an ongoing downtrend, NOT terminal -- crash
-                # exits before 1.5*_pp_min per prior diagnostics, return-limited).
-                # Raise the fade band to 1.3->1.7 (deep peak only): crash exits before
-                # 1.5*_pp_min so the extension still fires for its trend-aligned shorts,
-                # while bull/rally DEEP-peak winners (peak>>1.7*_pp_min) still get
-                # protected. Mixed (no deep peaks) unaffected. Continuous tanh, floor 0.
                 _pp_ratio_hold = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                _hold_pp_gate = 1.0 - max(0.0, min(1.0, np.tanh((_pp_ratio_hold - 1.3) / 0.2)))
+                _hold_pp_gate = 1.0 - max(0.0, min(1.0, np.tanh((_pp_ratio_hold - 0.8) / 0.2)))
                 _max_hold *= 1.0 + 0.12 * _consensus_hold_ext * _hold_pp_gate
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
