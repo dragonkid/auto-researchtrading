@@ -2237,6 +2237,30 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp4 (architectural, indep): WEAK-PERSIST x DD-HEADROOM max_hold EXTENSION
+                # for TREND-ALIGNED positions. The keep's _weak_persist duration-count
+                # (validated mixed/rally separator: ~1 mixed persistent weak-trend, ~0 rally
+                # transient) x the keep's _frac_dd_headroom (portfolio DD-headroom, EMA-
+                # smoothed noise-robust) gate a max_hold EXTENSION for trend-aligned-at-
+                # multi-day positions. mixed's rally-phase longs (trend-aligned, weak_persist
+                # ~1, at peak equity) and crash's trend-aligned shorts (weak_persist
+                # intermittent during consolidation, at peak) ride longer through giveback ->
+                # higher APY (return-limited floors 0.546 / 0.976) at preserved Sharpe (100pct
+                # WR winners; scale-invariant) and preserved DD (DD-headroom gate fires ONLY at
+                # peak -> during rally pullbacks / DD episodes dd_frac>0 -> gate ~0 -> max_hold
+                # unchanged -> rally DD stays 5.06pct; avoids the Exp1 lever-farming trap which
+                # came from weakening harvest at peak WITHOUT a trend-align gate). The
+                # trend-align gate (ret_vlong*pos_dir>0) spares ct positions (mixed's wrong-
+                # side longs: ret_vlong<0, pos_dir=+1 -> product<0 -> gate 0 -> byte-identical).
+                # rally (weak_persist~0) byte-identical; bull (weak_persist~0) byte-identical;
+                # sideways (weak_persist~0, ret_vlong~0) byte-identical. New cross-component
+                # data dep: max_hold depends on (weak_persist x portfolio DD-headroom x multi-
+                # day trend-alignment). Continuous tanh on all gates (no new boundary); max
+                # +1.5 bars extension. Direction-agnostic (uses pos_dir sign).
+                _mh_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _mh_ta = max(0.0, np.tanh(_mh_pos_dir * ret_vlong / 0.01))  # ~0 ct, ~1 trend-aligned-at-multi-day
+                _mh_dd_headroom = 1.0 - max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K))))
+                _max_hold += 1.5 * _mh_ta * _weak_persist * _mh_dd_headroom
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
