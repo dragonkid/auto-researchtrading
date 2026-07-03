@@ -383,10 +383,6 @@ class Strategy:
         # scale-in resizes of burst ct re-entries cascade most under AR(1) noise). Trend-
         # aligned positions (ct gate 0) byte-identical by construction. Reset on full exit.
         self._target_hist = {}
-        # Exp2 branch step5: per-symbol cached hysteresis cell for the feed-forward
-        # held-level quantizer. Sticky cell choice (only switches on committed move
-        # past 0.7*lattice) eliminates midpoint transition noise. Reset on full exit.
-        self._hq_cell = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -2943,90 +2939,6 @@ class Strategy:
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
-            # Exp2 (architectural, indep): FEED-FORWARD held-level position-value
-            # quantizer on high-churn ct WINNERS. Pursues the prior-session-sanctioned
-            # UNTESTED lead (row 1844/1969 session-summary): "a FEED-FORWARD (non-
-            # temporal, lag-free) high-freq attenuator on the rally held-level cascade --
-            # e.g. a held-level position-value quantizer on high-churn ct WINNERS that
-            # collapses sub-lattice wobble to stable levels WITHOUT backward-looking
-            # lag (distinct from the existing per-resize grid which quantizes resize
-            # DELTAS not the held level, and from temporal EMAs which lag)." The prior
-            # session's 2nd-order EMA damping (temporal) was walled: stab +0.0029 but
-            # raw -0.0378 (lag on winner->loser transitions). The cascade has TWO axes:
-            # high-freq ATTENUATION (raisable via more low-pass -> stab up) and
-            # TRANSITION LAG (unavoidable cost of backward-looking smoothing -> raw
-            # down). A FEED-FORWARD quantizer (round) attenuates high-freq WITHOUT lag
-            # (rounding is instantaneous, no state) -> breaks the stab/raw trade-off.
-            # Mechanism: round the absolute held TARGET onto a fine lattice so AR(1)
-            # sub-lattice position-value wobble collapses to a FEW stable levels ->
-            # fewer distinct position values across the noise ensemble -> lower equity-
-            # curve tracking error -> higher rally stability, WITHOUT the transition
-            # lag that walled the temporal 2nd-order EMA. Gated to the binding rally
-            # stab population: HIGH-CHURN (len(_eh)>=2, rally bursts) x COUNTER-TREND-
-            # AT-MULTI-DAY (pos_dir opposes ret_vlong, fast-saturating /0.01 noise-free
-            # near-constant gate, the validated ct-keyed family) x WINNING (pos_pnl>0,
-            # the confirmed winning-at-smoothing-point population per prior session --
-            # losers keep raw to avoid delaying loser shrinks). Trend-aligned positions
-            # (gate 0), low-churn (churn 0), and losers (win gate 0) are byte-identical.
-            # Resize-only (entries/exits/flips exempt via _is_resize). Snap toward
-            # current_pos side (never cross zero). FINER lattice (0.03*equity*BASE,
-            # half the 0.06 resize grid) so the quantization is sub-lattice for the
-            # wobble that drives tracking error, not coarse enough to lose signal.
-            # Continuous-tanh blend toward the quantized value (avoids a hard on/off
-            # boundary that flips under AR(1)); fully on at deep churn+ct+winning,
-            # fading to 0 (raw target) at the gate edges. Distinct from temporal EMAs
-            # (no state, no lag) and from the existing per-resize grid (quantizes the
-            # absolute held LEVEL, not the resize DELTA -- the existing grid fires only
-            # when target changes; this fires every bar on the held level).
-            if _is_resize and _churn_dz > 0.0:
-                _pos_dir_hq = 1.0 if current_pos > 0 else -1.0
-                _ct_hq = max(0.0, np.tanh(-_pos_dir_hq * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
-                _win_hq = max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))  # 0 losing, ~1 winning
-                # step6: gate to DEEP churn only (len>=3, the keep 3a2e1537 binding
-                # population). Steps1-5 used _churn_dz (ramps from len=1.5). The stab cost
-                # may be from marginal-churn ct positions where the cascade is mild;
-                # narrowing to deep churn (where the cascade is worst) keeps the raw gain
-                # on the binding population while sparing marginal ct.
-                _hq_deep_churn = max(0.0, np.tanh((len(_eh) - 2.5) / 0.5))  # ~0 len<=2, ~1 len>=3
-                _hq_gate = _hq_deep_churn * _ct_hq * _win_hq  # [0,1], fires only on deep-churn ct winners
-                if _hq_gate > 0.0:
-                    _hq_lattice = 0.03 * equity * BASE_POSITION_SIZE
-                    if _hq_lattice > 0:
-                        # branch step5: HYSTERESIS quantizer. Steps1-4 established that
-                        # ANY position-dependent quantization mapping (hard round, S-curve,
-                        # snap-to-center tanh fade) couples raw gain with stab cost: where
-                        # the mapping's derivative d(output)/d(input) is high (transition
-                        # region near midpoint), AR(1) input noise amplifies into output
-                        # noise -> rally stab -0.0029; where derivative is 0 (cell center)
-                        # the wobble is attenuated -> rally raw +0.0050. The raw gain and
-                        # stab cost are coupled via the derivative. Step5 BREAKS the
-                        # coupling with HYSTERESIS: cache the current cell per-symbol and
-                        # make it STICKY -- only switch cells when the target has committed
-                        # to a new cell (|target - cached_cell_center| > 0.7*lattice, well
-                        # past the midpoint). Within the sticky cell, snap toward center
-                        # with the tanh fade (raw gain from center attenuation). The cell
-                        # choice no longer flips at the midpoint under AR(1) -- it requires
-                        # a COMMITTED move past 0.7*lattice, so sub-lattice AR(1) wobble
-                        # (<<0.5*lattice) never switches the cell -> no transition-region
-                        # output noise -> stab recovered while keeping the center-snap raw
-                        # gain. The hysteresis state is per-symbol, reset on full exit
-                        # (added to the exit-state-clear list). Feed-forward in the snap
-                        # (no EMA lag); the hysteresis is a sticky CELL CHOICE (discrete
-                        # state, not temporal smoothing). Distinct from temporal EMAs.
-                        _hq_nearest = round(target / _hq_lattice) * _hq_lattice
-                        _hq_cached = self._hq_cell.get(symbol, _hq_nearest)
-                        # Hysteresis: switch cell only on committed move past 0.7*lattice
-                        # from the cached center (well past the 0.5 midpoint).
-                        if abs(target - _hq_cached) > 0.7 * _hq_lattice:
-                            _hq_cell = _hq_nearest
-                            self._hq_cell[symbol] = _hq_cell
-                        else:
-                            _hq_cell = _hq_cached
-                        _hq_offset = abs(target - _hq_cell)
-                        _hq_snap = 1.0 - np.tanh(_hq_offset / max(_hq_lattice * 0.40, 1e-10))
-                        _hq_quant = target + (_hq_cell - target) * _hq_snap
-                        if (_hq_quant > 0) == (target > 0) and _hq_quant != 0:
-                            target = target * (1.0 - _hq_gate) + _hq_quant * _hq_gate
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
             # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
@@ -3289,7 +3201,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._hq_cell):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
