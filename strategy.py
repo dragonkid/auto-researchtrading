@@ -2612,6 +2612,37 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # Exp3 (architectural, indep): PORTFOLIO-DD x DOWNTREND-DURATION
+                    # tightening of the de-risk floor for COUNTER-TREND-AT-MULTI-DAY
+                    # positions. mixed_2025 is a down year (ret_vlong<0 for the held longs
+                    # -> counter-trend-at-multi-day, _down_persist~0.5-0.9 during decline
+                    # phases) and is the binding floor (0.546, Sh0.86, return-limited with
+                    # choppy MTM path -> high return_vol 5.54pct vs 4.4pct net). Its wrong-
+                    # side longs de-risk too SLOWLY through pullbacks (the convex cushion +
+                    # trend-align relaxation hold them). The keep's DD-headroom insight (DD-
+                    # conditioning lowers return_vol/return) applied here in the OPPOSITE
+                    # direction from Exp1 (which WEAKENED harvest at peak and blew up): here
+                    # we TIGHTEN the de-risk floor DURING DD (dd_frac>0) for ct-at-multi-day
+                    # positions in a persistent downtrend -> faster de-risk of mixed's dead-
+                    # capital longs during DD episodes -> smaller realized losses -> higher
+                    # Sharpe -> lower return_vol/return. NO lever-farming (tightening during
+                    # DD caps risk, the same direction as the load-bearing giveback-tighten).
+                    # The down_persist gate (crash ~0.9 persistent, bull ~0.3 transient) is
+                    # the VALIDATED duration-count separator (52a3e671 keep). crash shorts
+                    # are TREND-ALIGNED (ret_vlong<0, pos_dir=-1 -> product>0 -> ct gate 0)
+                    # -> byte-identical. rally pullback shorts (_down_persist~0.3) -> gate ~0
+                    # -> byte-identical. bull trend longs (down_persist~0.3, trend-aligned)
+                    # -> gate 0 -> byte-identical. Only fires for ct-at-multi-day in a
+                    # persistent downtrend (mixed's wrong-side longs) AND during portfolio DD
+                    # (dd_frac>0). Continuous tanh on both gates (no new boundary). Max
+                    # tighten 0.12 (raises floor toward 0.67 = faster de-risk). Direction-
+                    # agnostic (uses pos_dir sign via the ct gate).
+                    _de_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _de_ct_md = max(0.0, np.tanh(-_de_pos_dir * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
+                    _de_dd_active = max(0.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K)))  # ~0 peak, ~1 deep DD
+                    _de_down_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # ~0 transient, ~1 persistent downtrend
+                    _de_floor += 0.12 * _de_ct_md * _de_dd_active * _de_down_dur
+                    _de_floor = min(_de_floor, 0.95)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
