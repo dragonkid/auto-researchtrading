@@ -1737,7 +1737,31 @@ class Strategy:
                 # Amplify-only (floor 1.0 baseline MAG).
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
-                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
+                # Exp1 (architectural, indep): DD-HEADROOM GATE on persist_boost. The
+                # prior session's persist_boost amplifier (Exp4, session row 1939) raised
+                # mixed Sharpe REAL (+0.014, mixed 0.534->0.543 at mag 1.00) but the
+                # composite was capped at +0.0028 because the boost fired UNIFORMLY for
+                # mixed (during both peak-equity low-DD periods AND drawdown periods) ->
+                # bigger entries raised return_vol too -> std rose -> composite offset.
+                # The f6e19151 keep's KEY BREAKTHROUGH was that the DD-headroom gate
+                # (boost fires only at peak equity) times bigger entries at mixed's LOW-DD
+                # moments -> lower return_vol per unit return -> Sharpe up WITHOUT
+                # return_vol rise -> std DROPS. The keep applied that gate to the
+                # entry-frac boost (_entry_frac_boost_bull); the persist_boost (also a
+                # mixed first-bar size amplifier, also gated on _weak_persist) is the
+                # structural ANALOGUE that does NOT yet have the DD-headroom gate. Adding
+                # it here applies the SAME validated mechanism to the persist_boost path:
+                # _frac_dd_headroom multiplies the boost INCREMENT (floor 1.0 = baseline
+                # persist_boost when in DD or at non-peak), so the amplified entries fire
+                # only at peak equity. Byte-identical for crash (weak_persist~0 -> boost
+                # increment already ~0 -> gate multiplier irrelevant) and rally (weak_persist
+                # ~0 -> same). For mixed, gates the amplified magnitude on DD-headroom ->
+                # bigger mixed entries concentrated at peak -> lower return_vol -> std down
+                # (the same composite-crossing mechanism as the keep's entry-frac boost).
+                # New cross-component data dep: persist_boost depends on portfolio DD state
+                # (was weak_persist x conviction only).
+                _frac_dd_headroom = 1.0 - max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K))))
+                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale * _frac_dd_headroom
                 # Exp3 (architectural, indep): TREND-ALIGNED x DD-HEADROOM entry-frac
                 # BOOST. Exp1/Exp2 proved the 0.55 cap is inert (_entry_frac_dyn always
                 # below 0.55); the real lever is _entry_frac_dyn ITSELF (range ~0.37-0.49).
@@ -1764,8 +1788,8 @@ class Strategy:
                 # validated ct-gate lesson) x DD-headroom (the validated _port_dd_frac
                 # signal, EMA-smoothed noise-robust). Direction-agnostic (uses entry
                 # direction sign). New cross-component data dep: _entry_frac_dyn depends
-                # on trend-alignment x portfolio DD-headroom (was vol-only).
-                _frac_dd_headroom = 1.0 - max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K))))
+                # on trend-alignment x portfolio DD-headroom (was vol-only). _frac_dd_headroom
+                # is computed above (shared with the persist_boost DD-headroom gate, Exp1).
                 _frac_trend_align = 0.0  # set per-entry-direction below
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
