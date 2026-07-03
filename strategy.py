@@ -2345,7 +2345,29 @@ class Strategy:
                 # and ~off in the sharp high-vol regime (bull). Continuous tanh, no boundary.
                 _vlong_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # ~0 vol_ratio>=1.2, ~1 vol_ratio<=0.8
                 _vlong_boost_vb = 0.30 * _vlong_vol_gate * _ret_vlong_term_vb  # small additive boost when multi-day confirms AND low-vol grind
-                _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb)
+                # Exp5 (architectural, indep): DOWN-PERSIST-gated (NOT vol-gated) multi-day
+                # confirmation boost to opp-atten trend-align. The validated _vlong_boost_vb
+                # above is VOL-GATED (fires in low-vol grind = mixed/rally, fades in high-vol
+                # = bull/crash). crash (return-limited Sh1.31, APY13.6pct, 100pct WR, DD2.83pct
+                # huge headroom) is a HIGH-vol regime -> _vlong_vol_gate ~0 -> crash's trend-
+                # aligned shorts (ret_vlong<0, pos_dir=-1 -> product>0 -> _ret_vlong_term_vb high)
+                # get NO opp-atten boost from _vlong_boost_vb -> dead-cat-bounce bull-voter spikes
+                # fire opp-bias -> exit crash shorts on the bounce -> caps crash APY (return-
+                # limited). Add a SEPARATE _down_persist-gated boost (the validated crash/bull
+                # separator: crash ~0.9 persistent downtrend, bull ~0.3 transient dips) that
+                # strengthens opp-atten for trend-aligned positions in a PERSISTENT downtrend,
+                # VOL-INDEPENDENT. crash shorts (down_persist~0.9, trend-aligned) -> boost ->
+                # ride dead-cat bounces -> higher APY (100pct WR winners, scale-invariant; DD
+                # 2.83pct has huge headroom below 5pct knee). bull (down_persist~0.3) -> gate ~0
+                # -> byte-identical. rally longs (down_persist~0.3) -> byte-identical. sideways
+                # (down_persist~0.5, ret_vlong~0 -> term~0) -> byte-identical. mixed (down_persist
+                # ~0.5, trend-aligned during rally phases) -> partial boost (rides mixed's rally-
+                # phase longs longer, the keep's ride-winners direction). New cross-component data
+                # dep: opp-atten trend-align depends on _down_persist (the validated duration-count
+                # separator). Smooth tanh, capped at 1.0 (no new boundary). Direction-agnostic.
+                _down_persist_vb = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # ~0 transient, ~1 persistent downtrend
+                _down_boost_vb = 0.20 * _down_persist_vb * _ret_vlong_term_vb
+                _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb + _down_boost_vb)
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
                 # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
                 # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
