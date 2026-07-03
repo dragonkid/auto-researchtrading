@@ -2999,7 +2999,7 @@ class Strategy:
                         # the cell center (high-freq attenuation); near the midpoint it
                         # smoothly interpolates. No state, no lag (feed-forward preserved).
                         _hq_cell = round(target / _hq_lattice) * _hq_lattice
-                        _hq_softness = 0.25
+                        _hq_softness = 0.10
                         _hq_span = _hq_lattice * _hq_softness
                         _hq_quant = _hq_cell + _hq_span * np.tanh((target - _hq_cell) / max(_hq_span, 1e-10))
                         if (_hq_quant > 0) == (target > 0) and _hq_quant != 0:
