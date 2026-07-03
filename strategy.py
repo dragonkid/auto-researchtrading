@@ -869,6 +869,20 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Branch step7: CONSENSUS-GATED ADMISSION SOFTENER. A different code path than
+            # the size boost (step2): lower the admission threshold slightly when broad-market
+            # consensus agrees with entry direction AND weak_persist (mixed separator). Raises
+            # mixed raw via COUNT (more broad-trend bounce entries admitted) not SIZE -> avoids
+            # the stab/raw tension ceiling that blocks the size-boost magnitude at 0.10. Rally
+            # protected by _weak_persist~0 (gate off -> byte-identical). Crash protected by
+            # _weak_persist~0 (strong downtrend). Sideways: weak ret_vlong -> _weak_persist
+            # moderate, consensus modest -> small softener. Max -8% threshold relaxation when
+            # full consensus (3-agree) + weak_persist~1 + entry agrees. Continuous tanh, no
+            # new boundary (composes with the existing multiplicative strong_min chain).
+            _consensus_admit_soften_bull = 1.0 - 0.08 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
+            _consensus_admit_soften_bear = 1.0 - 0.08 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
+            _bull_strong_min *= _consensus_admit_soften_bull
+            _bear_strong_min *= _consensus_admit_soften_bear
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
@@ -1837,8 +1851,8 @@ class Strategy:
                 # agnostic general principle (no regime label): broad-market downtrend
                 # confirmation raises crash short entry quality. New cross-component data dep:
                 # bear-side consensus boost depends on _down_persist (was weak_persist).
-                _consensus_boost_bull = 1.0 + 0.12 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
-                _consensus_boost_bear = 1.0 + 0.12 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
+                _consensus_boost_bull = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
+                _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
