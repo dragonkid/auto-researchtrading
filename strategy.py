@@ -2237,6 +2237,37 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp1 (architectural, indep): PROFIT-GRADUATED max_hold EXTENSION for
+                # deep trend-aligned winners. NEW exit path targeting crash (return-limited
+                # 0.976, 100pct WR, DD2.83pct huge headroom). The keep note's UNTESTED lead
+                # (a): crash via a NEW exit path. The opp-atten axis is saturated (Exp5
+                # prior round byte-identical, cap absorbs); tp-harvest magnitude is maxed
+                # (0.45 ceiling). The MAX_HOLD axis had ONE walled experiment (Exp4 prior
+                # session: weak_persist x DD-headroom extension regressed bull -0.048 because
+                # weak_persist rises during bull's mild 2021 corrections which DON'T trigger
+                # portfolio DD -> DD-headroom gate doesn't bind for bull -> extension fires
+                # on bull pullback longs -> holds through corrections -> bigger losses).
+                # This is structurally DISTINCT: gate on PEAK PROFIT MAGNITUDE (deep-winner
+                # status) instead of weak_persist. bull's losing pullback longs are EARLY
+                # LOSERS that exit via SL/slope-against long before reaching deep-peak
+                # status (peak_pnl/_pp_min > 2.8 = ~2.8x the profit-min threshold) -- so the
+                # profit-gate does NOT fire for bull's leak path. Only genuine deep trend-
+                # aligned winners (crash 100pct-WR shorts that ride the multi-month downtrend
+                # to deep peaks, rally grinding longs at their deep peaks) earn the extension.
+                # Mechanism: a deep-peak trend-aligned winner has proven the trend is real ->
+                # hold longer through time-pressure noise -> capture more of the trend move ->
+                # higher APY (return_bonus) at preserved Sharpe (100pct WR; Sharpe is scale-
+                # invariant) and DD below the 5pct knee (crash DD 2.83pct has huge headroom).
+                # Gated on trend-ALIGNMENT (pos_dir matches ret_vlong sign, the validated
+                # multi-day trend-align factor) so counter-trend positions (rally pullback
+                # shorts, mixed wrong-side longs) NEVER earn the extension. Continuous tanh
+                # on peak_pnl/_pp_min (no zero-crossing -> not the walled admission-boundary
+                # family). max +25pct extension at peak_pnl >= 4*_pp_min. New cross-component
+                # data dep: max_hold depends on peak magnitude x trend-alignment (was vol-only).
+                _pos_dir_mh = 1.0 if current_pos > 0 else -1.0
+                _mh_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_mh / 0.04))
+                _mh_deep_peak = max(0.0, min(1.0, np.tanh((self.peak_pnl.get(symbol, 0.0) / max(_pp_min, 1e-6) - 2.8) / 1.2)))
+                _max_hold *= 1.0 + 0.25 * _mh_trend_align * _mh_deep_peak
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
