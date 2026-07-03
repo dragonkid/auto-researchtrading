@@ -328,6 +328,18 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
+        # Exp2 (this session): sustain the f6e19151-keep's entry-frac boost through
+        # scale-in (cached at entry, deterministic). The entry-frac boost
+        # (_entry_frac_boost_bull, DD-headroom x weak_persist x trend-align) raises
+        # mixed's FIRST-bar size at peak equity, but scale-in then ramps full_target
+        # back to the un-boosted `size * _persist_sustain` over 2-3 bars -> the boost
+        # is LOST after scale-in completes (only bars 1-3 of the hold see the bigger
+        # size). Caching the entry-time boost multiplier and applying it to scale-in
+        # full_target keeps the position bigger for the WHOLE hold -> higher mixed APY
+        # (return_bonus lever; mixed is return-limited Sh0.857, APY4.76pct huge DD
+        # headroom below 5pct knee). Mirrors the validated _conc_held / _vol_held
+        # sustain pattern. Reset on full exit; default 1.0 (no effect).
+        self._entry_frac_boost_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1789,10 +1801,12 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
+                    self._entry_frac_boost_held[symbol] = _entry_frac_boost_bull  # Exp2: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
+                    self._entry_frac_boost_held[symbol] = 1.0  # Exp2: bear side has no entry-frac boost; cache 1.0 so scale-in is byte-identical for bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2063,7 +2077,23 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
+                    # Exp2 (architectural, indep): SUSTAIN the entry-frac boost through
+                    # scale-in. The f6e19151-keep's _entry_frac_boost_bull (DD-headroom x
+                    # weak_persist x trend-align) raises mixed's FIRST-bar size at peak
+                    # equity, but the original full_target = size * _conc_held * _vol_held
+                    # * _persist_sustain does NOT include the boost -> scale-in ramps back
+                    # to the un-boosted `size` over 2-3 bars -> the boost only affects bars
+                    # 1-3 of the hold. Caching the entry-time boost multiplier (default 1.0,
+                    # set at entry above) and multiplying it into full_target keeps the
+                    # position bigger for the WHOLE hold -> higher mixed APY (return_bonus
+                    # lever; mixed is return-limited Sh0.857, APY4.76pct huge DD headroom
+                    # below 5pct knee). Mirrors the validated _conc_held / _vol_held sustain
+                    # pattern (Exp5/Exp9 keeps). Byte-identical for bear (cached 1.0) and
+                    # for bull non-mixed entries (boost ~1.0 in trend regimes where
+                    # _weak_persist~0). New control flow: scale-in full_target depends on
+                    # the entry-time DD-headroom state (was entry-only).
+                    _entry_frac_boost_held = self._entry_frac_boost_held.get(symbol, 1.0)
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain * _entry_frac_boost_held
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -3201,7 +3231,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._entry_frac_boost_held, self._pnl_path, self._target_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
