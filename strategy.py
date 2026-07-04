@@ -733,29 +733,22 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
-            # Exp 1 (architectural, indep): ABLATE the 8th range/close efficiency-continuation
-            # voter under v6 scoring. The 8th voter (added commit 12b6bc63 / row 689) was
-            # calibrated under v5 (truncated-indicator warmup) where its |close-to-close|/
-            # |intrabar-range| efficiency signal was noise-tuned to v5's artifact window.
-            # Under v6 proper-warmup the strategy LOSES in bull/crash/sideways (PF 0.7/0.3/
-            # 0.4) and this voter -- a noisy directionless-efficiency statistic signed by a
-            # 12-bar net close direction -- contributes to over-entry on choppy bars in the
-            # bleeding regimes. The sanctioned UNTESTED lead (results.tsv last session-
-            # summary): "the v5-tuned 8 voters + admission stack may over-enter on noise under
-            # v6 -- a simplification/ablation of voters under v6 is genuinely untested, prior
-            # load-bearing conclusions were calibrated to v5 artifacts." Ablation is the
-            # cleanest test of that hypothesis (one voter removed, no parameter change).
-            # BRANCH step6: RE-ADD 8th range/close efficiency voter at REDUCED weight (0.55 ->
-            # 0.275). Exp1 full ablation gave bull +0.265 Sh but pushed crash past the 16pct
-            # total-loss cliff (total loss ~16.07pct). Steps1-5 (bear-only voter, depth-modulated
-            # shrinks, break-even amplification, stop tightening) were ALL INERT on crash --
-            # crash is a total absorption sink for size/exit/stop levers. The 8th voter helped
-            # crash's bear-side direction detection; removing it slightly worsened crash past
-            # the cliff. Re-adding at HALF weight trades less bull gain (the +0.265 scales
-            # roughly with weight removed) for less crash regression (the -0.008 Sh / -0.5pp
-            # total loss also scales with weight). At weight 0.275 (half), bull gain ~+0.13
-            # Sh, crash regression ~-0.25pp total loss -> crash stays past the 16pct cliff
-            # (~-15.8pct). 8 voters, symmetric (matches original structure, just smaller weight).
+            # Exp4 (architectural, indep): 8th voter -- RANGE/CLOSE efficiency-continuation.
+            # Prior session CROSS-EXPERIMENT CONCLUSION: the ONLY un-disproven axis for
+            # moving a regime raw is "a fundamentally new orthogonal DATA-SOURCE voter
+            # added WITHOUT touching existing voter weights." This adds an 8th voter on a
+            # signal no existing voter reads: the RATIO of interbar close-movement to
+            # intrabar range over 12 bars (distinct from ER/Kaufman which uses |net move|/
+            # sum|bar moves|; this uses |close-to-close|/|intrabar range|). High ratio =
+            # closes are traveling further than the bar ranges = efficient interbar trend
+            # (continuation); low ratio = range dominates closes = chop/mean-reversion.
+            # Directionless efficiency SIGNED by the 12-bar close direction (sign of
+            # closes[-1]-closes[-12]) so it contributes bull in an uptrend, bear in a
+            # downtrend. The sign uses a 12-bar net (smooth, not a 1-bar zero-crossing).
+            # Added to _voter_signals_bull with a SMALL fixed weight (0.55, below the 0.7
+            # base floor of existing voters) -- appended WITHOUT modifying any of the 7
+            # existing _base_weights (the trend-strength redistribution only shifts indices
+            # 1-3, leaving this 8th weight untouched). New orthogonal-ish data-source voter.
             _rc_n = 12
             _rc_high = bd.history["high"].values[-_rc_n:]
             _rc_low = bd.history["low"].values[-_rc_n:]
@@ -772,7 +765,7 @@ class Strategy:
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
-                _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (re-added at reduced weight, step6)
+                _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -799,8 +792,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            # BRANCH step6: 8th weight reduced 0.55 -> 0.275 (half weight re-add).
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.275)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -822,13 +814,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 8) -- 8th voter re-added step6
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)  # 8th voter re-added step6
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
