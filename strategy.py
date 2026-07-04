@@ -293,6 +293,18 @@ PERSIST_BOOST_MAG = 0.14
 PORT_DOWN_PERSIST_ONSET = 0.70   # cross-symbol avg down_persist above which cap engages
 PORT_DOWN_PERSIST_SCALE = 0.10   # ramp width (0.70->0.80 saturates)
 PORT_DOWN_PERSIST_MAX_SHRINK = 0.35  # max portfolio size shrink at full saturation (-> 0.65x)
+# Exp5 (architectural, indep): MAX-AGGREGATION portfolio bear cap. Exp1 used cross-symbol
+# AVERAGE _down_persist; this adds a SECOND cap using the cross-symbol MAX _down_persist
+# (fires when ANY ONE symbol is in persistent bear). Different aggregation: catches
+# single-symbol persistent bear episodes (mixed's down-legs where one symbol at a time
+# is in a multi-week downtrend while the others oscillate) that the AVERAGE misses (the
+# average is dragged down by the non-bear symbols). Composes with Exp1's avg cap
+# (multiplicative; both shrink-only). Byte-identical when NO symbol has down_persist > ONSET
+# (bull/rally where all symbols trend up). Smaller max shrink (0.20) since it fires on a
+# weaker signal (single-symbol vs portfolio-wide).
+PORT_DOWN_PERSIST_MAX_ONSET = 0.80   # higher onset for max (single symbol fires more often)
+PORT_DOWN_PERSIST_MAX_SCALE = 0.10
+PORT_DOWN_PERSIST_MAX_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 
 
 class Strategy:
@@ -559,10 +571,17 @@ class Strategy:
                 _pdvh = _pdvh[-PERSIST_WINDOW:]
             _port_down_persist_vals.append((float(sum(_pdvh)) / len(_pdvh)) if _pdvh else 0.0)
         _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
-        # Exp1: portfolio-level deep-bear size cap. Continuous tanh ramp above ONSET;
-        # shrink-only (caps at 1.0; never amplifies size). Leverage-coupled decision-
-        # invariance NOT needed (cap is a dimensionless fraction).
+        # Exp1: portfolio-level deep-bear size cap (AVERAGE aggregation). Continuous tanh
+        # ramp above ONSET; shrink-only (caps at 1.0; never amplifies size).
         _port_bear_cap = 1.0 - PORT_DOWN_PERSIST_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
+        # Exp5: MAX-aggregation portfolio bear cap (composes with Exp1's avg cap). Fires
+        # when ANY ONE symbol has down_persist > MAX_ONSET (single-symbol persistent bear).
+        # Catches mixed's down-legs where one symbol at a time is in persistent bear while
+        # the average is dragged down by non-bear symbols. Byte-identical when no symbol
+        # exceeds MAX_ONSET (bull/rally all symbols trend up).
+        _port_down_persist_max = max(_port_down_persist_vals) if _port_down_persist_vals else 0.0
+        _port_bear_cap_max = 1.0 - PORT_DOWN_PERSIST_MAX_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist_max - PORT_DOWN_PERSIST_MAX_ONSET) / PORT_DOWN_PERSIST_MAX_SCALE)))
+        _port_bear_cap = _port_bear_cap * _port_bear_cap_max
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
