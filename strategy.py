@@ -838,25 +838,6 @@ class Strategy:
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
-            # ARCHITECTURAL (Exp1, v6 session): PORTFOLIO LOSS-STREAK GENERAL ADMISSION
-            # TIGHTENING. Under scoring v6 (proper 200-bar warmup), the strategy LOSES
-            # money in bull/crash/sideways (PF 0.7/0.3/0.4) -- it over-trades marginal
-            # re-entries during losing stretches. The existing _loss_streak counter
-            # (Exp3) only tightens COUNTER-TREND entries (rally pullback shorts); trend-
-            # aligned entries continue at the baseline admission bar even after consecutive
-            # losses, so the bleeding in bull/crash/sideways (mostly trend-aligned entries
-            # that get stopped) is unchecked. NEW cross-component data dep: the GENERAL
-            # admission threshold (applied to ALL entries) now depends on the portfolio
-            # consecutive-loss streak -- a general risk-off that raises the bar for every
-            # entry after a losing stretch, filtering marginal re-entries. Continuous tanh
-            # ramp (saturates after ~3 consecutive losses), max 12% tightening. Smooth
-            # (no boundary), leverage-invariant (multiplicative on _strong_min which is
-            # already leverage-scaled via the voter weights). Distinct from the ct-only
-            # tightening (which uses ret_vlong to target rally specifically); this is the
-            # direction-agnostic general counterpart.
-            _streak_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))  # 0 at <=1 loss, saturates ~5
-            _strong_min *= 1.0 + 0.12 * _streak_admit
-
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
             # exceeds a threshold (>=2 in 30 bars), raise admission proportionally.
