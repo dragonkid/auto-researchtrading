@@ -2823,24 +2823,23 @@ class Strategy:
                 # agnostic general principle (no regime label): a losing position during a
                 # portfolio drawdown is at correlated-regime-hit risk -> exit sooner.
                 if _pnl_scale < 0.0:
-                    # branch step1: GATE on COUNTER-TREND-AT-MULTI-DAY so trend-aligned
-                    # losers (crash shorts during dead-cat bounces, bull longs in pullbacks)
-                    # are PROTECTED -- they recover. Only counter-trend losers (rally pullback
-                    # shorts, mixed wrong-side longs) get the earlier exit. The ct-gate is the
-                    # validated separator (ret_vlong disagreeing with pos_dir, fast-saturating
-                    # /0.01 near-constant noise-free per branch-step-9 lesson).
-                    _ct_exit_dd = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.02))
-                    # branch step4: ADD MAE-depth gate so trend-aligned LOSERS with deep
-                    # adverse excursion (sustained bleeding, not fresh dip) also get the
-                    # earlier exit. Step1's ct-gate excluded all trend-aligned losers; this
-                    # re-includes the DEEP-MAE ones (extending pullback longs in bull) while
-                    # protecting shallow-MAE trend-aligned dips (crash short bounces that
-                    # resume). MAE is the per-position low-water mark (always <= pos_pnl);
-                    # deep MAE = position has bled significantly below entry at some point =
-                    # sustained loser, not a temporary dip. Gate fires for ct losers (any
-                    # MAE) OR trend-aligned losers with MAE < -1.5*stop (deep). Smooth tanh.
-                    _mae_depth = max(0.0, min(1.0, np.tanh((-self._mae.get(symbol, 0.0) - 1.5 * abs(STOP_LOSS_PCT)) / (0.5 * abs(STOP_LOSS_PCT)))))
-                    _exit_dd_gate = max(_ct_exit_dd, _mae_depth)
+                    # branch step5: REPLACE ct-gate with SUSTAINED-LOSS gate. The ct-gate
+                    # (step1) excluded all trend-aligned losers (the main bull/crash problem).
+                    # MAE-depth (step4) was inert (stop catches deep losers first). New
+                    # signal: a loser that has been NEGATIVE for multiple consecutive bars
+                    # (sustained loss, not a fresh dip) is likely extending -> cut earlier.
+                    # A fresh dip (1-2 bars negative) might recover (crash short bounces,
+                    # bull pullback longs that resume) -> protect. Uses the _pnl_path
+                    # (12-bar pos_pnl trajectory); sustained_loss = fraction of last K bars
+                    # where pos_pnl < 0. K=4 captures multi-bar bleeding (post-scale-in).
+                    # Gate fires for sustained losers (any direction, trend-aligned or ct)
+                    # while protecting fresh dips. Byte-identical at portfolio peak (dd_frac=0).
+                    _pp = self._pnl_path.get(symbol, [])
+                    _sustained_loss = 0.0
+                    if len(_pp) >= 4:
+                        _recent = _pp[-4:]
+                        _sustained_loss = sum(1.0 for _p in _recent if _p < 0.0) / 4.0
+                    _exit_dd_gate = _sustained_loss
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
