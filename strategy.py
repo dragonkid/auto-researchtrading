@@ -2520,7 +2520,19 @@ class Strategy:
                 _be_pnl_band = 0.5 * abs(STOP_LOSS_PCT)  # |pos_pnl| band around breakeven
                 _be_near_zero = max(0.0, 1.0 - abs(pos_pnl) / max(_be_pnl_band, 1e-6))  # 1 at BE, 0 outside band
                 _be_hold_gate = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS - 1.0) / 4.0))  # 0 first ~4 bars post-scale-in, saturates ~1 at +5 bars
-                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate
+                # BRANCH step1: GATE the break-even pressure to TRENDING regimes only.
+                # Exp3 (ungated) cratered sideways -0.731 (WR 50pct->37pct) because in chop
+                # positions legitimately hover near breakeven then RECOVER -- the break-even
+                # exit killed mean-reversion recoveries. rally/mixed (trending) BENEFITED
+                # (+0.0023/+0.0254 -- dead-capital trim). Use the validated trend separator
+                # rsi_trend_str (already used by _w_time/_chop_amp/_accel_floor) to gate:
+                # full break-even pressure in trends (rsi_trend_str high), near-zero in chop
+                # (rsi_trend_str ~0 -> sideways byte-identical). Continuous tanh ramp on
+                # rsi_trend_str/0.20 (saturates by ~0.4 trend strength). This is the SAME
+                # separator pattern as _w_time (which is heavier-in-chop for time-pressure,
+                # here inverted: break-even fires in trend not chop).
+                _be_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_trend_gate
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
