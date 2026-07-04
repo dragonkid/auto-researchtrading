@@ -2623,6 +2623,38 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # Exp1 (architectural, indep): LOSS-SIDE vol-expansion exit pressure
+                # for COUNTER-TREND-AT-MULTI-DAY positions. The existing _ve_pressure
+                # fires ONLY in profit (_w_ve=max(0,_pnl_scale)). Under scoring v6,
+                # bull/crash/sideways all have NEGATIVE Sharpe (PF 0.7/0.3/1.0 despite
+                # WR 45-72pct) = LOSERS are much larger than winners; bull DD 13pct is
+                # the worst. A vol-of-vol expansion (vol_6 >> vol_18) is a regime shift
+                # that often PRECEDES directional slope: vol expands first as the
+                # pullback/leg-down starts, slope-against fires later once the
+                # direction is confirmed. For a LOSING position that is ALSO
+                # counter-trend at the multi-day scale (ret_vlong disagreeing with
+                # pos_dir = a position already fighting the structural trend), the
+                # vol expansion signals the regime shift is extending AGAINST it ->
+                # cut it faster (before the larger directional move materializes) ->
+                # smaller realized loss -> higher Sharpe in the negative-Sharpe
+                # regimes. Distinct from _sl_pressure (slope-against: directional
+                # reversal, fires AFTER direction confirms) and the profit-side _ve
+                # (winner exhaustion). The ct-gate is the VALIDATED separator (used by
+                # _ct_vlong, _ct_hold_sat, _ct_si_gate): trend-aligned losing positions
+                # (bull pullback longs in an uptrend, ret_vlong*pos_dir>0 -> gate 0 ->
+                # byte-identical, they recover) are spared; ONLY counter-trend losers
+                # (ret_vlong*pos_dir<0) facing vol expansion get the extra pressure.
+                # Fast-saturating /0.01 ret_vlong scale (near-constant, noise-free per
+                # the validated ct-gate lesson). Loss-side magnitude is SMALLER (0.30
+                # vs 0.60 profit) because slope-against already partly handles losers;
+                # this is a complementary EARLY signal (vol precedes direction).
+                # Direction-agnostic general principle (no regime label): a losing
+                # counter-trend position facing vol expansion is at regime-shift risk.
+                # New cross-component data dep: loss-side ve_pressure depends on
+                # (pos_pnl<0, ret_vlong*pos_dir<0, vol_expansion) jointly.
+                _ve_loss_ct = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _ve_loss_w = max(0.0, -_pnl_scale) * _ve_loss_ct  # loss-side x ct-at-multi-day
+                _w_ve = _w_ve + 0.50 * _ve_loss_w  # add up to 0.30 effective pressure (0.6*0.5)
                 # Exp3 (architectural simplification, this session): removed the dead
                 # _ep_pressure (early-profit-lock) and _ar_pressure (adverse-recovery)
                 # terms. Both were already zeroed (_ep_pressure=0.0 since the
