@@ -2839,7 +2839,16 @@ class Strategy:
                     if len(_pp) >= 4:
                         _recent = _pp[-4:]
                         _sustained_loss = sum(1.0 for _p in _recent if _p < 0.0) / 4.0
-                    _exit_dd_gate = _sustained_loss
+                    # branch step7: TREND-STRENGTH gate to spare sideways mean-reverters.
+                    # Step5 regressed sideways (-0.009): sideways mean-reverters have frequent
+                    # sustained-loss bars but RECOVER (chop oscillates). The extending losers
+                    # (crash shorts, mixed wrong-side longs) are in TRENDING regimes. Gate
+                    # the sustained-loss signal on trend strength (the validated rsi_trend_str
+                    # already used by _w_time/_chop_amp/_accel_floor): full effect in trends
+                    # (rsi_trend_str high), near-zero in chop (sideways). Sideways byte-
+                    # identical; crash/mixed (trending) keep the gain. Continuous tanh ramp.
+                    _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                    _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
