@@ -48,13 +48,15 @@ def parse_custom_providers(path):
     # only key it by its "name" field once the item is complete.
     items, cur = [], None
     for ln in lines[start:]:
-        # The block ends at the next top-level mapping key (e.g. "image_gen:").
-        # List items start with "-" which is also non-space, so we must NOT
-        # treat a leading "-" as the block terminator.
+        # The block ends at the next top-level (unindented) mapping key
+        # (e.g. "image_gen:"). List items may themselves be indented under
+        # the block key (Hermes' config serializer writes "  - key: value"),
+        # so we only terminate on a NON-indented, non-dash line.
         if re.match(r"^\S", ln) and not ln.lstrip().startswith("-"):
             break
-        # New list item: "- key: value" (the dash may precede any key).
-        m = re.match(r"^-\s+(\w+):\s*(.+?)\s*$", ln)
+        # New list item: "- key: value". The dash may be preceded by
+        # indentation ("  - key:") depending on the YAML serializer style.
+        m = re.match(r"^\s*-\s+(\w+):\s*(.+?)\s*$", ln)
         if m:
             cur = {}
             items.append(cur)
