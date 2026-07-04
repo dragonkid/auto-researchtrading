@@ -2767,25 +2767,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Exp5 (architectural, indep): PROFIT-MAGNITUDE-SCALED exit threshold. NEW
-                # cross-component data dep: _exit_thresh depends on peak_pnl magnitude relative
-                # to the ATR stop. Mechanism: bull_2021 has 71.8pct WR but PF 0.7 -- winners
-                # are harvested too early by soft exit pressures (slope-against, giveback)
-                # before they can extend into the larger moves that the strong uptrend supports.
-                # A winner whose peak has reached a large multiple of the stop has proven the
-                # trend is real and deserves a higher bar for soft-pressure exit (let it run
-                # through more pullback noise). Scale _exit_thresh up with peak/stop ratio:
-                # onset at 2x stop, saturating at 4x stop with +0.30 threshold (soft pressures
-                # need to be 30pct stronger to exit a deep winner). Byte-identical when peak
-                # < 2*stop (fresh entries and small winners keep _exit_thresh=1.0). Continuous
-                # tanh (no boundary). Direction-agnostic. The SL exemption below still forces
-                # _exit_thresh=1.0 when _sl_pressure saturates (the hard stop remains the
-                # backstop). Distinct from the discarded win-streak-gated relaxation (that
-                # used portfolio state; this uses the position's own peak magnitude).
-                _peak_for_thresh = self.peak_pnl.get(symbol, 0.0)
-                _profit_depth_ratio = _peak_for_thresh / max(_stop_abs, 1e-6)
-                _profit_thresh_boost = 0.30 * max(0.0, min(1.0, np.tanh((_profit_depth_ratio - 2.0) / 1.0)))
-                _exit_thresh = _exit_thresh + _profit_thresh_boost
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
