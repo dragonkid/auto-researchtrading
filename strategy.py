@@ -2830,7 +2830,18 @@ class Strategy:
                     # validated separator (ret_vlong disagreeing with pos_dir, fast-saturating
                     # /0.01 near-constant noise-free per branch-step-9 lesson).
                     _ct_exit_dd = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.02))
-                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _ct_exit_dd)
+                    # branch step4: ADD MAE-depth gate so trend-aligned LOSERS with deep
+                    # adverse excursion (sustained bleeding, not fresh dip) also get the
+                    # earlier exit. Step1's ct-gate excluded all trend-aligned losers; this
+                    # re-includes the DEEP-MAE ones (extending pullback longs in bull) while
+                    # protecting shallow-MAE trend-aligned dips (crash short bounces that
+                    # resume). MAE is the per-position low-water mark (always <= pos_pnl);
+                    # deep MAE = position has bled significantly below entry at some point =
+                    # sustained loser, not a temporary dip. Gate fires for ct losers (any
+                    # MAE) OR trend-aligned losers with MAE < -1.5*stop (deep). Smooth tanh.
+                    _mae_depth = max(0.0, min(1.0, np.tanh((-self._mae.get(symbol, 0.0) - 1.5 * abs(STOP_LOSS_PCT)) / (0.5 * abs(STOP_LOSS_PCT)))))
+                    _exit_dd_gate = max(_ct_exit_dd, _mae_depth)
+                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
