@@ -318,6 +318,19 @@ PORT_DOWN_PERSIST_MAX_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.8
 PORT_WEAK_PERSIST_MAX_ONSET = 0.85   # high onset (single symbol fires more often)
 PORT_WEAK_PERSIST_MAX_SCALE = 0.10
 PORT_WEAK_PERSIST_MAX_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
+# Exp2 (architectural, indep): PORTFOLIO-LEVEL WEAK-TREND ADMISSION TIGHTENER (avg).
+# Extends the validated portfolio-cap pattern (4 keeps on SIZE) to ADMISSION: when the
+# cross-symbol AVERAGE _weak_persist is high (all symbols choppy together = sideways),
+# tighten the admission threshold to filter noise-driven entries. DISTINCT from the
+# max-aggregation weak cap (Exp6, fires on ANY single symbol weak = mixed's one-at-a-
+# time consolidation); the AVERAGE fires only when ALL symbols are weak simultaneously
+# (sideways recovery 2023: BTC/ETH/SOL all oscillating -> avg ~0.7+). Cuts sideways
+# trade COUNT (the WR-destroying churn: 72 trades, 45.8% WR) without shrinking size of
+# admitted trades (preserves sample_factor on the trades that DO pass). New cross-
+# component data dep: admission threshold depends on portfolio-level weak-trend average.
+PORT_WEAK_PERSIST_AVG_ONSET = 0.55   # cross-symbol avg weak_persist above which admission tightens
+PORT_WEAK_PERSIST_AVG_SCALE = 0.12   # ramp width (0.55->0.67 saturates)
+PORT_WEAK_PERSIST_AVG_MAX_TIGHTEN = 0.20  # max admission threshold increase at full saturation (-> 1.20x harder to enter)
 # Exp8 (architectural, indep): MAX-AGGREGATION portfolio DEEP-BEAR MAGNITUDE cap. Exp1/Exp5
 # used _down_persist (DURATION count of ret_vlong<0 bars); this uses the raw 96-bar
 # ret_vlong MAGNITUDE (slope*n) directly, max-aggregated across symbols. Fires when ANY
@@ -625,6 +638,11 @@ class Strategy:
         # exceeds MAX_ONSET (rally/bull/crash all symbols have |ret_vlong| solidly > 0.02).
         _port_weak_persist_max = max(_port_weak_persist_vals) if _port_weak_persist_vals else 0.0
         _port_weak_cap = 1.0 - PORT_WEAK_PERSIST_MAX_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_weak_persist_max - PORT_WEAK_PERSIST_MAX_ONSET) / PORT_WEAK_PERSIST_MAX_SCALE)))
+        # Exp2: portfolio-level weak-trend AVERAGE admission tightener. The AVERAGE fires
+        # when ALL symbols are choppy (sideways recovery), distinct from the MAX (Exp6, any
+        # single symbol = mixed's one-at-a-time consolidation). Continuous tanh ramp.
+        _port_weak_persist_avg = (sum(_port_weak_persist_vals) / len(_port_weak_persist_vals)) if _port_weak_persist_vals else 0.0
+        _port_weak_admit_tighten = 1.0 + PORT_WEAK_PERSIST_AVG_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - PORT_WEAK_PERSIST_AVG_ONSET) / PORT_WEAK_PERSIST_AVG_SCALE)))
         # Exp8: MAX-aggregation deep-bear MAGNITUDE cap (composes with Exp1/Exp5/Exp6). Fires
         # when ANY ONE symbol has ret_vlong < -ONSET (deep multi-day downtrend magnitude).
         # Different signal from down_persist (duration count): uses raw ret_vlong magnitude,
@@ -969,6 +987,11 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Exp2: apply portfolio-level weak-trend AVERAGE admission tightener (computed
+            # at top level). Tightens admission when ALL symbols choppy together (sideways).
+            # Byte-identical when _port_weak_admit_tighten=1.0 (bull/rally/crash where cross-
+            # symbol avg weak_persist < ONSET).
+            _strong_min = _strong_min * _port_weak_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
