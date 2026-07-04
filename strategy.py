@@ -2192,7 +2192,28 @@ class Strategy:
                 _atr_pct = np.mean(_tr) / mid
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
-                _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # ARCHITECTURAL (Exp2, v6 session): TREND-ALIGNED STOP WIDENING. Under
+                # scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/crash/
+                # sideways (PF 0.7/0.3/0.4) -- trend-aligned positions get stopped on
+                # pullback noise before the trend resumes. The ATR stop is the same for
+                # trend-aligned (bull longs, crash shorts) and counter-trend (rally
+                # pullback shorts) positions, but their noise tolerance DIFFERS: a
+                # trend-aligned position has the multi-day wind at its back (ret_vlong*
+                # pos_dir > 0) -> pullback against it is noise that should be ridden
+                # through -> a WIDER stop captures the trend continuation; a counter-trend
+                # position is fighting the multi-day trend -> a TIGHT stop is correct
+                # (cut the loser early). NEW cross-component data dep: the stop-loss
+                # distance now depends on the multi-day trend-alignment of the position
+                # (ret_vlong * pos_dir), via a smooth tanh ramp. Trend-aligned: stop
+                # widens up to 1.4x (caps at 0.035 ceiling -> trend-aligned high-vol
+                # positions get the full ceiling). Counter-trend: stop stays at baseline
+                # ATR (no widening, floor at 0.018 retained). Continuous (no boundary),
+                # direction-agnostic general principle (no regime label): a position with
+                # the multi-day trend behind it tolerates more adverse excursion.
+                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _trend_align_sl = max(0.0, np.tanh(_pos_dir_sl * ret_vlong / 0.04))  # [0, ~1], 0 ct, ~1 trend-aligned
+                _stop_mult_sl = 1.0 + 0.40 * _trend_align_sl  # 1.0 ct, 1.4 trend-aligned
+                _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct * _stop_mult_sl))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
