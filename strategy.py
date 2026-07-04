@@ -2801,6 +2801,29 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
+                # Exp4 (architectural, indep): PORTFOLIO-DD lowering of the exit threshold for
+                # LOSERS. NEW cross-component data dep: the de-risk full-exit threshold
+                # (_exit_thresh, normally 1.0 = full exit when exit_pressure reaches 1.0) is
+                # LOWERED for LOSING positions when the PORTFOLIO is in drawdown. Mechanism:
+                # a portfolio DD (correlated regime hit, multiple positions losing across
+                # symbols) signals an adverse regime where losers are likely to EXTEND
+                # further -> trigger the full exit (de-risk ramp to target=0) at LOWER
+                # exit_pressure -> cut losers ~1 bar earlier -> smaller realized losses ->
+                # higher Sharpe in the negative-Sharpe regimes (bull PF 0.7 despite 71.8pct
+                # WR = large losers; bull DD 13pct worst, crash DD 17.85pct past 5pct knee).
+                # DISTINCT from Exp2's w_slope DD-amp (MAX-fusion absorbed, byte-identical):
+                # this changes the THRESHOLD that converts pressure to action, NOT the
+                # pressure sources -- bypasses the MAX-fusion absorption wall (the dominant
+                # _sl_pressure term still saturates, but now full-exit triggers at 0.88 not
+                # 1.0). Loss-side only (gated on _pnl_scale<0 -> only fires for losers;
+                # trend-aligned winners byte-identical, exit_thresh stays 1.0 for them).
+                # Byte-identical at portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 ->
+                # lowering 0). Uses the validated top-level _port_dd_atten (asymmetric-EMA,
+                # leverage-coupled 0.008*LEVERAGE_K scale). Smooth (no boundary), direction-
+                # agnostic general principle (no regime label): a losing position during a
+                # portfolio drawdown is at correlated-regime-hit risk -> exit sooner.
+                if _pnl_scale < 0.0:
+                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten))
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
