@@ -294,6 +294,24 @@ PORT_DOWN_PERSIST_ONSET = 0.70   # cross-symbol avg down_persist above which cap
 PORT_DOWN_PERSIST_SCALE = 0.10   # ramp width (0.70->0.80 saturates)
 PORT_DOWN_PERSIST_MAX_SHRINK = 0.35  # max portfolio size shrink at full saturation (-> 0.65x)
 
+# Exp2 (architectural, indep): PORTFOLIO-LEVEL WEAK-TREND POSITION-SIZE CAP.
+# Complementary to Exp1's deep-bear cap: Exp1 fired on cross-symbol avg _down_persist
+# (directional negativity) and was byte-identical for mixed (which has _down_persist~0.5
+# oscillating, below the 0.70 onset). Mixed is the SECOND-LOWEST positive regime (+0.122,
+# Sh 0.62, return-limited, 100pct WR, oscillating dead-capital longs). _weak_persist
+# (fraction of last PERSIST_WINDOW bars where |ret_vlong| < PERSIST_WEAK_THRESH=0.02,
+# the validated magnitude-weak-trend duration count) is ~1 for mixed (persistently weak
+# multi-day trend) vs ~0 for rally (strong uptrend) vs ~0.3 for bull. A portfolio-level
+# cap gated on cross-symbol avg _weak_persist fires in mixed (where Exp1 was byte-
+# identical) and is byte-identical for rally/bull/crash (where weak_persist is below
+# onset). Distinct data axis (magnitude-weak vs directional-negativity). Applied as a
+# second multiplier on `size` (composes with Exp1's _port_bear_cap). Targets mixed's
+# oscillating dead-capital longs: smaller positions -> smaller MTM oscillation -> higher
+# Sharpe (mixed's binding floor is Sh 0.62, return-limited). Shrink-only.
+PORT_WEAK_PERSIST_ONSET = 0.85   # cross-symbol avg weak_persist above which cap engages (high: mixed~1, others lower)
+PORT_WEAK_PERSIST_SCALE = 0.10   # ramp width
+PORT_WEAK_PERSIST_MAX_SHRINK = 0.25  # max portfolio size shrink at full saturation (-> 0.75x; smaller than Exp1 since mixed is return-limited not loss-limited)
+
 
 class Strategy:
     def __init__(self):
@@ -548,6 +566,7 @@ class Strategy:
         # _p_rv < 0 check appended to the read-only history copy.
         _port_down_persist_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > VLONG_WINDOW + 1]
         _port_down_persist_vals = []
+        _port_weak_persist_vals = []  # Exp2: cross-symbol avg weak_persist
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
@@ -558,11 +577,24 @@ class Strategy:
             if len(_pdvh) > PERSIST_WINDOW:
                 _pdvh = _pdvh[-PERSIST_WINDOW:]
             _port_down_persist_vals.append((float(sum(_pdvh)) / len(_pdvh)) if _pdvh else 0.0)
+            # Exp2: weak_persist for the same symbol (|ret_vlong| < PERSIST_WEAK_THRESH).
+            # Read-only copy (the per-symbol loop owns the append); include current bar.
+            _pwvh = list(self._weak_vlong_hist.get(_psym, []))
+            _pwvh.append(1 if abs(_p_rv) < PERSIST_WEAK_THRESH else 0)
+            if len(_pwvh) > PERSIST_WINDOW:
+                _pwvh = _pwvh[-PERSIST_WINDOW:]
+            _port_weak_persist_vals.append((float(sum(_pwvh)) / len(_pwvh)) if _pwvh else 0.0)
         _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
         # Exp1: portfolio-level deep-bear size cap. Continuous tanh ramp above ONSET;
         # shrink-only (caps at 1.0; never amplifies size). Leverage-coupled decision-
         # invariance NOT needed (cap is a dimensionless fraction).
         _port_bear_cap = 1.0 - PORT_DOWN_PERSIST_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
+        # Exp2: portfolio-level weak-trend size cap (complementary to Exp1). Fires in
+        # mixed (persistently weak multi-day trend, weak_persist~1) where Exp1 was byte-
+        # identical. Byte-identical when _port_weak_persist < ONSET (rally strong uptrend,
+        # bull, crash persistent downtrend all have |ret_vlong| solidly above 0.02 -> weak_persist low).
+        _port_weak_persist = (sum(_port_weak_persist_vals) / len(_port_weak_persist_vals)) if _port_weak_persist_vals else 0.0
+        _port_weak_cap = 1.0 - PORT_WEAK_PERSIST_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_weak_persist - PORT_WEAK_PERSIST_ONSET) / PORT_WEAK_PERSIST_SCALE)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1023,7 +1055,9 @@ class Strategy:
             # `size` -> both first-bar entry target AND scale-in targets smaller in
             # persistent deep-bear (crash). Byte-identical when _port_bear_cap=1.0 (bull,
             # rally, sideways where cross-symbol avg down_persist < ONSET).
-            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap
+            # Exp2: apply portfolio weak-trend size cap (composes with Exp1). Fires in
+            # mixed (weak_persist~1). Byte-identical when _port_weak_cap=1.0.
+            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
