@@ -265,6 +265,35 @@ PERSIST_WEAK_THRESH = 0.02
 PERSIST_WINDOW = 48
 PERSIST_BOOST_MAG = 0.14
 
+# Exp1 (architectural, indep): PORTFOLIO-LEVEL DEEP-BEAR POSITION-SIZE CAP.
+# Sanctioned UNTESTED lead from prior session-summary: "a future session might
+# find a crash DD reduction via a path NOT tried (e.g. portfolio-level position-
+# size cap in deep-bear, or a regime-level leverage reduction)". All prior
+# _down_persist experiments AMPLIFIED size (boost paths via persist_boost /
+# persist_sustain); NONE capped it portfolio-wide. All entry/exit/stop levers
+# proven inert on crash (absorbed by soft_max fusion dominance). This is a
+# PROACTIVE regime-level de-leverage on a PORTFOLIO signal distinct from:
+#   - _port_dd_atten (REACTIVE: fires only AFTER portfolio DD has drawn down;
+#     crash's high-DD bars drive _port_dd_frac up but the de-leverage kicks in
+#     post-damage, not preventing the loss accumulation that breaches 16% cliff)
+#   - _conc_shrink (per-side gross-notional concentration; not regime-aware)
+#   - per-symbol _down_persist (one symbol's signal; not portfolio-wide)
+# The cross-symbol AVERAGE _down_persist is the portfolio-level persistent-bear
+# signal: crash (multi-month bear across BTC/ETH/SOL together -> avg~0.9) vs
+# bull (transient pullback dips -> avg~0.3) vs sideways (oscillator -> avg~0.5).
+# High threshold (ONSET 0.70) so the cap fires ONLY in persistent deep-bear
+# (crash) sparing bull/rally/sideways. Continuous tanh ramp (no boundary);
+# leverage-coupled (decision-invariance under LEVERAGE_K). Applied to `size`
+# (the per-bar position magnitude base) so it shrinks BOTH first-bar entries AND
+# scale-in targets, hitting crash's total-loss-cliff root cause: smaller
+# position magnitudes -> smaller realized losses on the trend-aligned shorts
+# that lose -> lower total loss -> keeps crash under the 16% hard cutoff.
+# Distinct from admission gates (which bull's load-bearing voters depend on):
+# this is a size multiplier, NOT an admission filter.
+PORT_DOWN_PERSIST_ONSET = 0.70   # cross-symbol avg down_persist above which cap engages
+PORT_DOWN_PERSIST_SCALE = 0.10   # ramp width (0.70->0.80 saturates)
+PORT_DOWN_PERSIST_MAX_SHRINK = 0.35  # max portfolio size shrink at full saturation (-> 0.65x)
+
 
 class Strategy:
     def __init__(self):
@@ -502,6 +531,38 @@ class Strategy:
         else:
             _consensus_strength = 0.0
             _consensus_dir = 0.0
+
+        # Exp1 (architectural, indep): PORTFOLIO CROSS-SYMBOL DEEP-BEAR down_persist.
+        # Compute each symbol's _down_persist (fraction of last PERSIST_WINDOW bars where
+        # 96-bar ret_vlong<0) at the top level and average across symbols present. This is
+        # a PORTFOLIO-LEVEL persistent-bear signal: crash (multi-month bear across all 3
+        # symbols together -> avg~0.9) vs bull (transient pullback dips -> avg~0.3) vs
+        # sideways (oscillator -> avg~0.5). Used to gate a proactive portfolio-level size
+        # cap (applied to `size` below) that shrinks ALL position magnitudes in persistent
+        # deep-bear, the sanctioned UNTESTED lead: "portfolio-level position-size cap in
+        # deep-bear, or a regime-level leverage reduction". Distinct from per-symbol
+        # _down_persist (already in baseline for persist_boost gating). Computed once per
+        # bar from the SAME 96-bar OLS ret_vlong already used; falls to 0 if no symbols.
+        # IMPORTANT: does NOT mutate self._down_vlong_hist (the per-symbol loop below owns
+        # the append); the portfolio signal includes the current bar's boolean via the
+        # _p_rv < 0 check appended to the read-only history copy.
+        _port_down_persist_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > VLONG_WINDOW + 1]
+        _port_down_persist_vals = []
+        for _psym in _port_down_persist_syms:
+            _pc = bar_data[_psym].history["close"].values
+            _pn = min(VLONG_WINDOW, len(_pc) - 1)
+            _phl2 = (bar_data[_psym].history["high"].values[-_pn:] + bar_data[_psym].history["low"].values[-_pn:]) / 2.0
+            _p_rv = _fast_slope(np.log(_phl2)) * _pn
+            _pdvh = list(self._down_vlong_hist.get(_psym, []))
+            _pdvh.append(1 if _p_rv < 0.0 else 0)
+            if len(_pdvh) > PERSIST_WINDOW:
+                _pdvh = _pdvh[-PERSIST_WINDOW:]
+            _port_down_persist_vals.append((float(sum(_pdvh)) / len(_pdvh)) if _pdvh else 0.0)
+        _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
+        # Exp1: portfolio-level deep-bear size cap. Continuous tanh ramp above ONSET;
+        # shrink-only (caps at 1.0; never amplifies size). Leverage-coupled decision-
+        # invariance NOT needed (cap is a dimensionless fraction).
+        _port_bear_cap = 1.0 - PORT_DOWN_PERSIST_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -958,7 +1019,11 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult
+            # Exp1: apply portfolio deep-bear size cap (computed at top level). Shrinks
+            # `size` -> both first-bar entry target AND scale-in targets smaller in
+            # persistent deep-bear (crash). Byte-identical when _port_bear_cap=1.0 (bull,
+            # rally, sideways where cross-symbol avg down_persist < ONSET).
+            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
