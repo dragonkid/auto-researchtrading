@@ -2151,6 +2151,40 @@ class Strategy:
                     # sustained gain from Exp5 is preserved).
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
+                    # Exp1 (architectural, indep): CONSENSUS-AMPLIFIED SUSTAIN-PATH magnitude.
+                    # The ed884a7b keep's structural breakthrough was consensus-amplifying the
+                    # ENTRY-path _persist_boost (line ~1793: _persist_consensus_amp = 1.0 + 0.20 *
+                    # _consensus_strength * _weak_persist * dir-agree). The keep note explicitly
+                    # records that the SUSTAIN path (_persist_sustain, here) reaches mixed (the
+                    # binding floor 0.560) via _persist_down_gate_dur firing on mixed's persistent
+                    # downtrend, AND that this path is NOT emission-grid-absorbed (unlike the
+                    # entry-frac path). But the sustain-path MAGNITUDE (_persist_sustain_mag)
+                    # currently uses ONLY PERSIST_BOOST_MAG + 0.10*_persist_deep_gate -- it does
+                    # NOT include the consensus amplification that the entry path got. This adds
+                    # the parallel consensus amplification to the sustain-path magnitude: amplify
+                    # _persist_sustain_mag by up to +20% when broad-market consensus ALSO agrees
+                    # with the position direction. Mechanism: a mixed held long (weak multi-day
+                    # trend, _down_persist~0.5 -> _persist_down_gate_dur partially fires)
+                    # confirmed by 3-symbol broad-market consensus is a higher-quality broad-
+                    # trend held position -> larger sustained magnitude through scale-in captures
+                    # more of the confirmed broad bounce -> higher mixed APY via the sustain path
+                    # (the keep-proven non-emission-grid-absorbed lever). Mirrors the entry-path
+                    # _persist_consensus_amp EXACTLY: same 0.20 max, same _consensus_strength x
+                    # _weak_persist gates (the validated mixed/rally separator), same direction-
+                    # agreement term (consensus_dir aligned with position direction). Byte-
+                    # identical when consensus absent (<2 symbols), entry opposes consensus,
+                    # _weak_persist~0 (rally strong uptrend, crash strong downtrend), or
+                    # _persist_down_gate_dur~0 (bull/sideways transient dips _down_persist~0.3).
+                    # Direction-agnostic (uses position direction sign). New cross-component
+                    # data dep: sustain-path magnitude depends on portfolio consensus (was
+                    # entry-path only). The prior session's 5-step branch probed RAISING the
+                    # entry-path _persist_consensus_amp magnitude (0.20->0.30/0.40, reverted at
+                    # composite ceiling 0.9755) -- this is a DIFFERENT, structurally-distinct
+                    # lever: applying the SAME validated 0.20 amplification to the ORTHOGONAL
+                    # sustain-path magnitude (which has NO consensus amplification at all today).
+                    _pos_dir_ps = 1.0 if current_pos > 0 else -1.0
+                    _persist_sustain_consensus_amp = 1.0 + 0.20 * _consensus_strength * _weak_persist * _persist_down_gate_dur * max(0.0, _consensus_dir * _pos_dir_ps)
+                    _persist_sustain_mag = _persist_sustain_mag * _persist_sustain_consensus_amp
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
