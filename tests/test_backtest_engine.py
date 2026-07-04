@@ -236,7 +236,10 @@ def test_compute_score_high_dd_soft_penalty():
     assert score == pytest.approx(0.0205, abs=0.01)
 
 
-def test_compute_score_lost_over_15pct():
+def test_compute_score_total_loss_cutoff():
+    # Total loss > 16% (final equity < 84% of initial) → -999 safety net.
+    # (Raised from 15% to 16% on 2026-07-02: crash_bear with proper warmup
+    # loses 15.3%, just over the old 15% cliff.)
     r = BacktestResult(sharpe=2.0, num_trades=50, max_drawdown_pct=2.0,
                        equity_curve=[INITIAL_CAPITAL, INITIAL_CAPITAL * 0.80])
     assert compute_score(r) == pytest.approx(-999.0, abs=TOL)

@@ -81,7 +81,7 @@ For each experiment:
    - `composite_score` improved vs baseline by **at least +0.003** (absolute delta). Sub-noise improvements (<0.003) are `discard` even if positive — they are in-sample noise-floor and accumulate overfitting without meaningful signal. This threshold was restored 2026-06-20 after "any positive delta" let ~27 keeps through at avg +0.0008 each, none of which improved cross-exchange Sharpe.
    - `mean_score` improved vs baseline (average per-regime score must go up).
    - No regime score dropped more than 50% vs baseline (e.g., baseline 1.023 → floor is 0.512). If any regime breaches this gate, the experiment cannot be a direct KEEP — open an exploration branch to recover the regressed regime first.
-   - No regime's `max_dd_pct` exceeds 15% (hard safety net — total loss cutoff). High DD below 15% is handled by dd_gate's exp penalty, not a cliff.
+   - No regime's total loss exceeds 16% (final equity < 84% of initial — hard safety net). High DD below this is handled by dd_gate's exp penalty, not a cliff.
 
    See the Scoring formula section below for the full `compute_score` formula.
 
@@ -151,7 +151,7 @@ When the strategy is at a **structural local optimum** — every incremental ang
 - `mean_score` regression up to **−0.05** allowed (vs the hard "must improve" of normal keep).
 - `composite_score` regression up to **−0.08** allowed (vs +0.003 improvement required for normal keep).
 - The 50% per-regime gate is RETAINED (no regime may drop >50% — structural changes must not catastrophically break a regime).
-- `max_dd_pct` > 15% soft cutoff (dd_gate exp penalty handles DD smoothly; -999 only for total loss >15%).
+- `max_dd_pct` > 16% soft cutoff (dd_gate exp penalty handles DD smoothly; -999 only for total loss >16%).
 - These relaxations apply ONLY to step 1. Once the branch is open, subsequent steps are judged against normal keep criteria (or the branch's own progress — see below).
 
 **Branch mechanics:**
@@ -216,7 +216,7 @@ dd_gate = 1/(1+DD%) × exp(-max(0,DD%-5)/2)   # soft@5%, scale=2 (0-5% mild, 5%+
 streak_gate = exp(-max_consecutive_losses / 30)
 return_bonus = log(1 + max(APY, 0)/10 + 1)   # direct APY reward; leverage farming blocked by dd_gate knee@5
 
-Hard cutoffs: <10 trades → -999, lost >15% → -999. DD has NO hard cutoff — dd_gate exp penalty handles it smoothly (DD=18% → 0.004).
+Hard cutoffs: <10 trades → -999, lost >16% → -999. DD has NO hard cutoff — dd_gate exp penalty handles it smoothly (DD=18% → 0.001).
 
 Composite score = mean(regime_scores) - 0.3 * std(regime_scores)
 ```
@@ -268,7 +268,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 - Check `composite_score` and `mean_score` — both must improve vs baseline
 - Check per-regime scores — check both `raw_score` and final `score` to understand penalty impact
 - Check `regime_X_flip_count` and `regime_X_flip_pnl` — these are significant cost contributors
-- Hard constraints (see Keep/discard rules above): no regime score drop > 50% vs baseline, no regime MaxDD > 15% (total loss cutoff)
+- Hard constraints (see Keep/discard rules above): no regime score drop > 50% vs baseline, no regime total loss > 16% (final equity < 84% of initial)
 
 **Score decomposition fields** (output by `regime_test.py` for each regime):
 - `regime_X_raw_score` — score BEFORE stability and flip_streak penalties

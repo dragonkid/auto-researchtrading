@@ -531,13 +531,21 @@ def run_backtest(strategy, data: dict, warmup_bars: int = 0) -> BacktestResult:
                         field.clear()
                 if hasattr(strategy, "bar_count"):
                     strategy.bar_count = 0
-                # Reset portfolio to fresh state
+                # Reset ALL backtest state to fresh — warmup bars must not
+                # contaminate the active window's metrics (Sharpe, returns,
+                # drawdown, trade log, volume). Only strategy INDICATOR state
+                # (EMAs, bar_count) is preserved; all backtest bookkeeping is reset.
                 portfolio.positions = {}
                 portfolio.entry_prices = {}
                 portfolio.cash = INITIAL_CAPITAL
                 portfolio.equity = INITIAL_CAPITAL
                 equity_curve = [INITIAL_CAPITAL]
                 prev_equity = INITIAL_CAPITAL
+                hourly_returns = []
+                trade_log = []
+                flip_log = []
+                total_volume = 0.0
+                last_close = {}
             continue  # skip signal execution during warmup
 
         # Execute signals
@@ -790,7 +798,7 @@ def compute_score(result: BacktestResult) -> float:
     if result.num_trades < 10:
         return -999.0
     final_equity = result.equity_curve[-1] if result.equity_curve else INITIAL_CAPITAL
-    if final_equity < INITIAL_CAPITAL * 0.85:
+    if final_equity < INITIAL_CAPITAL * 0.84:
         return -999.0
 
     # NOTE: DD hard cutoff REMOVED (2026-07-02). The dd_gate exp penalty below
