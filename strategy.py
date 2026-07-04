@@ -756,6 +756,28 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
             ]
+            # BRANCH step1: BEAR-SIDE-ONLY range/close efficiency voter. Exp1 ablation
+            # showed the 8th voter was HURTING bull under v6 (+0.265 Sh bull gain when
+            # removed) but its loss slightly worsened crash past the 16pct safety cliff
+            # (crash is bear-side-dominated; the voter's directionless-efficiency signal
+            # signed by net direction was providing a marginal bear-side direction cue).
+            # Re-add the voter ONLY on the BEAR side: a bear entry confirmed by efficient
+            # price continuation (|close-to-close|/|intrabar-range| > 1, signed by net
+            # DOWN direction) is a higher-quality crash short -> restores crash's bear-side
+            # admission without re-introducing the bull-hurting directionless-efficiency
+            # noise on the long side. Bull path stays at 7 voters (keeps the +0.265 gain);
+            # bear path gets an 8th contribution added directly to _bear_strong (weight
+            # 0.55, the original 8th-voter weight, matching the ablated scale).
+            _rc_n = 12
+            _rc_high = bd.history["high"].values[-_rc_n:]
+            _rc_low = bd.history["low"].values[-_rc_n:]
+            _rc_intrabar = float(np.mean(_rc_high - _rc_low))
+            _rc_interbar = float(np.mean(np.abs(np.diff(closes[-_rc_n - 1:]))))
+            _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
+            _rc_bear_dir = 1.0 if closes[-1] < closes[-_rc_n] else 0.0  # 1 only when net DOWN
+            _rc_bear_signal = (_rc_eff - 1.0) / 0.5 * _rc_bear_dir  # >0 only on efficient downtrends
+            _rc_bear_conf = 0.1 + 0.8 * 0.5 * (1.0 + np.tanh(_rc_bear_signal))  # [0.1, 0.9]
+            _rc_bear_weight = 0.55  # original 8th-voter weight
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
@@ -825,7 +847,9 @@ class Strategy:
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # BRANCH step1: bear-side-only 8th efficiency voter contribution added to
+            # _bear_strong (bull path unchanged -- keeps Exp1's +0.265 bull gain).
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)) + max(0.0, (_rc_bear_conf - 0.5) ** 5 * 97.66) * _rc_bear_weight
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
