@@ -68,11 +68,20 @@ def annualize_return(total_return_pct: float, hours: int) -> float:
 def _run_regime_worker(args: tuple) -> dict:
     """Worker function for multiprocessing. Must be top-level for pickling."""
     from strategy import Strategy
+    from prepare import detect_warmup_bars
+    import pandas as pd
 
     name, start, end, desc = args
 
+    # Auto-detect warmup bars from strategy.py (longest lookback window).
+    # This ensures indicators are fully populated before the active window.
+    warmup_bars = detect_warmup_bars()
+
+    # Load data with extra bars before regime start for warmup.
+    # load_data uses date strings; we shift start back by warmup_bars hours.
+    warmup_start = (pd.Timestamp(start, tz="UTC") - pd.Timedelta(hours=warmup_bars)).strftime("%Y-%m-%d")
     strategy = Strategy()
-    data = load_data(start=start, end=end)
+    data = load_data(start=warmup_start, end=end)
 
     total_bars = sum(len(df) for df in data.values())
     if total_bars == 0:
@@ -81,7 +90,7 @@ def _run_regime_worker(args: tuple) -> dict:
     first_df = next(iter(data.values()))
     regime_hours = len(first_df)
 
-    result = run_backtest(strategy, data)
+    result = run_backtest(strategy, data, warmup_bars=warmup_bars)
     base_score = compute_score(result)
     annual_return = annualize_return(result.total_return_pct, regime_hours)
 

@@ -338,10 +338,56 @@ def load_data(split: str = "val", start: str | None = None, end: str | None = No
 # Backtesting engine (DO NOT CHANGE)
 # ---------------------------------------------------------------------------
 
-def run_backtest(strategy, data: dict) -> BacktestResult:
+def detect_warmup_bars(strategy_path: str = None) -> int:
+    """Auto-detect the longest lookback window from strategy.py.
+
+    Scans for UPPER_CASE integer constants (window lengths), VAR+N slice
+    patterns like closes[-(EMA_SLOW+10):], hardcoded slices like closes[-200:],
+    and min(N, ...) adaptive windows. Returns the effective longest lookback,
+    with a floor of LOOKBACK_BARS (500) since that's the history buffer size.
+    """
+    import ast, re
+    if strategy_path is None:
+        strategy_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "strategy.py")
+    try:
+        with open(strategy_path) as f:
+            code = f.read()
+        tree = ast.parse(code)
+        consts = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and re.match(r'^[A-Z][A-Z_0-9]*$', target.id):
+                        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, int):
+                            if node.value.value > 10:
+                                consts[target.id] = node.value.value
+        longest = max(consts.values()) if consts else 0
+        # VAR+N slice patterns
+        for var, n in re.findall(r'\[-\((\w+)\s*\+\s*(\d+)\)', code):
+            if var in consts:
+                longest = max(longest, consts[var] + int(n))
+        # Hardcoded slices like closes[-200:]
+        for s in re.findall(r'\[-(\d+):', code):
+            longest = max(longest, int(s))
+        # min(N, ...) adaptive windows like _long_n = min(200, ...)
+        for m in re.findall(r'min\((\d+),', code):
+            longest = max(longest, int(m))
+        return max(longest, LOOKBACK_BARS)
+    except Exception:
+        return LOOKBACK_BARS
+
+
+def run_backtest(strategy, data: dict, warmup_bars: int = 0) -> BacktestResult:
     """
     Run strategy over data. Returns BacktestResult with full metrics.
     Enforces TIME_BUDGET.
+
+    If warmup_bars > 0, the first warmup_bars bars are replayed through the
+    strategy to fill indicator buffers (on_bar is called but signals are
+    discarded — no positions opened). After warmup, position state is cleared
+    (entry_prices, peak_pnl, bar_count, etc.) so the strategy enters the
+    active window with full indicators but no positions. This mirrors the
+    production system's warmup (data/warmup.py).
     """
     t_start = time.time()
 
@@ -389,6 +435,15 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     # while still counting its notional, producing a spurious equity swing.
     last_close: dict = {}
     truncated = False  # set True if TIME_BUDGET forces an early stop
+
+    # Warmup: replay the first warmup_bars bars to fill indicator buffers.
+    # Signals are discarded (no positions opened). After warmup, clear position
+    # state so the strategy enters the active window fresh (like production warmup).
+    _warmup_remaining = warmup_bars
+    _WARMUP_POSITION_FIELDS = frozenset({
+        "entry_prices", "peak_pnl", "entry_bar", "exit_bar",
+        "_smoothed_pnl", "_from_flip",
+    })
 
     for ts in timestamps:
         elapsed = time.time() - t_start
@@ -458,6 +513,27 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
             signals = strategy.on_bar(bar_data, portfolio)
         except Exception:
             signals = []
+
+        # During warmup: discard signals, don't execute trades.
+        # After the last warmup bar: clear position state (fresh start).
+        if _warmup_remaining > 0:
+            _warmup_remaining -= 1
+            if _warmup_remaining == 0:
+                # Clear position state — warmup didn't open real positions
+                for field_name in _WARMUP_POSITION_FIELDS:
+                    field = getattr(strategy, field_name, None)
+                    if isinstance(field, dict):
+                        field.clear()
+                if hasattr(strategy, "bar_count"):
+                    strategy.bar_count = 0
+                # Reset portfolio to fresh state
+                portfolio.positions = {}
+                portfolio.entry_prices = {}
+                portfolio.cash = INITIAL_CAPITAL
+                portfolio.equity = INITIAL_CAPITAL
+                equity_curve = [INITIAL_CAPITAL]
+                prev_equity = INITIAL_CAPITAL
+            continue  # skip signal execution during warmup
 
         # Execute signals
         for sig in (signals or []):

@@ -166,15 +166,17 @@ _W_DATA = None
 _W_CLEAN_EQ = None
 _W_CLEAN_RET = None
 _W_CLEAN_VOL = None
+_W_WARMUP_BARS = 0
 
 
-def _stability_init(data, clean_eq, clean_ret, clean_vol):
+def _stability_init(data, clean_eq, clean_ret, clean_vol, warmup_bars=0):
     """ProcessPoolExecutor initializer: stash shared, read-only trial inputs."""
-    global _W_DATA, _W_CLEAN_EQ, _W_CLEAN_RET, _W_CLEAN_VOL
+    global _W_DATA, _W_CLEAN_EQ, _W_CLEAN_RET, _W_CLEAN_VOL, _W_WARMUP_BARS
     _W_DATA = data
     _W_CLEAN_EQ = clean_eq
     _W_CLEAN_RET = clean_ret
     _W_CLEAN_VOL = clean_vol
+    _W_WARMUP_BARS = warmup_bars
 
 
 def _stability_trial(work: tuple) -> tuple:
@@ -191,7 +193,7 @@ def _stability_trial(work: tuple) -> tuple:
     seed, trial = work
     rng = np.random.default_rng(seed + trial)
     perturbed_data = _perturb_data(_W_DATA, rng, trial)
-    pert_result = run_backtest(Strategy(), perturbed_data)
+    pert_result = run_backtest(Strategy(), perturbed_data, warmup_bars=_W_WARMUP_BARS)
     pert_eq = np.array(pert_result.equity_curve)
 
     if len(pert_eq) < 0.8 * len(_W_CLEAN_EQ):
@@ -239,7 +241,11 @@ def compute_signal_stability(data: dict, clean_result: BacktestResult) -> float:
     # Work units: every (seed, trial) pair across the fixed shared seed set.
     work = [(seed, trial) for seed in FIXED_STABILITY_SEEDS for trial in range(N_TRIALS)]
 
-    init_args = (data, clean_eq, clean_ret, clean_vol)
+    # Detect warmup bars once (avoids re-reading strategy.py per trial).
+    from prepare import detect_warmup_bars
+    warmup_bars = detect_warmup_bars()
+
+    init_args = (data, clean_eq, clean_ret, clean_vol, warmup_bars)
     raw = None
     if STABILITY_WORKERS > 1:
         try:
