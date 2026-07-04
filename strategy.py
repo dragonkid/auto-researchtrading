@@ -1105,7 +1105,22 @@ class Strategy:
                 # the saturation knee) is preserved. New mechanism: near-binary saturated
                 # ct-shrink profile (vs step-3's mid-slope linear region).
                 _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn, ~0 bursting
-                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
+                # BRANCH step2: DEPTH-MODULATED multi-day-downtrend bull-entry shrink. Exp1
+                # ablation improved bull +0.265 Sh but crash trips the 16pct total-loss cliff
+                # (total loss ~16.07pct, just past 16pct). Crash's losing long entries (dead-
+                # cat-bounce longs in a sustained downtrend) are the bleed. The existing
+                # _bull_ct_vlong shrinks them 0.40x uniformly for any ret_vlong<0 (fast-
+                # saturating /0.01 -> ~1 for any mild downtrend). Add a DEPTH ramp: shrink
+                # MORE when ret_vlong is DEEPLY negative (sustained bear regime like crash,
+                # ret_vlong ~ -0.04..-0.08) -> up to 0.65x shrink at depth. Mild downtrend
+                # (ret_vlong ~ -0.01) keeps the 0.40x baseline. bull_2021 (ret_vlong ~ flat/
+                # positive in uptrend) -> gate ~0 -> byte-identical, preserves Exp1 +0.265
+                # bull gain. Continuous tanh on (|ret_vlong|-0.01)/0.04 for the depth ramp
+                # (no boundary; saturates by ret_vlong ~ -0.05). New cross-timescale data
+                # dep: bull ct-vlong shrink magnitude depends on multi-day downtrend DEPTH.
+                _bear_trend_depth = max(0.0, np.tanh((-ret_vlong - 0.01) / 0.04))  # 0 mild, ~1 deep bear
+                _bull_ct_vlong_mag = 0.40 + 0.25 * _bear_trend_depth  # 0.40 mild -> 0.65 deep
+                _bull_ct_vlong = 1.0 - _bull_ct_vlong_mag * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
                 _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend
                 # Exp3 (architectural): COUNTER-TREND-specific loss-streak size shrink.
                 # Distinct from Exp1's blanket escalation (which hurt bull by shrinking
