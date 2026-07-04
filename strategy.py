@@ -2503,35 +2503,6 @@ class Strategy:
                 # 12b6bc63/Exp4/Exp5 byte-identical simplification precedent. (_scale_in_winning
                 # at line ~2440 is a SEPARATE variable, unaffected.)
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)  # heavier in loss
-                # Exp2 (architectural, indep): PORTFOLIO-DD amplification of the LOSS-SIDE
-                # slope-against exit weight. NEW cross-component data dep: the loss-side
-                # exit-pressure weight (_w_slope, heavier-in-loss via 1+0.15*max(0,-_pnl_scale))
-                # is AMPLIFIED further when the PORTFOLIO is in drawdown. Mechanism: a
-                # portfolio DD (multiple positions losing across symbols simultaneously =
-                # correlated regime hit) signals an adverse regime where losers are likely
-                # to EXTEND further (momentum against the book) -> cut them FASTER (the
-                # slope-against pressure carries more weight in the MAX fusion -> exits
-                # sooner) -> smaller realized losses -> higher Sharpe in the negative-Sharpe
-                # regimes (bull PF 0.7 despite 71.8pct WR = large losers; bull DD 13pct is
-                # the worst, crash DD 17.85pct past 5pct knee). DISTINCT from the existing
-                # PORTFOLIO-DD exit mechanisms: PORT_DD_GIVEBACK_TIGHTEN (profit-side,
-                # harvests WINNERS faster) and PORT_DD_TP_HARVEST_RELAX (profit-side,
-                # harvests trend winners) -- BOTH operate on the PROFIT side (_pp_pressure /
-                # _tp_scale). This is the LOSS side: the slope-against weight on LOSING
-                # positions. Uses the SAME validated _port_dd_atten signal as the entry
-                # circuit-breaker (top-level, asymmetric-EMA-smoothed for noise-robustness,
-                # leverage-coupled scale 0.008*LEVERAGE_K). The amplification factor is
-                # (1 - _port_dd_atten) = the tanh DD-strength term (0 at peak, ~1 deep DD).
-                # Loss-side only (gated on max(0,-_pnl_scale) -> only fires for losers;
-                # trend-aligned winners byte-identical since _w_slope=1.0 for them
-                # regardless of the amplification, max(0,-_pnl_scale)=0). Byte-identical at
-                # portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 -> amplification 0). Smooth
-                # tanh on the DD fraction (no new boundary); leverage-coupled scale (same
-                # decision-invariance discipline as the giveback/tp-harvest DD mechanisms).
-                # Direction-agnostic general principle (no regime label): a losing position
-                # during a portfolio drawdown is at correlated-regime-hit risk -> cut faster.
-                _w_slope_dd_amp = 1.0 + 0.20 * max(0.0, -_pnl_scale) * (1.0 - _port_dd_atten)
-                _w_slope = _w_slope * _w_slope_dd_amp
                 # Architectural: vol-conditioned profit-side _w_pp.
                 # Low vol (sideways/rally): _w_pp simplified (no extra boost).
                 #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
