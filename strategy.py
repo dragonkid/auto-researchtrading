@@ -562,7 +562,25 @@ class Strategy:
         # Exp1: portfolio-level deep-bear size cap. Continuous tanh ramp above ONSET;
         # shrink-only (caps at 1.0; never amplifies size). Leverage-coupled decision-
         # invariance NOT needed (cap is a dimensionless fraction).
-        _port_bear_cap = 1.0 - PORT_DOWN_PERSIST_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
+        _port_bear_cap_raw = 1.0 - PORT_DOWN_PERSIST_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
+        # Exp3 (architectural, indep): GATE the bear cap on portfolio DD-headroom. Exp1
+        # fired the cap during rally pullback stretches (cross-symbol down_persist briefly
+        # >0.70) -> rally Sharpe regressed 0.67->0.42 (the cap shrunk pullback entries that
+        # would have recovered -> missed recovery upside). Gate the cap to fire ONLY when
+        # the portfolio is drawing down from peak (DD-headroom unavailable): rally's
+        # pullback stretches that DROVE the portfolio DD get the cap (good — shrink entries
+        # that add to DD); rally's peak-equity pullbacks (no portfolio DD) are spared
+        # (preserving Sharpe). The DD-headroom gate is the validated separator from the
+        # f6e19151 keep (the prior session's entry-frac boost was DD-headroom-gated to
+        # spare rally). NEW cross-component data dep: bear cap depends on (persistent-bear
+        # x portfolio DD-headroom) jointly. Continuous tanh on the EMA-smoothed DD-fraction
+        # (same _port_dd_frac signal used by _port_dd_atten, computed at line ~450 above);
+        # the gate ramps the cap from 0 (at peak equity) to full (at deep DD). Byte-
+        # identical at peak equity (_port_dd_frac=0 -> gate 0 -> cap 0 -> _port_bear_cap=1.0)
+        # -> rally at peak gets the baseline (Sharpe preserved); sideways/crash during DD
+        # episodes get the full cap (losses cut).
+        _port_bear_dd_gate = max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K))))
+        _port_bear_cap = 1.0 - (1.0 - _port_bear_cap_raw) * _port_bear_dd_gate
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
