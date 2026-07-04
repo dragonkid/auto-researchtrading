@@ -2208,7 +2208,20 @@ class Strategy:
                 _atr_pct = np.mean(_tr) / mid
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
-                _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # BRANCH step5: DEEP-BEAR stop tightening. Prior session found trend-aligned
+                # stop WIDENING byte-identical (soft_max fires before the stop). The opposite
+                # direction -- TIGHTEN the stop in deep-bear regimes (ret_vlong deeply
+                # negative, crash) -- makes the stop bind EARLIER on crash losers, cutting
+                # their magnitude before they reach the full -2.4pct catastrophic stop. The
+                # stop is a HARD exit (bypasses soft_max fusion), so unlike the entry/exit-
+                # pressure levers that were absorbed, this directly caps the per-trade loss.
+                # Tighten the upper clamp: in deep bear, reduce the stop ceiling from 0.035
+                # toward 0.022 so the stop sits closer to entry. bull_2021 (ret_vlong>0) ->
+                # _bear_stop_tighten ~0 -> byte-identical, preserves Exp1 +0.265 bull gain.
+                # sideways (ret_vlong ~ flat) -> ~0. Continuous tanh, no boundary.
+                _bear_stop_tighten = max(0.0, np.tanh((-ret_vlong - 0.02) / 0.02))  # 0 mild, ~1 deep bear
+                _stop_ceil = 0.035 - 0.013 * _bear_stop_tighten  # 0.035 mild -> 0.022 deep bear
+                _stop_abs = max(0.018, min(_stop_ceil, 2.5 * _atr_pct))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
