@@ -293,6 +293,19 @@ PERSIST_BOOST_MAG = 0.14
 PORT_DOWN_PERSIST_ONSET = 0.70   # cross-symbol avg down_persist above which cap engages
 PORT_DOWN_PERSIST_SCALE = 0.10   # ramp width (0.70->0.80 saturates)
 PORT_DOWN_PERSIST_MAX_SHRINK = 0.35  # max portfolio size shrink at full saturation (-> 0.65x)
+# Exp4 (architectural, indep): PORTFOLIO DEEP-BEAR SCALE-IN PACE SLOWDOWN. Complementary
+# to Exp1's size cap: Exp1 shrinks the position MAGNITUDE base (`size`); this slows the
+# scale-in PACE (more bars to reach full size) in persistent deep-bear. Different control
+# point (timing, not magnitude) -> structurally distinct. In crash, Exp1's size cap was
+# absorbed (positions already admission-gated small); slowing scale-in pace hits a
+# DIFFERENT axis: crash's trend-aligned shorts that survive scale-in reach full size
+# SLOWER -> smaller position during the early hold when adverse moves are most likely ->
+# smaller realized losses on the trend-aligned shorts that lose -> lower crash total loss
+# (the 16% cliff blocker). Max +1.5 bars slower at full saturation (ENTRY_FULL_BARS 3 ->
+# 4.5 in deep bear). Gated on the SAME cross-symbol avg _down_persist signal as Exp1
+# (leverages the validated persistent-bear separator). Byte-identical when down_persist <
+# ONSET (bull/rally/sideways at peak). Applied to _entry_full_bars_dyn.
+PORT_DOWN_PERSIST_PACE_MAX = 1.5  # max bars added to scale-in window at full saturation
 
 
 class Strategy:
@@ -1984,6 +1997,13 @@ class Strategy:
                 # to the scale-in TIMING, the one lever prior sessions found able to move
                 # stability.
                 _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
+                # Exp4: portfolio deep-bear scale-in pace slowdown. Slows scale-in (more
+                # bars to full size) in persistent deep-bear, hitting a DIFFERENT axis
+                # than Exp1's size cap (timing vs magnitude). Crash's trend-aligned shorts
+                # reach full size slower -> smaller position during early hold when adverse
+                # moves are most likely -> smaller realized losses -> lower crash total loss.
+                # Byte-identical when _port_down_persist < ONSET (cap below onset).
+                _entry_full_bars_dyn = _entry_full_bars_dyn + PORT_DOWN_PERSIST_PACE_MAX * max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
                 # Architectural (Exp3 this session): trend-gated realized-PnL scale-in
                 # ACCELERATION for early winners. Prior session removed a live-CONVICTION
                 # scale-in accelerator (it made pace depend on per-bar voter margin =
