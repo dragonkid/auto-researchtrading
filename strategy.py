@@ -318,6 +318,19 @@ PORT_DOWN_PERSIST_MAX_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.8
 PORT_WEAK_PERSIST_MAX_ONSET = 0.85   # high onset (single symbol fires more often)
 PORT_WEAK_PERSIST_MAX_SCALE = 0.10
 PORT_WEAK_PERSIST_MAX_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
+# Exp8 (architectural, indep): MAX-AGGREGATION portfolio DEEP-BEAR MAGNITUDE cap. Exp1/Exp5
+# used _down_persist (DURATION count of ret_vlong<0 bars); this uses the raw 96-bar
+# ret_vlong MAGNITUDE (slope*n) directly, max-aggregated across symbols. Fires when ANY
+# ONE symbol is in a DEEP multi-day downtrend (ret_vlong strongly negative). Different
+# signal: down_persist saturates (any ret_vlong<0 counts as 1, regardless of magnitude);
+# the raw magnitude distinguishes DEEP bear (crash -0.04) from SHALLOW bear (mixed -0.01).
+# Catches crash's deep trending down-legs (where ret_vlong is strongly negative) that the
+# down_persist duration-count (which saturates for ANY negativity) cannot distinguish
+# from mixed's shallow negativity. Composes with Exp1/Exp5/Exp6 caps (all shrink-only).
+# Byte-identical when no symbol has ret_vlong < -ONSET (bull/rally/sideways uptrend/flat).
+PORT_DEEP_BEAR_ONSET = 0.03   # |ret_vlong| threshold (deep bear = ret_vlong < -0.03)
+PORT_DEEP_BEAR_SCALE = 0.02
+PORT_DEEP_BEAR_MAX_SHRINK = 0.25  # max shrink at full saturation (-> 0.75x)
 
 
 class Strategy:
@@ -574,11 +587,13 @@ class Strategy:
         _port_down_persist_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > VLONG_WINDOW + 1]
         _port_down_persist_vals = []
         _port_weak_persist_vals = []  # Exp6: per-symbol weak_persist for max-aggregation
+        _port_rv_vals = []  # Exp8: per-symbol raw ret_vlong for max-aggregation deep-bear cap
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
             _phl2 = (bar_data[_psym].history["high"].values[-_pn:] + bar_data[_psym].history["low"].values[-_pn:]) / 2.0
             _p_rv = _fast_slope(np.log(_phl2)) * _pn
+            _port_rv_vals.append(_p_rv)
             _pdvh = list(self._down_vlong_hist.get(_psym, []))
             _pdvh.append(1 if _p_rv < 0.0 else 0)
             if len(_pdvh) > PERSIST_WINDOW:
@@ -610,6 +625,15 @@ class Strategy:
         # exceeds MAX_ONSET (rally/bull/crash all symbols have |ret_vlong| solidly > 0.02).
         _port_weak_persist_max = max(_port_weak_persist_vals) if _port_weak_persist_vals else 0.0
         _port_weak_cap = 1.0 - PORT_WEAK_PERSIST_MAX_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_weak_persist_max - PORT_WEAK_PERSIST_MAX_ONSET) / PORT_WEAK_PERSIST_MAX_SCALE)))
+        # Exp8: MAX-aggregation deep-bear MAGNITUDE cap (composes with Exp1/Exp5/Exp6). Fires
+        # when ANY ONE symbol has ret_vlong < -ONSET (deep multi-day downtrend magnitude).
+        # Different signal from down_persist (duration count): uses raw ret_vlong magnitude,
+        # distinguishing DEEP bear (crash -0.04) from SHALLOW bear (mixed -0.01). Catches
+        # crash's deep trending down-legs. Byte-identical when no symbol has ret_vlong < -ONSET.
+        _port_rv_min = min(_port_rv_vals) if _port_rv_vals else 0.0  # most-negative ret_vlong
+        _port_deep_bear_mag = max(0.0, -_port_rv_min)  # magnitude of the deepest bear symbol
+        _port_deep_bear_cap = 1.0 - PORT_DEEP_BEAR_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ONSET) / PORT_DEEP_BEAR_SCALE)))
+        _port_weak_cap = _port_weak_cap * _port_deep_bear_cap
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
