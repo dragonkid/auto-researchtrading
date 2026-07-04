@@ -81,7 +81,7 @@ For each experiment:
    - `composite_score` improved vs baseline by **at least +0.003** (absolute delta). Sub-noise improvements (<0.003) are `discard` even if positive — they are in-sample noise-floor and accumulate overfitting without meaningful signal. This threshold was restored 2026-06-20 after "any positive delta" let ~27 keeps through at avg +0.0008 each, none of which improved cross-exchange Sharpe.
    - `mean_score` improved vs baseline (average per-regime score must go up).
    - No regime score dropped more than 50% vs baseline (e.g., baseline 1.023 → floor is 0.512). If any regime breaches this gate, the experiment cannot be a direct KEEP — open an exploration branch to recover the regressed regime first.
-   - No regime's `max_dd_pct` exceeds 10% (hard safety net).
+   - No regime's `max_dd_pct` exceeds 11% (hard safety net).
 
    See the Scoring formula section below for the full `compute_score` formula.
 
@@ -151,7 +151,7 @@ When the strategy is at a **structural local optimum** — every incremental ang
 - `mean_score` regression up to **−0.05** allowed (vs the hard "must improve" of normal keep).
 - `composite_score` regression up to **−0.08** allowed (vs +0.003 improvement required for normal keep).
 - The 50% per-regime gate is RETAINED (no regime may drop >50% — structural changes must not catastrophically break a regime).
-- `max_dd_pct` > 10% hard cutoff RETAINED (safety net).
+- `max_dd_pct` > 11% hard cutoff (safety net; raised from 10% on 2026-07-02 to accommodate profit-giveback DD from proper warmup).
 - These relaxations apply ONLY to step 1. Once the branch is open, subsequent steps are judged against normal keep criteria (or the branch's own progress — see below).
 
 **Branch mechanics:**
@@ -216,7 +216,7 @@ dd_gate = 1/(1+DD%) × exp(-max(0,DD%-5)/2)   # soft@5%, scale=2 (0-5% mild, 5%+
 streak_gate = exp(-max_consecutive_losses / 30)
 return_bonus = log(1 + max(APY, 0)/10 + 1)   # direct APY reward; leverage farming blocked by dd_gate knee@5
 
-Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >15% → -999
+Hard cutoffs: <10 trades → -999, >11% drawdown → -999, lost >15% → -999
 
 Composite score = mean(regime_scores) - 0.3 * std(regime_scores)
 ```
@@ -227,7 +227,7 @@ Composite score = mean(regime_scores) - 0.3 * std(regime_scores)
 
 **return_reward REPLACED by return_bonus (2026-06-24):** the prior `log(1+min(calmar,10)/10+1)` (calmar = APY/MaxDD) double-rewarded DD reduction — a DD drop raised BOTH dd_gate AND calmar (APY/DD), so the agent optimised "harvest to cut DD → calmar up" rather than "improve signal → return up". Measured: under the old scoring, -1% DD was 3.8-4.6x more score-efficient than +0.1 Sharpe on bull/sideways, and the 99a369a1 keep's +0.017 composite gain was 68-93% DD-driven (APY actually dropped). The new `return_bonus = log(1 + max(APY,0)/10 + 1) = log(2 + APY/10)` rewards absolute annualized return directly. Under realistic improvement margins (+0.2 Sharpe vs -0.5% DD vs +2% APY), Sharpe gain now dominates DD reduction 11-36x on 4/5 regimes — the agent is incentivised to pursue signal quality and return, not DD shaving. Leverage farming (raise LEVERAGE_K → APY and DD scale 1:1) is blocked by the dd_gate knee at 5% (see below): any leverage increase pushes DD past 5% → exp penalty bites harder than the linear APY bonus gains (verified: 1.1x leverage already drops composite). Uses APY not raw total_return because regime windows differ in length (bull 273d, crash 426d, sideways 365d, rally 366d).
 
-**dd_gate soft_start lowered 8→5 (2026-06-24):** the prior knee at 8% left a leverage-farming sweet spot — rally baseline DD=5.16% could scale to 7.74% (LEVERAGE_K 6) before the exp penalty bit, so return_bonus(APY) gains outweighed dd_gate losses. Lowering the knee to 5% (where real cluster-regime DDs sit: rally 5.16%, others 2-3%) makes any leverage increase bite immediately. Curve: DD=3% → 0.97, DD=5% → 0.95, DD=6% → 0.74, DD=8% → 0.55, DD=10% → 0.33. Hard cutoff at 10% unchanged. This is the leverage-farming blocker that replaces the old calmar invariance mechanism (calmar is gone, so dd_gate alone must stop farming — the knee@5 does it).
+**dd_gate soft_start lowered 8→5 (2026-06-24):** the prior knee at 8% left a leverage-farming sweet spot — rally baseline DD=5.16% could scale to 7.74% (LEVERAGE_K 6) before the exp penalty bit, so return_bonus(APY) gains outweighed dd_gate losses. Lowering the knee to 5% (where real cluster-regime DDs sit: rally 5.16%, others 2-3%) makes any leverage increase bite immediately. Curve: DD=3% → 0.97, DD=5% → 0.95, DD=6% → 0.74, DD=8% → 0.55, DD=10% → 0.33. Hard cutoff at 11% (raised from 10% on 2026-07-02). This is the leverage-farming blocker that replaces the old calmar invariance mechanism (calmar is gone, so dd_gate alone must stop farming — the knee@5 does it).
 
 Note: trades incur real fees (5bps taker + 1bp slippage) in the backtest, so transaction cost is already reflected in Sharpe. There is no separate turnover penalty — if higher trade frequency raises post-fee Sharpe, that is genuine alpha and is rewarded. `sample_factor` only enforces a minimum sample size (50 trades); it does not penalize high frequency.
 
@@ -268,7 +268,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 - Check `composite_score` and `mean_score` — both must improve vs baseline
 - Check per-regime scores — check both `raw_score` and final `score` to understand penalty impact
 - Check `regime_X_flip_count` and `regime_X_flip_pnl` — these are significant cost contributors
-- Hard constraints (see Keep/discard rules above): no regime score drop > 50% vs baseline, no regime MaxDD > 10%
+- Hard constraints (see Keep/discard rules above): no regime score drop > 50% vs baseline, no regime MaxDD > 11%
 
 **Score decomposition fields** (output by `regime_test.py` for each regime):
 - `regime_X_raw_score` — score BEFORE stability and flip_streak penalties

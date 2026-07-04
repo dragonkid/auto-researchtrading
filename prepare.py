@@ -708,7 +708,7 @@ def compute_score(result: BacktestResult) -> float:
         return -999.0
     if result.num_trades < 10:
         return -999.0
-    if result.max_drawdown_pct > 10.0:
+    if result.max_drawdown_pct > 11.0:
         return -999.0
     final_equity = result.equity_curve[-1] if result.equity_curve else INITIAL_CAPITAL
     if final_equity < INITIAL_CAPITAL * 0.85:
@@ -740,7 +740,10 @@ def compute_score(result: BacktestResult) -> float:
     # before the exp penalty bit, so return_bonus(APY) gains outweighed dd_gate
     # losses. Lowering the knee to 5% — where real cluster-regime DDs sit —
     # makes any leverage increase bite immediately, blocking farming without a
-    # hard leverage cap. Hard cutoff at 10% unchanged (safety net).
+    # hard leverage cap. Hard cutoff at 11% (safety net; raised from 10% on
+    # 2026-07-02 to accommodate profit-giveback DD from proper warmup — the
+    # 10% cliff gave -999 to strategies that were profitable but gave back
+    # early gains, blocking the agent from seeing any gradient).
     # DD=3% → 0.97, DD=5% → 0.95, DD=6% → 0.74, DD=8% → 0.55, DD=10% → 0.33
     dd_gate = 1.0 / (1.0 + result.max_drawdown_pct / 100.0)
     dd_excess = max(0.0, result.max_drawdown_pct - 5.0)
