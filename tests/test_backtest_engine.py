@@ -224,10 +224,16 @@ def test_compute_score_under_10_trades():
     assert compute_score(r) == pytest.approx(-999.0, abs=TOL)
 
 
-def test_compute_score_over_10pct_dd():
+def test_compute_score_high_dd_soft_penalty():
+    """DD > 10% no longer triggers -999 hard cutoff (removed 2026-07-02).
+    Instead, dd_gate exp penalty handles it smoothly. DD=12% → dd_gate=0.027,
+    score ≈ 0.021 (low but positive — agent can see gradient)."""
     r = BacktestResult(sharpe=2.0, num_trades=50, max_drawdown_pct=12.0,
                        equity_curve=[INITIAL_CAPITAL, INITIAL_CAPITAL])
-    assert compute_score(r) == pytest.approx(-999.0, abs=TOL)
+    score = compute_score(r)
+    assert score > 0  # not -999, positive (penalized but not cliffed)
+    assert score < 0.05  # heavily penalized by dd_gate exp
+    assert score == pytest.approx(0.0205, abs=0.01)
 
 
 def test_compute_score_lost_over_15pct():
@@ -312,14 +318,16 @@ def test_score_continuous_and_monotonic_at_zero():
 
 
 def test_hard_cutoff_precedes_negative_region():
-    # A negative-sharpe strategy that ALSO breaches a hard cutoff must still get
-    # -999 (cutoffs run before the bare-sharpe return).
+    # A negative-sharpe strategy with high DD now gets bare-sharpe (not -999).
+    # DD hard cutoff removed (2026-07-02); only truncated/low-trades/total-loss
+    # trigger -999. DD is handled by dd_gate exp penalty in the positive region.
     r = BacktestResult(
-        sharpe=-0.5, num_trades=50, max_drawdown_pct=12.0,  # DD breach
+        sharpe=-0.5, num_trades=50, max_drawdown_pct=12.0,  # high DD but no hard cutoff
         return_volatility=0.3, max_consecutive_losses=0,
         equity_curve=[INITIAL_CAPITAL, INITIAL_CAPITAL * 0.99],
     )
-    assert compute_score(r) == pytest.approx(-999.0, abs=TOL)
+    score = compute_score(r)
+    assert score == pytest.approx(-0.5, abs=TOL)  # bare sharpe for sharpe <= 0
 
 
 # ---------------------------------------------------------------------------
