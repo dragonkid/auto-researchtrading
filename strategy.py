@@ -609,7 +609,21 @@ class Strategy:
         # time has weak |ret_vlong| while the others trend. Byte-identical when no symbol
         # exceeds MAX_ONSET (rally/bull/crash all symbols have |ret_vlong| solidly > 0.02).
         _port_weak_persist_max = max(_port_weak_persist_vals) if _port_weak_persist_vals else 0.0
-        _port_weak_cap = 1.0 - PORT_WEAK_PERSIST_MAX_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_weak_persist_max - PORT_WEAK_PERSIST_MAX_ONSET) / PORT_WEAK_PERSIST_MAX_SCALE)))
+        _port_weak_cap_raw = 1.0 - PORT_WEAK_PERSIST_MAX_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_weak_persist_max - PORT_WEAK_PERSIST_MAX_ONSET) / PORT_WEAK_PERSIST_MAX_SCALE)))
+        # Exp7: GATE the max weak_persist cap on portfolio DD-headroom. Exp6's weak_persist
+        # cap fired on sideways' weak-trend consolidation bars (at peak equity) -> sideways
+        # regressed -0.166. The crash gain (+1.306) came from firing during crash's
+        # consolidation stretches which coincide with portfolio DD. Gate the cap to fire
+        # ONLY during portfolio DD (not at peak) -> spares sideways' peak-equity weak-trend
+        # bars (recovering the -0.166) while keeping crash's DD-coincident consolidation
+        # bars (keeping the +1.306). DIFFERENT from Exp3 (which gated the DOWN_PERSIST cap
+        # on DD-headroom and failed -- the down_persist cap's benefit came from firing
+        # during ALL persistent-bear episodes including peak-equity; the weak_persist cap's
+        # benefit is during consolidation which in crash coincides with DD, in sideways
+        # coincides with peak equity). Continuous tanh on _port_dd_frac (same signal as
+        # _port_dd_atten). Byte-identical at peak equity (dd_frac=0 -> gate 0 -> cap 0).
+        _port_weak_dd_gate = max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K))))
+        _port_weak_cap = 1.0 - (1.0 - _port_weak_cap_raw) * _port_weak_dd_gate
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
