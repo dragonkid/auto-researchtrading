@@ -2354,33 +2354,9 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Exp3 (architectural, indep): PROFIT-LOCKING TRAILING STOP. NEW cross-
-                # component data dep: the effective stop distance depends on peak_pnl (the
-                # position's high-water mark since entry). Mechanism: bull_2021 has 71.8pct
-                # WR but PF 0.7 -- winners are harvested at PEAK_PROFIT_GIVEBACK 0.22 of peak
-                # (small wins) while losers ride to the full _stop_abs (large losses). A
-                # position that peaked at +2pct then falls back to -1pct has given back 3pct
-                # but _pp_pressure only sees giveback_ratio = 3pct/2pct = 1.5 (above the 0.22
-                # floor, so pp fires) -- BUT the STOP is still at -3pct from entry, so if pp
-                # doesn't fully exit, the position can continue to -3pct. Ratchet the stop
-                # tighter as peak grows: once peak >= 1.5*stop, the stop ratchets up to lock
-                # a fraction of the peak. This caps the DOWNSIDE of trades that were winning
-                # -- a winner that peaked at +2pct can't fall below ~-0.5pct (locked near
-                # breakeven-plus), transforming a potential -3pct loss into a small gain/loss.
-                # Byte-identical when peak_pnl < 1.5*_stop_abs (no ratchet yet = fresh entries
-                # and small winners keep the original stop). Continuous tanh ramp on
-                # peak/stop ratio (no boundary); direction-agnostic (both long/short). The
-                # ratchet is MONOTONE (peak only updates upward, confirmed by 2 rising bars)
-                # so the trailing stop only tightens, never loosens -- locks gains
-                # permanently. New control flow: _stop_abs depends on self.peak_pnl[symbol].
-                _peak_for_trail = self.peak_pnl.get(symbol, 0.0)
-                _trail_ratio = _peak_for_trail / max(_stop_abs, 1e-6)  # peak in stop-units
-                # Ratchet onset at 1.5*stop; saturates at 3*stop (locks ~stop/2 above entry)
-                _trail_tighten = max(0.0, min(1.0, np.tanh((_trail_ratio - 1.5) / 0.6)))
-                _stop_eff = _stop_abs * (1.0 - 0.55 * _trail_tighten)  # tighten up to 55pct at deep peak
                 _loss = -pos_pnl
-                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_eff
-                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_eff - _band_half)) / (2.0 * _band_half)))
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
+                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
                 # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
