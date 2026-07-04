@@ -2830,7 +2830,7 @@ class Strategy:
                     # validated separator (ret_vlong disagreeing with pos_dir, fast-saturating
                     # /0.01 near-constant noise-free per branch-step-9 lesson).
                     _ct_exit_dd = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _ct_exit_dd)
+                    _exit_thresh = _exit_thresh * (1.0 - 0.20 * (1.0 - _port_dd_atten) * _ct_exit_dd)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
