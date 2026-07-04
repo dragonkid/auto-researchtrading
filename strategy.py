@@ -2823,7 +2823,14 @@ class Strategy:
                 # agnostic general principle (no regime label): a losing position during a
                 # portfolio drawdown is at correlated-regime-hit risk -> exit sooner.
                 if _pnl_scale < 0.0:
-                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten))
+                    # branch step1: GATE on COUNTER-TREND-AT-MULTI-DAY so trend-aligned
+                    # losers (crash shorts during dead-cat bounces, bull longs in pullbacks)
+                    # are PROTECTED -- they recover. Only counter-trend losers (rally pullback
+                    # shorts, mixed wrong-side longs) get the earlier exit. The ct-gate is the
+                    # validated separator (ret_vlong disagreeing with pos_dir, fast-saturating
+                    # /0.01 near-constant noise-free per branch-step-9 lesson).
+                    _ct_exit_dd = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _ct_exit_dd)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
