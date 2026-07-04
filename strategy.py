@@ -2672,6 +2672,35 @@ class Strategy:
                 _be_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                 _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_trend_gate
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
+                # Exp1 (architectural, indep): MAE-DEPTH LOSS-AGING exit pressure (7th soft
+                # source in the MAX fusion). NEW cross-component data dep: a new soft-exit
+                # source that reads _mae (max adverse excursion since entry, already tracked
+                # per-symbol as the pos_pnl low-water mark) jointly with bars_held and the
+                # ATR stop distance. Mechanism: bull_2021 has 71.8% WR but PF 0.7 -- losses
+                # are catastrophic relative to wins because losers ride to the full ATR stop
+                # (_stop_abs up to 0.035) before _sl_pressure saturates, while winners are
+                # harvested at PEAK_PROFIT_GIVEBACK 0.22 of a smaller peak. The existing
+                # loss-side soft sources (_sl_slope_pressure) only fire on slope REVERSAL --
+                # a loser in a sustained adverse trend with positive slope-against already
+                # fires _sl_slope_pressure, but a loser that drifts adversely with FLAT
+                # slope (no reversal signal) rides unchecked to the stop. _mae captures
+                # the cumulative adverse drift directly (lowest pos_pnl seen), distinct
+                # from instantaneous pos_pnl and from slope. Fire a soft pressure that
+                # scales with MAE depth (relative to stop) once the position has aged past
+                # scale-in (bars_held > ENTRY_FULL_BARS+1) AND current pos_pnl is still
+                # negative -- a loser whose worst-point is deep and is still underwater
+                # should be cut before the full stop. Loss-side only (winners have
+                # _pp_pressure for profit-locking; firing on winners would conflict with
+                # the giveback-riding cushion). Byte-identical for trend-aligned winners
+                # (pos_pnl>0 -> gate 0) and fresh entries (bars_held gate 0). Continuous
+                # tanh on MAE/stop ratio (no boundary), max 0.50 (below _sl_pressure's
+                # binary 1.0 ceiling so the stop remains the hard backstop). New control
+                # flow: a 7th term in the MAX fusion reading _mae x bars_held x pos_pnl.
+                _mae_hold_gate = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS - 1.0) / 4.0))  # 0 first ~4 bars, saturates ~1 at +5
+                _mae_depth = max(0.0, -self._mae.get(symbol, 0.0) / max(_stop_abs, 1e-6))  # 0 no adverse, ~1 at full stop
+                _mae_loss_gate = max(0.0, -_pnl_scale)  # only when currently losing (pos_pnl<0)
+                _mae_pressure = 0.50 * _mae_hold_gate * max(0.0, np.tanh((_mae_depth - 0.45) / 0.20)) * _mae_loss_gate
+                _w_mae = 1.0  # loss-side only (gate already zeros it for winners)
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2686,6 +2715,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
+                    _w_mae * _mae_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
