@@ -2208,20 +2208,7 @@ class Strategy:
                 _atr_pct = np.mean(_tr) / mid
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
-                # BRANCH step5: DEEP-BEAR stop tightening. Prior session found trend-aligned
-                # stop WIDENING byte-identical (soft_max fires before the stop). The opposite
-                # direction -- TIGHTEN the stop in deep-bear regimes (ret_vlong deeply
-                # negative, crash) -- makes the stop bind EARLIER on crash losers, cutting
-                # their magnitude before they reach the full -2.4pct catastrophic stop. The
-                # stop is a HARD exit (bypasses soft_max fusion), so unlike the entry/exit-
-                # pressure levers that were absorbed, this directly caps the per-trade loss.
-                # Tighten the upper clamp: in deep bear, reduce the stop ceiling from 0.035
-                # toward 0.022 so the stop sits closer to entry. bull_2021 (ret_vlong>0) ->
-                # _bear_stop_tighten ~0 -> byte-identical, preserves Exp1 +0.265 bull gain.
-                # sideways (ret_vlong ~ flat) -> ~0. Continuous tanh, no boundary.
-                _bear_stop_tighten = max(0.0, np.tanh((-ret_vlong - 0.02) / 0.02))  # 0 mild, ~1 deep bear
-                _stop_ceil = 0.035 - 0.013 * _bear_stop_tighten  # 0.035 mild -> 0.022 deep bear
-                _stop_abs = max(0.018, min(_stop_ceil, 2.5 * _atr_pct))
+                _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
@@ -2561,22 +2548,7 @@ class Strategy:
                 # separator pattern as _w_time (which is heavier-in-chop for time-pressure,
                 # here inverted: break-even fires in trend not chop).
                 _be_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                # BRANCH step4: DEEP-BEAR break-even pressure amplification. Exp1 ablation
-                # improved bull +0.265 Sh but crash trips the 16pct total-loss cliff (total
-                # loss ~16.07pct, just past 16pct). Crash's losing positions survive scale-in
-                # then hover near breakeven before bleeding to stop (PF 0.3 -- losers 3.3x
-                # winners). The break-even exit (last keep) trims dead capital in trending
-                # regimes via rsi_trend_str gate -- crash IS trending (rsi_trend_str high) so
-                # the gate is ~1, but the magnitude 0.45 was tuned for mixed/rally. Amplify
-                # the magnitude in DEEP-BEAR regimes (ret_vlong deeply negative, crash's
-                # sustained downtrend) so crash's stuck losers are trimmed FASTER -> fewer
-                # bleed-to-stop losers -> lower total loss -> recover past the 16pct cliff.
-                # bull_2021 (ret_vlong ~ positive in uptrend) -> _bear_depth_amp ~0 -> byte-
-                # identical, preserves Exp1 +0.265 bull gain. sideways (ret_vlong ~ flat) ->
-                # ~0. Continuous tanh, no boundary. New cross-timescale data dep: break-even
-                # exit magnitude depends on multi-day downtrend DEPTH.
-                _bear_depth_amp = 1.0 + 0.50 * max(0.0, np.tanh((-ret_vlong - 0.02) / 0.02))  # 1.0 mild/flat, ~1.5 deep bear
-                _be_pressure = 0.45 * _bear_depth_amp * _be_near_zero * _be_hold_gate * _be_trend_gate
+                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_trend_gate
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
