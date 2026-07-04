@@ -305,6 +305,19 @@ PORT_DOWN_PERSIST_MAX_SHRINK = 0.35  # max portfolio size shrink at full saturat
 PORT_DOWN_PERSIST_MAX_ONSET = 0.80   # higher onset for max (single symbol fires more often)
 PORT_DOWN_PERSIST_MAX_SCALE = 0.10
 PORT_DOWN_PERSIST_MAX_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
+# Exp6 (architectural, indep): MAX-AGGREGATION portfolio WEAK-TREND cap. Exp2's AVERAGE
+# weak_persist cap was byte-identical (the cross-symbol average never saturated above
+# 0.85 onset in mixed). Exp5 proved MAX aggregation catches single-symbol episodes the
+# AVERAGE misses. Apply the same insight to weak_persist: fires when ANY ONE symbol has
+# persistently weak multi-day trend (|ret_vlong|<0.02 for >0.85 of last 48 bars). Mixed's
+# oscillating down-legs have one symbol at a time with weak trend (the multi-week
+# consolidation phases) while the others trend -> the MAX catches these where the AVG
+# didn't. Composes with Exp1/Exp5 caps (multiplicative; all shrink-only). Byte-identical
+# when no symbol has weak_persist > ONSET (rally strong uptrend, bull, crash persistent
+# downtrend all have |ret_vlong| solidly above 0.02 -> weak_persist low for all symbols).
+PORT_WEAK_PERSIST_MAX_ONSET = 0.85   # high onset (single symbol fires more often)
+PORT_WEAK_PERSIST_MAX_SCALE = 0.10
+PORT_WEAK_PERSIST_MAX_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 
 
 class Strategy:
@@ -560,6 +573,7 @@ class Strategy:
         # _p_rv < 0 check appended to the read-only history copy.
         _port_down_persist_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > VLONG_WINDOW + 1]
         _port_down_persist_vals = []
+        _port_weak_persist_vals = []  # Exp6: per-symbol weak_persist for max-aggregation
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
@@ -570,6 +584,13 @@ class Strategy:
             if len(_pdvh) > PERSIST_WINDOW:
                 _pdvh = _pdvh[-PERSIST_WINDOW:]
             _port_down_persist_vals.append((float(sum(_pdvh)) / len(_pdvh)) if _pdvh else 0.0)
+            # Exp6: weak_persist for the same symbol (|ret_vlong| < PERSIST_WEAK_THRESH).
+            # Read-only copy (the per-symbol loop owns the append); include current bar.
+            _pwvh = list(self._weak_vlong_hist.get(_psym, []))
+            _pwvh.append(1 if abs(_p_rv) < PERSIST_WEAK_THRESH else 0)
+            if len(_pwvh) > PERSIST_WINDOW:
+                _pwvh = _pwvh[-PERSIST_WINDOW:]
+            _port_weak_persist_vals.append((float(sum(_pwvh)) / len(_pwvh)) if _pwvh else 0.0)
         _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
         # Exp1: portfolio-level deep-bear size cap (AVERAGE aggregation). Continuous tanh
         # ramp above ONSET; shrink-only (caps at 1.0; never amplifies size).
@@ -582,6 +603,13 @@ class Strategy:
         _port_down_persist_max = max(_port_down_persist_vals) if _port_down_persist_vals else 0.0
         _port_bear_cap_max = 1.0 - PORT_DOWN_PERSIST_MAX_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist_max - PORT_DOWN_PERSIST_MAX_ONSET) / PORT_DOWN_PERSIST_MAX_SCALE)))
         _port_bear_cap = _port_bear_cap * _port_bear_cap_max
+        # Exp6: MAX-aggregation portfolio weak-trend cap (composes with Exp1/Exp5). Fires
+        # when ANY ONE symbol has weak_persist > MAX_ONSET (single-symbol persistent weak
+        # multi-day trend). Catches mixed's consolidation phases where one symbol at a
+        # time has weak |ret_vlong| while the others trend. Byte-identical when no symbol
+        # exceeds MAX_ONSET (rally/bull/crash all symbols have |ret_vlong| solidly > 0.02).
+        _port_weak_persist_max = max(_port_weak_persist_vals) if _port_weak_persist_vals else 0.0
+        _port_weak_cap = 1.0 - PORT_WEAK_PERSIST_MAX_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_weak_persist_max - PORT_WEAK_PERSIST_MAX_ONSET) / PORT_WEAK_PERSIST_MAX_SCALE)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1042,7 +1070,9 @@ class Strategy:
             # `size` -> both first-bar entry target AND scale-in targets smaller in
             # persistent deep-bear (crash). Byte-identical when _port_bear_cap=1.0 (bull,
             # rally, sideways where cross-symbol avg down_persist < ONSET).
-            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap
+            # Exp6: apply max-aggregation weak-trend cap (composes with Exp1/Exp5). Fires
+            # when any symbol has persistent weak multi-day trend (mixed's consolidation).
+            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
