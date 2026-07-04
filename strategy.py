@@ -2493,6 +2493,35 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+
+                # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
+                # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
+                # crash/sideways (PF 0.7/0.3/0.4) -- many positions survive scale-in then
+                # hover near breakeven (pos_pnl ~ 0) before eventually bleeding to the
+                # stop or soft-exit at a loss. There is NO position-level break-even exit:
+                # a position that has been held past scale-in but made no progress is dead
+                # capital that frequently turns into a loser. NEW exit-pressure source +
+                # NEW control flow in the MAX fusion: a soft pressure that fires when
+                # bars_held > ENTRY_FULL_BARS (past scale-in) AND |pos_pnl| is within a
+                # small band around breakeven. The pressure ramps UP the longer the
+                # position stagnates near zero (so a fresh breakeven bar after scale-in is
+                # fine, but 4+ breakeven bars signal a stuck position) and ramps DOWN as
+                # |pos_pnl| moves away from zero (a profitable position is left alone; a
+                # clearly losing position is left to slope-against/stop). Smooth tanh on
+                # both axes (no boundary). Weight profit-side-neutral (fires regardless
+                # of sign -- a stuck winner is also dead capital, but the |pos_pnl| gate
+                # keeps it from firing on real winners). NEW data dep: exit pressure
+                # depends on (bars_held, pos_pnl magnitude) jointly -- the position's
+                # PnL trajectory shape, absent from all 5 existing soft sources (each
+                # reads slope/vol/peak-giveback/time/volume, none reads the LEVEL of
+                # pos_pnl relative to breakeven over the hold). Distinct from
+                # _pp_pressure (peak-to-current giveback, not absolute level) and
+                # _time_pressure (bar count alone, not PnL-gated).
+                _be_pnl_band = 0.5 * abs(STOP_LOSS_PCT)  # |pos_pnl| band around breakeven
+                _be_near_zero = max(0.0, 1.0 - abs(pos_pnl) / max(_be_pnl_band, 1e-6))  # 1 at BE, 0 outside band
+                _be_hold_gate = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS - 1.0) / 4.0))  # 0 first ~4 bars post-scale-in, saturates ~1 at +5 bars
+                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate
+                _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2506,6 +2535,7 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
+                    _w_be * _be_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
