@@ -1105,23 +1105,25 @@ class Strategy:
                 # the saturation knee) is preserved. New mechanism: near-binary saturated
                 # ct-shrink profile (vs step-3's mid-slope linear region).
                 _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn, ~0 bursting
-                # BRANCH step2: DEPTH-MODULATED multi-day-downtrend bull-entry shrink. Exp1
-                # ablation improved bull +0.265 Sh but crash trips the 16pct total-loss cliff
-                # (total loss ~16.07pct, just past 16pct). Crash's losing long entries (dead-
-                # cat-bounce longs in a sustained downtrend) are the bleed. The existing
-                # _bull_ct_vlong shrinks them 0.40x uniformly for any ret_vlong<0 (fast-
-                # saturating /0.01 -> ~1 for any mild downtrend). Add a DEPTH ramp: shrink
-                # MORE when ret_vlong is DEEPLY negative (sustained bear regime like crash,
-                # ret_vlong ~ -0.04..-0.08) -> up to 0.65x shrink at depth. Mild downtrend
-                # (ret_vlong ~ -0.01) keeps the 0.40x baseline. bull_2021 (ret_vlong ~ flat/
-                # positive in uptrend) -> gate ~0 -> byte-identical, preserves Exp1 +0.265
-                # bull gain. Continuous tanh on (|ret_vlong|-0.01)/0.04 for the depth ramp
-                # (no boundary; saturates by ret_vlong ~ -0.05). New cross-timescale data
-                # dep: bull ct-vlong shrink magnitude depends on multi-day downtrend DEPTH.
-                _bear_trend_depth = max(0.0, np.tanh((-ret_vlong - 0.01) / 0.04))  # 0 mild, ~1 deep bear
-                _bull_ct_vlong_mag = 0.40 + 0.25 * _bear_trend_depth  # 0.40 mild -> 0.65 deep
-                _bull_ct_vlong = 1.0 - _bull_ct_vlong_mag * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
+                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
                 _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend
+                # BRANCH step3: DIRECT multi-day-downtrend bull-entry shrink (NOT gated on
+                # _calm_ct). Step2's depth ramp on _bull_ct_vlong was INERT because the
+                # parent _bull_ct_vlong is itself inert in crash -- _calm_ct ~0 in crash
+                # (high entry density: 91 trades / 426 days = ~7 entries per 30-bar window
+                # -> len(_eh) high -> _calm_ct ~0 -> _bull_ct_vlong ~1.0 no-shrink). Crash's
+                # bull entries (dead-cat-bounce longs) get NO multi-day-downtrend shrink
+                # from the _calm_ct-gated path. Add a DIRECT shrink that bypasses _calm_ct:
+                # when ret_vlong is DEEPLY negative (sustained bear, |ret_vlong| > 0.02),
+                # shrink bull entries by up to 0.30x INDEPENDENTLY of churn. Deep-saturating
+                # /0.02 gate (near-constant in crash's deep bear, ~0 in bull_2021 uptrend ->
+                # byte-identical, preserves Exp1 +0.265 bull gain; sideways ret_vlong ~flat
+                # -> ~0). Continuous tanh, no boundary, shrink-only (caps at 1.0). New
+                # cross-timescale data dep: bull entry size depends on multi-day downtrend
+                # DEPTH directly (not via the churn-gated ct-vlong path). Targets crash's
+                # losing dead-cat-bounce longs without re-hurting bull_2021.
+                _bear_trend_depth = max(0.0, np.tanh((-ret_vlong - 0.02) / 0.02))  # 0 mild/flat, ~1 deep bear (crash)
+                _bull_bear_trend_shrink = 1.0 - 0.30 * _bear_trend_depth  # shrink bull entries in deep bear
                 # Exp3 (architectural): COUNTER-TREND-specific loss-streak size shrink.
                 # Distinct from Exp1's blanket escalation (which hurt bull by shrinking
                 # trend-aligned post-streak entries): this shrinks ONLY counter-trend
@@ -1906,7 +1908,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_bear_trend_shrink * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
