@@ -343,8 +343,9 @@ def detect_warmup_bars(strategy_path: str = None) -> int:
 
     Scans for UPPER_CASE integer constants (window lengths), VAR+N slice
     patterns like closes[-(EMA_SLOW+10):], hardcoded slices like closes[-200:],
-    and min(N, ...) adaptive windows. Returns the effective longest lookback,
-    with a floor of LOOKBACK_BARS (500) since that's the history buffer size.
+    and min(N, ...) adaptive windows. Returns the effective longest lookback.
+    No hardcoded floor — the strategy's actual code determines the warmup
+    length. If detection fails, returns LOOKBACK_BARS as a safe fallback.
     """
     import ast, re
     if strategy_path is None:
@@ -372,7 +373,11 @@ def detect_warmup_bars(strategy_path: str = None) -> int:
         # min(N, ...) adaptive windows like _long_n = min(200, ...)
         for m in re.findall(r'min\((\d+),', code):
             longest = max(longest, int(m))
-        return max(longest, LOOKBACK_BARS)
+        # No floor — let the strategy's actual code determine the warmup.
+        # LOOKBACK_BARS (500) is only the history buffer size, not an indicator
+        # requirement. Using it as a floor over-warms (500 bars of pre-regime
+        # data leaks adjacent-regime state into the active window).
+        return longest if longest > 0 else LOOKBACK_BARS
     except Exception:
         return LOOKBACK_BARS
 
