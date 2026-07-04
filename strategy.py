@@ -344,6 +344,27 @@ PORT_WEAK_PERSIST_AVG_MAX_TIGHTEN = 0.20  # max admission threshold increase at 
 PORT_DEEP_BEAR_ONSET = 0.03   # |ret_vlong| threshold (deep bear = ret_vlong < -0.03)
 PORT_DEEP_BEAR_SCALE = 0.02
 PORT_DEEP_BEAR_MAX_SHRINK = 0.25  # max shrink at full saturation (-> 0.75x)
+# Exp3 (architectural, indep): MAX-AGGREGATION portfolio DEEP-BEAR MAGNITUDE ADMISSION
+# TIGHTENER. Extends the validated portfolio-cap pattern (4 keeps on SIZE: Exp1 avg
+# down_persist, Exp5 max down_persist, Exp6 max weak_persist, Exp8 max |ret_vlong|)
+# to ADMISSION: when the cross-symbol MAX |ret_vlong| is deep (ANY ONE symbol in a
+# deep multi-day downtrend), tighten the admission threshold to filter noise-driven
+# counter-trend entries. Uses the SAME signal as Exp8's SIZE cap (raw |ret_vlong|
+# max-aggregated, NOT the duration count down_persist) -- the signal that separates
+# crash (deep |ret_vlong| ~0.04) from sideways (|ret_vlong|~0), avoiding the Exp4
+# leak (down_persist avg does NOT separate crash from sideways, both ~0.5-0.9 ->
+# sideways stability collapsed). The magnitude signal IS the separator: sideways
+# oscillates around 0 (|ret_vlong|<ONSET -> tighten 0 -> byte-identical); crash has
+# deep negative ret_vlong (|ret_vlong|>ONSET -> tighten fires). Distinct from Exp2's
+# weak_persist avg admission tightener (fires when ALL symbols choppy = sideways);
+# this fires when ANY symbol is in deep bear = crash + mixed's down-legs. Composes
+# multiplicatively with Exp2 (independent signals: avg-weak-chop vs max-deep-bear).
+# Max tighten 0.15 (smaller than Exp2's 0.20 since the SIZE caps already dominate
+# crash trade magnitude; admission is the COUNT lever). Byte-identical when no symbol
+# has |ret_vlong| > ONSET (bull/rally/sideways). Continuous tanh ramp (no boundary).
+PORT_DEEP_BEAR_ADMIT_ONSET = 0.03   # same onset as Exp8 SIZE cap (deep bear magnitude)
+PORT_DEEP_BEAR_ADMIT_SCALE = 0.02
+PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
 
 
 class Strategy:
@@ -652,6 +673,11 @@ class Strategy:
         _port_deep_bear_mag = max(0.0, -_port_rv_min)  # magnitude of the deepest bear symbol
         _port_deep_bear_cap = 1.0 - PORT_DEEP_BEAR_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ONSET) / PORT_DEEP_BEAR_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_deep_bear_cap
+        # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
+        # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
+        # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
+        # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
+        _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -992,6 +1018,11 @@ class Strategy:
             # Byte-identical when _port_weak_admit_tighten=1.0 (bull/rally/crash where cross-
             # symbol avg weak_persist < ONSET).
             _strong_min = _strong_min * _port_weak_admit_tighten
+            # Exp3: apply MAX-aggregation deep-bear MAGNITUDE admission tightener (computed
+            # at top level). Tightens admission when ANY symbol is in deep multi-day downtrend
+            # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
+            # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
+            _strong_min = _strong_min * _port_deep_bear_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
