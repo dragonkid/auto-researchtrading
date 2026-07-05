@@ -2748,7 +2748,28 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Exp3 (architectural, indep): LOSS-SIDE portfolio-DD amplifier on the
+                # additive opp-bias channel (the one un-disproven axis for exit-pressure
+                # changes -- MAX-fused pressure-source changes are walled by MAX-absorption,
+                # but _voter_bias is ADDITIVE to _exit_pressure at line ~2897 so it is NOT
+                # MAX-absorbed). NEW cross-component data dep: the opp-bias magnitude now
+                # reads portfolio DD state x position loss state. Hypothesis: opposite-side
+                # conviction (bear voters firing on a held long, or bull voters on a held
+                # short) is a STRONGER reversal signal during a portfolio drawdown (correlated
+                # regime hit) AND when the position is LOSING -- a losing position facing
+                # opposite-side conviction during adverse portfolio regime is the canonical
+                # dead-cat / wrong-side population (crash dead-cat longs bleeding during the
+                # persistent downtrend; rally pullback shorts giving back). Boost the opp-bias
+                # by up to +20% (additive, on a 0.20 base -> up to 0.24 effective) for LOSING
+                # positions during deep portfolio DD. LOSS-SIDE-ONLY (gated on max(0,-_pnl_scale)
+                # -> 0 for winners) so trend-aligned WINNERS (crash's profitable shorts in
+                # persistent downtrend: ret_vlong<0, pos_dir=-1, product>0 -> _opp_atten<1
+                # AND pos_pnl>0 -> loss-amp=1.0 byte-identical) are fully protected -- this
+                # is the dead-cat-wall-safe path: only LOSING positions get accelerated, and
+                # crash's winning shorts are NOT losing. Byte-identical at portfolio peak
+                # (_port_dd_atten=1.0 -> amp=1.0) and for winners (loss-amp=1.0). Continuous.
+                _opp_loss_dd_amp = 1.0 + 0.20 * max(0.0, -_pnl_scale) * (1.0 - _port_dd_atten)
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * _opp_loss_dd_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
