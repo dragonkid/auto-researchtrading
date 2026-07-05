@@ -3040,8 +3040,18 @@ class Strategy:
                     # signal: realized trade PnL vs unrealized equity). Requires
                     # _trade_pnl_count>=3 so the EMA has signal.
                     if self._trade_pnl_count >= 3:
+                        # Branch step5: GATE by counter-trend direction (spare trend-
+                        # aligned crash shorts). Step4 catastrophic (-0.283) because the
+                        # trend gate (rsi_trend_str high in crash) made _exit_dd_gate fire
+                        # for crash's TREND-ALIGNED shorts (sustained-loss during bounces
+                        # but they recover). Spare trend-aligned: only lower exit_thresh
+                        # for COUNTER-TREND losers (bull long in downtrend / bear short in
+                        # uptrend = crash dead-cat longs, rally pullback shorts -- the ct
+                        # losers). Uses the validated multi-day ct indicator /0.01.
+                        _pos_dir_ex = 1.0 if current_pos > 0 else -1.0
+                        _ct_dir_ex = max(0.0, np.tanh(-ret_vlong * _pos_dir_ex / 0.01))
                         _tpn_exit_amp = max(0.0, min(1.0, np.tanh(-(self._trade_pnl_ema + 0.20) / 0.5)))
-                        _exit_thresh = _exit_thresh * (1.0 - 0.30 * _tpn_exit_amp * _exit_dd_gate)
+                        _exit_thresh = _exit_thresh * (1.0 - 0.30 * _tpn_exit_amp * _exit_dd_gate * _ct_dir_ex)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
