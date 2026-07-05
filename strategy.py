@@ -96,6 +96,24 @@ PEAK_PROFIT_GIVEBACK = 0.22
 PORT_DD_GIVEBACK_TIGHTEN = 0.50   # max fractional reduction of giveback at deep DD (probing higher; step3 mag0.40 gave +0.0124 keep, rally DD 6.80pct has headroom below 8pct knee)
 PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
 PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in the DD fraction (noise-robustness: a noisy instantaneous equity -> noisy tightening amount -> exit-timing noise -> stability penalty; smoothing makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation while preserving the pullback-depth signal)
+# Exp3 (architectural, indep): LOSS-STREAK-ADAPTIVE giveback tightening. The existing
+# _pp_tighten (PORT_DD_GIVEBACK_TIGHTEN) is PORTFOLIO-DD-adaptive: it tightens giveback
+# (harvest winners faster) as the portfolio draws down from peak. But portfolio DD is a
+# LAGGING signal -- it deepens only AFTER consecutive losing trades have accumulated.
+# The portfolio consecutive-loss streak (_loss_streak, already tracked for the ct-admit
+# and ct-size-shrink paths) is a LEADING signal: it rises on the 2nd-3rd consecutive
+# loss, BEFORE the cumulative DD fully reflects the streak. Tightening giveback on the
+# streak LOCKS remaining winners earlier, before the streak extends the DD further.
+# NEW cross-component data dep: the giveback tolerance (_pp_giveback_eff) now depends on
+# the loss streak, distinct from the DD fraction. Composes multiplicatively with the
+# DD-adaptive tightening (independent signals: streak-count vs DD-level). Byte-identical
+# when streak<=1 (the tanh onset is at streak=1, so streak 0-1 -> 0 tighten). Continuous
+# tanh ramp on (streak-1)/2 (saturates by streak~3). Max tighten 0.12 (smaller than DD's
+# 0.50 since streak is a softer signal). Leverage-uncoupled (streak is a count, not a
+# fraction). Direction-agnostic general principle (no regime label): a portfolio on a
+# losing streak should lock gains faster. Targets the negative-Sharpe regimes where loss
+# streaks drive the DD (bull PF 0.7 losers; crash DD 17.75pct).
+STREAK_GIVEBACK_TIGHTEN = 0.12   # max fractional reduction of giveback at deep loss streak
 # Architectural (Exp1 this session): PORTFOLIO-DD-ADAPTIVE PROFIT-TARGET HARVEST.
 # The giveback-tightening mechanism above is at its confirmed local optimum (mag
 # 0.50; 0.60 cliffs rally stability below the 0.80 knee + collapses sideways), so
@@ -2444,7 +2462,9 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
+                # Exp3: loss-streak-adaptive giveback tightening (composes with DD-adaptive above).
+                _streak_tighten = 1.0 - STREAK_GIVEBACK_TIGHTEN * max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _streak_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
