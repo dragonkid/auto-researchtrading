@@ -3342,6 +3342,20 @@ class Strategy:
             # to-hold (Zeno-free). Symmetric growth/shrink. Entries/exits/flips exempt.
             _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # FAST saturation: ~0 at len<=1, ~1 at len>=3
             _deadband_frac = 0.13 * _churn_dz
+            # Exp2 (architectural, indep): HOLD-DURATION-CONDITIONED DEADBAND. Sanctioned
+            # untested lead from prior session-summary (b00ace8f keep note): "The hold-
+            # duration profile could be applied to OTHER emission-layer signals (the grid
+            # quantization, the deadband) -- step1 applied it only to the mtm_chop trim."
+            # BRANCH CONCLUSION (steps 1-4): the deadband width is EXTREMELY load-bearing --
+            # any width modification (widen/narrow, all-bars/early-only/late-only, by-
+            # direction, by-PnL) causes massive regime-flipping changes (bull -0.645->+1.681,
+            # rally +0.747->-0.889) that CANNOT be isolated by direction or PnL gating. The
+            # deadband is at its structural optimum; modifying it trades one regime's gain for
+            # another's collapse. Step5 pivots to the OTHER sanctioned emission-layer signal:
+            # the GRID QUANTIZATION width (line ~3408), applying the SAME validated hold-
+            # duration profile there. The grid quantization rounds the resize target onto a
+            # coarse lattice in high churn -- a DIFFERENT mechanism from the deadband (rounding
+            # vs snap-to-hold) that may be more tractable to hold-duration-conditioning.
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
@@ -3373,7 +3387,30 @@ class Strategy:
             # is stable across the noise ensemble (a perturbed bar barely moves equity).
             # Also finer (0.06) so rally's bidirectional fine resizes are less coarsened.
             if _is_resize and _churn_dz > 0.0:
-                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
+                # Branch step5: HOLD-DURATION-CONDITIONED grid width. Apply the validated
+                # b00ace8f hold-duration profile to the grid LATTICE SPACING (was churn-only).
+                # COARSER grid for early bars (bars<=3: |tanh| large -> profile up to ~1.3 ->
+                # larger _grid -> more aggressive rounding -> suppress scale-in wobble); FINER
+                # grid for late bars (bars>=8: profile ~0.7 -> smaller _grid -> less rounding
+                # -> late-bar trims execute precisely). The OLD uniform grid applied the same
+                # lattice spacing to bar-2 and bar-10 resizes alike. Continuous tanh profile
+                # (no boundary). Byte-identical when _churn_dz=0 (low-churn regimes use the
+                # complementary _calm_gate grid below, untouched).
+                # Branch step6: ONE-SIDED early-bar coarsening only. Step5 (two-sided) gave
+                # composite +0.017 but mixed regressed -0.017 (Sh 0.627->0.618). Hypothesis:
+                # the late-bar FINER grid increased mixed's churn (more distinct position
+                # values -> more trades -> fees). Test one-sided: only coarser for early bars
+                # (max(...,1.0)), baseline 1.0x for late bars. If mixed recovers, the late-bar
+                # finer grid was the culprit; if mixed stays regressed, the early-bar coarsening
+                # is absorbing mixed's small-position scale-in.
+                # Branch step7: REDUCE magnitude 0.3->0.2. Step6 gave +0.020 but mixed still
+                # regressed -0.012 (Sh byte-identical, but 4 extra trades -> WR 80->77.7% ->
+                # streak_gate drop). The early-bar coarsening let through 4 extra lower-quality
+                # mixed trades. Smaller magnitude (0.2) lessens the coarsening -> fewer extra
+                # trades in mixed while preserving the bull/rally scale-in-wobble suppression
+                # (the mechanism still fires, just with ~1.17x coarsening at bars<=3 vs ~1.26x).
+                _grid_hold_profile = max(1.0, 1.0 - 0.2 * np.tanh((bars_held - 5.0) / 3.0))
+                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _grid_hold_profile
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
