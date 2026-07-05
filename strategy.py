@@ -2438,6 +2438,36 @@ class Strategy:
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Exp1 (architectural, indep): PORTFOLIO-DD-ADAPTIVE LOSS-SIDE slope-against
+                # THRESHOLD lowering. NEW cross-component data dep: the slope-against activation
+                # threshold (_slope_thresh, normally vol-conditioned only) now ALSO reads the
+                # portfolio-DD state x loss-side x sustained-loss x trend-strength. For LOSING
+                # positions during portfolio DD, lower the threshold so _sl_slope_pressure
+                # activates at a LOWER slope magnitude -> slope-against fires EARLIER (when the
+                # trend is just starting to reverse, before _sl_pressure saturates and dominates
+                # the MAX fusion). DISTINCT from the walled Exp2 (_w_slope DD-amplification, which
+                # was byte-identical MAX-absorbed: when a loser is in deep loss _sl_pressure
+                # already saturates to ~1.0 and dominates max(_soft_terms), so multiplying
+                # _sl_slope_pressure's weight does nothing). This changes the ACTIVATION POINT
+                # of slope-against pressure (a DIFFERENT lever from the weight), so it fires
+                # during the MODERATE-loss early-reversal window where slope-against IS the
+                # dominant soft term (before SL saturates) -> cuts losers ~1 bar earlier ->
+                # smaller realized losses -> higher Sharpe in negative-Sharpe regimes (bull
+                # Sh-0.611 DD12.88pct, crash Sh-0.241 DD17.65pct). Gated by the SAME
+                # sustained_loss x trend_strength gate as the fd6a9169 keep (spares sideways
+                # mean-reverters: their fresh dips recover; the trend_gate spares chop).
+                # Byte-identical at portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 -> lowering 0)
+                # and for winners (gated on _pnl_scale<0). Loss-side only. Continuous tanh, no
+                # boundary. Direction-agnostic general principle (no regime label).
+                _ps_slope = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))
+                if _ps_slope < 0.0:
+                    _pp_sl = self._pnl_path.get(symbol, [])
+                    _sustained_loss_sl = 0.0
+                    if len(_pp_sl) >= 4:
+                        _sustained_loss_sl = sum(1.0 for _p in _pp_sl[-4:] if _p < 0.0) / 4.0
+                    _sustained_loss_trend_gate_sl = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                    _slope_dd_gate = _sustained_loss_sl * _sustained_loss_trend_gate_sl
+                    _slope_thresh *= (1.0 - 0.20 * (1.0 - _port_dd_atten) * _slope_dd_gate)
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
