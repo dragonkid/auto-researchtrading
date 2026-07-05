@@ -2547,7 +2547,7 @@ class Strategy:
                 # _sl_slope_pressure (no new input). Full attenuation below slope_against
                 # 0.0004, fading to 0 by 0.0012 (fast-saturating, distinguishes gradual from
                 # sharp reversal). Continuous tanh-style ramp.
-                _slope_against_gate = max(0.0, 1.0 - max(0.0, (_slope_against - 0.0006) / 0.0008))
+                _slope_against_gate = max(0.0, 1.0 - max(0.0, (_slope_against - 0.0004) / 0.0008))
                 # Branch step4: LONG-ONLY gate. steps2-3 gates were too slow -- crash's shorts
                 # ride bounces faster than giveback/slope gates detect. Structural asymmetry:
                 # LONGS in an uptrend riding a pullback (bull) is the canonical let-winners-run
