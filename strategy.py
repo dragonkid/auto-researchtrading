@@ -221,41 +221,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
-# Exp1 (architectural, indep): MAE-RECOVERY-MARGIN early-exit threshold lowering
-# for fresh entries. Prior session CONCLUSION: bull's losers are fast stop-hits
-# (within 1-2 bars of going negative) and the exit subsystem is at a STRUCTURAL
-# CEILING for bull loss-reduction -- stop tightening byte-identical x2, exit_thresh
-# lowering byte-identical for bull near-stop (the _sl_pressure>=0.95 exemption
-# forces _exit_thresh=1.0). The walled bar-1 pos_pnl partial-exit CRASHED crash
-# (trend-aligned shorts dip negative on bar 1 during MAE adverse excursions then
-# RECOVER profitable -- level signal cannot distinguish them from bull losers).
-# The untested axis: the JOINT (MAE depth, recovery margin) trajectory shape.
-# MAE (low-water mark of pos_pnl since entry) tracks the deepest adverse dip;
-# recovery margin = (pos_pnl - MAE)/|MAE| measures how much the position has
-# RECOVERED from its worst point. A FRESH entry (bars 2-4) that dipped deep
-# (MAE <= -0.5*|stop|) AND is NOT recovering (recovery margin < 0.25 -- still
-# near its low-water) is a likely extending loser (bull fast-stop long). Crash
-# trend-aligned shorts that MAE-dip on bar 1 RECOVER by bar 2 (pos_pnl rises
-# above MAE -> large recovery margin -> gate ~0 -> byte-identical). This is the
-# multi-bar trajectory discriminator the prior session identified as the only
-# viable separator, measured on the (MAE, current pos_pnl) relationship that NO
-# existing exit pressure source reads (_sl_pressure reads current loss level;
-# _pp_pressure reads peak-to-current giveback; _be_pressure reads |pos_pnl|
-# near zero over hold; _sl_slope_pressure reads price slope -- none reads the
-# recovery margin vs the position's own low-water). Mechanism: lower _exit_thresh
-# so the EXISTING soft-exit (slope-against pressure on a declining bull long)
-# triggers ~1 bar earlier -> cut the extending loser before it reaches the stop
-# -> smaller realized loss -> higher bull Sharpe (the worst drag at -0.645). The
-# gate is a NEW data dep (recovery margin) on a DIFFERENT exit lever
-# (_exit_thresh, modulated by the existing sustained-loss DD gate path which
-# is ALSO bypassed by _sl_pressure>=0.95 -- but at MAE=-0.5*stop the loss is
-# ~half the stop, _sl_pressure ~0, so the modulation is NOT bypassed). Loss-side
-# only (deep MAE implies pos_pnl < 0). Direction-agnostic. Continuous tanh on
-# the recovery margin (no boundary). Targets bull (worst drag); crash spared by
-# the recovery-margin discriminator (large margin -> gate ~0).
-MAE_EARLY_ONSET = 0.30    # MAE depth as fraction of |stop| at which the gate begins (lowered from 0.50: at bars 2-4 most extending losers haven't reached half-stop yet)
-MAE_EARLY_MARGIN = 0.30   # recovery margin (pos_pnl-MAE)/|MAE| below which gate is full (raised from 0.25 to catch more extending losers; crash recoveries still have large margin by bar 2)
-MAE_EARLY_LOWER = 0.20    # max fractional reduction of _exit_thresh (raised from 0.15 to ensure the lowering actually flips the de-risk threshold)
 
 
 def ema(values, span):
@@ -2885,30 +2850,6 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
-                # Exp1 (architectural, indep): MAE-RECOVERY-MARGIN early-exit threshold
-                # lowering for fresh entries. See MAE_EARLY_* constants for the full
-                # rationale. A fresh entry (bars 2-4) that dipped deep (MAE <=
-                # -MAE_EARLY_ONSET*|stop|) AND is NOT recovering (recovery margin
-                # (pos_pnl-MAE)/|MAE| below MAE_EARLY_MARGIN) gets _exit_thresh lowered
-                # so the existing soft-exit triggers earlier. Crash recoveries (which
-                # MAE-dip on bar 1 then recover) have a LARGE recovery margin by bar 2
-                # -> gate ~0 -> byte-identical. Deep-MAE gate ensures fresh winners (MAE
-                # ~0) are unaffected. Loss-side only by construction (deep negative MAE).
-                # Composes with the sustained-loss DD gate above (independent signals:
-                # trajectory shape vs portfolio DD state). Bypassed by _sl_pressure>=0.95
-                # exemption (near-stop) -- but at MAE=-0.5*stop the loss is ~half the stop,
-                # _sl_pressure ~0, so NOT bypassed for the target population.
-                if 2 <= bars_held <= 5:
-                    _mae_val = self._mae.get(symbol, 0.0)
-                    _mae_depth = -_mae_val / abs(STOP_LOSS_PCT)  # >=0, depth of adverse dip in stop-units
-                    if _mae_depth >= MAE_EARLY_ONSET:
-                        _recov_margin = (pos_pnl - _mae_val) / max(abs(_mae_val), 1e-10)
-                        # Gate: 1.0 when recovery margin <= MAE_EARLY_MARGIN (not recovering),
-                        # fading to 0 at 2*MAE_EARLY_MARGIN (clearly recovering). Smooth tanh.
-                        _recov_gate = max(0.0, min(1.0, np.tanh((MAE_EARLY_MARGIN - _recov_margin) / (MAE_EARLY_MARGIN * 0.5))))
-                        # Also gate by MAE depth (full at onset 0.5, saturating by ~1.0 stop depth).
-                        _mae_depth_gate = max(0.0, min(1.0, np.tanh((_mae_depth - MAE_EARLY_ONSET) / 0.25)))
-                        _exit_thresh = _exit_thresh * (1.0 - MAE_EARLY_LOWER * _recov_gate * _mae_depth_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
