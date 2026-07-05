@@ -2559,6 +2559,30 @@ class Strategy:
                 # baseline. This is the cleanest separator: crash's problem is specifically its
                 # trend-aligned SHORTS; bull's benefit is specifically its trend-aligned LONGS.
                 _long_only_gate = 1.0 if current_pos > 0 else 0.0
+                # Exp10 (architectural, this session): EXTEND pp_pressure attenuation to SHORTS in
+                # PERSISTENT DOWNTRENDS. The long-only gate (step4) was set because crash shorts
+                # ride bounces -> DD blow-up. But crash's trend-aligned SHORTS are WINNERS (let
+                # them ride small bounces toward bigger peaks -> higher PF -> higher crash Sharpe,
+                # the way bull longs benefited). The separator that distinguishes crash's PERSISTENT
+                # downtrend shorts (good -- let ride) from bull's TRANSIENT downtrend shorts (bad --
+                # should exit) is _down_persist: crash ~0.9 (persistent bear), bull ~0.3 (transient
+                # pullback dips). For LONGS, attenuation fires when down_persist is LOW (up_persist
+                # gate, <0.40). For SHORTS, the MIRROR: attenuation fires when down_persist is HIGH
+                # (persistent downtrend, >0.60). The giveback_ratio and slope_against gates (already
+                # applied to both sides) protect against SHARP bounces -- a crash short riding a
+                # gradual bounce (small giveback, small slope-against) gets attenuation; a crash
+                # short hit by a sharp bounce (large giveback OR large slope-against) gets full
+                # pp_pressure (exits normally). NEW cross-component data dep: pp_pressure attenuation
+                # for shorts depends on down_persist with OPPOSITE polarity to longs (shorts in
+                # persistent downtrend = crash, the mirror of longs in persistent uptrend = bull).
+                # Prior session's UNTESTED lead #4 explicitly flagged this as the next lever, noting
+                # the risk (crash shorts need to exit bounces) -- the giveback/slope gates are the
+                # safety, and the down_persist>0.60 gate ensures only PERSISTENT downtrend shorts
+                # (crash, not bull transient dips) get attenuation. bull shorts (down_persist~0.3 ->
+                # short gate 0) byte-identical. longs byte-identical (long gate uses up_persist<0.40).
+                # SHORT-side persistence gate: fires when down_persist is HIGH (persistent downtrend).
+                # Ramp from 0 at down_persist=0.60 to 1.0 at down_persist=0.80 (crash ~0.9 -> full).
+                _short_persist_gate = max(0.0, min(1.0, (_down_persist - 0.60) / 0.20))
                 # Branch step5: UPTREND-PERSISTENCE gate. step4 long-only still blew up crash
                 # because ret_vlong (96-bar) FLIPS positive during crash bounces (e.g. Nov 2021
                 # bounce off Luna low) -> crash bounce longs become trend-aligned-at-ret_vlong
@@ -2573,7 +2597,11 @@ class Strategy:
                 # attenuation gate. Crash (down_persist~0.9) byte-identical (gate 0); bull
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
+                # Direction-aware persistence gate: longs use up_persist (low down_persist = persistent
+                # uptrend = bull), shorts use down_persist (high down_persist = persistent downtrend =
+                # crash). Replaces the binary _long_only_gate with a continuous direction-aware gate.
+                _dir_persist_gate = _up_persist_gate if current_pos > 0 else _short_persist_gate
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _dir_persist_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
