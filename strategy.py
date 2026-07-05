@@ -650,6 +650,7 @@ class Strategy:
         _port_rv_vals = []  # Exp8: per-symbol raw ret_vlong for max-aggregation deep-bear cap
         _port_vol_ratio_vals = []  # Exp1: per-symbol vol_ratio for max-aggregation vol-spike cap
         _port_ret_short_abs_vals = []  # Exp4: per-symbol |short-window return| for max-aggregation spot-move cap
+        _port_ct_spot_vals = []  # step2: counter-trend-only spot moves (gate out trend-aligned)
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
@@ -681,8 +682,22 @@ class Strategy:
             # spot-move cap. Captures sharp directional moves (current bar context), distinct
             # from vol_ratio (24-bar vol regime). Uses raw closes (no smoothing) for the
             # portfolio-level approximation; the per-symbol ret_short uses smoothed closes.
+            # step2: COUNTER-TREND GATE. Only count the spot move toward the portfolio MAX if
+            # the 6-bar return sign OPPOSES the symbol's ret_vlong (counter-trend = pullback/
+            # reversal risk). Trend-aligned sharp moves (crash down-legs: ret_vlong<0 AND
+            # 6-bar return<0) are excluded -> preserves profitable crash shorts. Sideways
+            # (ret_vlong~0) has weak trend -> gate near 0 -> cap weakly fires (preserves
+            # mean-reversion entries). Continuous: gate = max(0, -sign(6bar)*sign(ret_vlong))
+            # scaled by |ret_vlong| trend-strength so near-zero ret_vlong -> gate ~0.
             if len(_pc) > 7:
-                _port_ret_short_abs_vals.append(abs(float(np.log(_pc[-1] / _pc[-7]))))
+                _p_ret6 = float(np.log(_pc[-1] / _pc[-7]))
+                _port_ret_short_abs_vals.append(abs(_p_ret6))
+                # Counter-trend gate: 1 when 6-bar return opposes ret_vlong, 0 when aligned.
+                # Scaled by trend-strength (|ret_vlong|/0.02) so sideways (|ret_vlong|~0)
+                # gets gate~0 -> cap barely fires.
+                _p_ct_dir = 1.0 if (_p_ret6 * _p_rv) < 0.0 else 0.0
+                _p_trend_str = min(1.0, abs(_p_rv) / 0.02)
+                _port_ct_spot_vals.append(abs(_p_ret6) * _p_ct_dir * _p_trend_str)
         _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
         # Exp1: portfolio-level deep-bear size cap (AVERAGE aggregation). Continuous tanh
         # ramp above ONSET; shrink-only (caps at 1.0; never amplifies size).
@@ -725,9 +740,11 @@ class Strategy:
         _port_vol_spike_cap = 1.0 - PORT_VOL_SPIKE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ONSET) / PORT_VOL_SPIKE_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_spike_cap
         # Exp4: MAX-aggregation spot-move SIZE cap. Fires when ANY ONE symbol has a sharp
-        # 6-bar move (|6-bar log return| elevated). Byte-identical when all below ONSET.
-        _port_ret_short_abs_max = max(_port_ret_short_abs_vals) if _port_ret_short_abs_vals else 0.0
-        _port_spot_move_cap = 1.0 - PORT_SPOT_MOVE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_ret_short_abs_max - PORT_SPOT_MOVE_ONSET) / PORT_SPOT_MOVE_SCALE)))
+        # 6-bar move (|6-bar log return| elevated). step2: gated to COUNTER-TREND sharp moves
+        # only (excludes trend-aligned crash down-legs, weakly fires in sideways). Byte-
+        # identical when all counter-trend spot moves below ONSET.
+        _port_ct_spot_max = max(_port_ct_spot_vals) if _port_ct_spot_vals else 0.0
+        _port_spot_move_cap = 1.0 - PORT_SPOT_MOVE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_ct_spot_max - PORT_SPOT_MOVE_ONSET) / PORT_SPOT_MOVE_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_spot_move_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
