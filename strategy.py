@@ -3382,22 +3382,24 @@ class Strategy:
                 # shorts. _mtm_chop_early is computed at line ~2095 (lifted from the
                 # reduction throttle). Smooth positions (chop~0) -> factor*1 = baseline
                 # grid (byte-identical). Choppy positions (chop~1) -> full coarsening.
-                # BRANCH step4: ADD TREND-ALIGNMENT gate. step2/step3 showed the chop
-                # gate alone insufficient -- crash LOSING shorts are also choppy during
-                # dead-cat bounces (_mtm_chop_early>0) so the chop gate still coarsened
-                # their reductions. The separator: crash shorts (incl losing ones) are
-                # TREND-ALIGNED (ret_vlong<0, pos_dir=-1, product>0); mixed wrong-side
-                # longs are COUNTER-TREND (ret_vlong<0, pos_dir=+1, product<0). Gate
-                # the coarsening on COUNTER-TREND-AT-MULTI-DAY so it only fires on
-                # genuine dead-capital positions (mixed), exempting ALL trend-aligned
-                # positions (crash shorts + bull/rally longs -- both winners AND losers
-                # need their reductions to execute). Uses the validated _ct_si_gate
-                # pattern (multi-day ret_vlong*pos_dir, fast-saturating /0.01 -> near-
-                # constant noise-free). Trend-aligned -> gate 0 -> factor 1.0 -> baseline
-                # grid (byte-identical). Counter-trend -> gate ~1 -> full coarsening.
+                # BRANCH step4: ADD TREND-ALIGNMENT gate (insufficient alone -- crash
+                # dead-cat longs are also ct; see step4 results). KEPT as a factor since
+                # it correctly targets mixed dead capital (mixed +0.039, bull +0.064 in
+                # step4) even though crash dead-cat longs remain a leak.
+                # BRANCH step5: ADD HIGHER CHURN ONSET gate. The root cause: crash
+                # occasionally reaches len(_eh)=2 during correlated bear-leg entry
+                # clusters, triggering the churn-path grid (onset len>=2). Rally reaches
+                # len=3-5 in TRUE bursts. Gate the hold-dur FACTOR (not the baseline
+                # grid) on a HIGHER churn onset (len>=3) so crash's len=2 clusters keep
+                # the baseline grid (byte-identical for crash), and only rally's true
+                # bursts (len>=3) get the coarsening. Uses the noise-IMMUNE integer churn
+                # count (same family as _churn_dz). The baseline 0.06*_churn_dz grid
+                # still fires at len>=2 (preserving its validated rally-stab benefit);
+                # only the NEW hold-dur coarsening is gated at the higher onset.
                 _pos_dir_hd = 1.0 if current_pos > 0 else -1.0
                 _ct_hd_gate = max(0.0, np.tanh(-_pos_dir_hd * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct
-                _hold_dur_grid = 1.0 + 0.3 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0))) * _mtm_chop_early * _ct_hd_gate
+                _high_churn_gate = max(0.0, np.tanh((len(_eh) - 2.5) / 0.6))  # ~0 len<=2, ~1 len>=3
+                _hold_dur_grid = 1.0 + 0.3 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0))) * _mtm_chop_early * _ct_hd_gate * _high_churn_gate
                 _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _hold_dur_grid
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
