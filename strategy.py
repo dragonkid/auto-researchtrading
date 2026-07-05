@@ -2187,7 +2187,18 @@ class Strategy:
                 # into imminent corrections (gate off when slope weakens). New control
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
-                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
+                # Exp2 (architectural, indep): PORTFOLIO-DD DAMPENER on the win-accelerator.
+                # The accelerator speeds scale-in for early winners (pos_pnl>0 in a trend).
+                # During a portfolio drawdown (correlated-regime-hit signal: multiple
+                # positions losing across symbols), an early winner is more likely to reverse
+                # (the regime is adverse) -> DAMPEN the accelerator so scale-in does not
+                # over-commit to early winners that may flip. NEW cross-component data dep:
+                # win-accelerator now reads portfolio DD state (was magnitude×trend×slope only).
+                # Shrink-only (factor in [0.5, 1.0], never boosts); byte-identical at portfolio
+                # peak (dd_frac=0 -> _port_dd_atten=1.0 -> factor 1.0). Uses the validated
+                # top-level _port_dd_atten (asymmetric-EMA, leverage-coupled scale).
+                _win_accel_dd = 0.5 + 0.5 * _port_dd_atten  # 1.0 at peak, 0.5 at deep DD
+                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel * _win_accel_dd)
                 # Exp4 (architectural, indep): VOL-OF-VOL regime scale-in pace modulation,
                 # COUNTER-TREND-AT-MULTI-DAY GATED (refinement of Exp2 which applied to all
                 # positions and catastrophically regressed rally -0.369 by slowing rally's
