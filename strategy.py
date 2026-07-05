@@ -3033,8 +3033,19 @@ class Strategy:
                     # Max lowering 0.10 (0.85 -> 0.75 floor for losers at deep DD) -- smaller
                     # than the 0.30 profit/loss swing to keep the ramp from firing too early
                     # on transient mid-range pressure (which would over-trade fees).
+                    # Branch step1: TREND-STRENGTH gate to spare sideways mean-reverters.
+                    # Exp3 opener regressed sideways -0.025: sideways mean-reverters have
+                    # frequent loser bars during portfolio DD but RECOVER (chop oscillates) ->
+                    # trimming them during DD realizes losses that mean-revert away. The
+                    # validated separator (Exp4 keep step7, same wall): rsi_trend_str. Full
+                    # effect in trends (crash/bull/rally losers are in trending regimes where
+                    # a sustained loser EXTENDS), near-zero in chop (sideways mean-reverters
+                    # recover). Continuous tanh ramp on rsi_trend_str/0.20 (saturates by ~0.4
+                    # trend strength -- the SAME scale as _be_trend_gate / _exit_dd_gate).
+                    # Sideways byte-identical; crash/rally/mixed keep gains.
+                    _de_floor_dd_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     if _pnl_scale < 0.0:
-                        _de_floor -= 0.10 * (1.0 - _port_dd_atten)
+                        _de_floor -= 0.10 * (1.0 - _port_dd_atten) * _de_floor_dd_gate
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
