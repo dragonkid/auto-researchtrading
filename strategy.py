@@ -2759,7 +2759,7 @@ class Strategy:
                 # here inverted: break-even fires in trend not chop).
                 _be_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                 _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_trend_gate
-                _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
+                _w_be = 0.0  # Exp4 (architectural, simplification): ABLATE _be_pressure source to test load-bearing status.
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
