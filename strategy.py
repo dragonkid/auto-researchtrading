@@ -2537,7 +2537,18 @@ class Strategy:
                 # when pp_pressure is about to fire strongly -- protects crash's shorts from
                 # riding bounces while preserving bull's gradual-pullback winner relief.
                 _gb_mag_gate = max(0.0, 1.0 - max(0.0, (_giveback_ratio - 0.10) / 0.20))
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate
+                # Branch step3: SHORT-TERM SLOPE-AGAINST gate (faster than giveback). The
+                # giveback gate (step2) was too slow for crash bounces -- by the time
+                # giveback_ratio>0.30 the bounce has already done damage. Add a slope-
+                # against magnitude gate: a SHARP bar-to-bar reversal (large _slope_against)
+                # turns off the attenuation immediately, before giveback accumulates. Bull's
+                # gradual pullbacks have small slope-against; crash's sharp bounces have
+                # large slope-against. Uses the SAME _slope_against already computed for
+                # _sl_slope_pressure (no new input). Full attenuation below slope_against
+                # 0.0004, fading to 0 by 0.0012 (fast-saturating, distinguishes gradual from
+                # sharp reversal). Continuous tanh-style ramp.
+                _slope_against_gate = max(0.0, 1.0 - max(0.0, (_slope_against - 0.0004) / 0.0008))
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate
                 _pp_pressure = _pp_pressure * (1.0 - 0.35 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
