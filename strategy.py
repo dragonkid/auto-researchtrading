@@ -2174,7 +2174,25 @@ class Strategy:
                 # scale-in accel now depends on short-term slope agreement (entry voter
                 # slope reused), layered on the long-window trend gate.
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
-                _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
+                # STRUCTURAL_EXPLORATION step2: DIRECTION-ASYMMETRIC slope-confirm threshold.
+                # Step1 (magnitude reduction 0.5x for shorts) CRASHED crash (-1.483): crash
+                # shorts NEED fast scale-in to capture the downtrend; reducing magnitude cut
+                # WINNERS more than it protected against bounces. Pivot: keep the magnitude
+                # (1.2x both sides) but raise the SLOPE-CONFIRM bar for shorts. The baseline
+                # _slope_conf saturates at slope 0.0004 for both directions. A short in a WEAK
+                # downtrend (slope just below 0) is bounce-prone (choppy downtrend) -> should
+                # NOT accelerate (smaller position if bounced). A short in a STRONG clean
+                # downtrend (steep negative slope) is less bounce-prone -> should accelerate
+                # (capture the down-leg). New mechanism: shorts require a STRONGER slope to
+                # reach full _slope_conf (saturate at 0.0008 instead of 0.0004); longs keep
+                # baseline 0.0004. This raises the bar for shorts to accelerate at all (cutting
+                # acceleration in weak/choppy downtrends where bounces are likely) while
+                # preserving FULL acceleration magnitude for shorts in strong clean downtrends
+                # (crash's profitable trend shorts). Longs byte-identical (threshold 0.0004
+                # unchanged). Continuous (tanh, no boundary). Direction-asymmetry is a
+                # structural property (long/short bounce-risk asymmetry), NOT a regime label.
+                _slope_conf_scale = 0.0004 if current_pos > 0 else 0.0008  # longs baseline, shorts need 2x stronger slope
+                _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / _slope_conf_scale))
                 _win_accel = _win_accel * _slope_conf
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
@@ -2187,34 +2205,7 @@ class Strategy:
                 # into imminent corrections (gate off when slope weakens). New control
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
-                # STRUCTURAL_EXPLORATION step1: DIRECTION-ASYMMETRIC accelerator magnitude.
-                # Subsystem rewrite of the win-accelerator's core mechanism. The prior form
-                # was direction-symmetric: _win_accel magnitude 1.2 applied equally to longs
-                # and shorts. Why at structural ceiling: this session's Exp1 (profit-velocity
-                # boost) and Exp2 (portfolio-DD dampener) BOTH catastrophically regressed crash
-                # (Sh -0.241 -> -1.56 / -1.53) via the scale-in path, re-confirming the crash-
-                # scale-in wall documented across 3+ prior sessions (cooldown, rolling-PnL EMA).
-                # The wall's root cause: trend-aligned SHORTS (crash) face ASYMMETRIC bounce
-                # risk vs trend-aligned LONGS (bull/rally). Downtrends are choppier, bounces
-                # sharper and more frequent (dead-cat bounces off Luna/FTX lows); uptrends have
-                # cleaner, more gradual pullbacks. A direction-symmetric accelerator over-
-                # commits to crash's trend-aligned shorts during fast down-legs (peak velocity
-                # = peak bounce risk), then the bounce stops them out at larger size -> larger
-                # realized losses -> crash Sharpe collapses. NEW CORE MECHANISM: a direction-
-                # asymmetric magnitude multiplier -- longs keep the full 1.2x (bull/rally longs
-                # ride clean pullbacks, the validated benefit), shorts get a REDUCED 0.6x
-                # magnitude (crash trend-aligned shorts scale in half as aggressively, so a
-                # bounce stops a smaller position -> smaller realized loss -> crash Sharpe
-                # protected). The accelerator still fires for shorts (crash benefits from faster
-                # scale-in on winning shorts) but at half the magnitude. Direction-asymmetry is
-                # a structural property (long/short risk asymmetry), NOT a regime label -- the
-                # same precedent as _long_only_gate in pp_pressure attenuation. The slope-conf
-                # gate + trend-strength gate + floor are RETAINED (protect bull from over-accel
-                # into corrections, protect sideways in chop). Byte-identical for longs (factor
-                # 1.0); reduced for shorts (factor 0.5). Continuous (no boundary that flips
-                # under AR(1) -- direction is stable). 15-step branch budget.
-                _dir_accel_mult = 1.0 if current_pos > 0 else 0.5  # longs full, shorts half
-                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel * _dir_accel_mult)
+                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
                 # Exp4 (architectural, indep): VOL-OF-VOL regime scale-in pace modulation,
                 # COUNTER-TREND-AT-MULTI-DAY GATED (refinement of Exp2 which applied to all
                 # positions and catastrophically regressed rally -0.369 by slowing rally's
