@@ -3364,7 +3364,16 @@ class Strategy:
             # capital trims through). Byte-identical when _churn_dz=0 (low-churn regimes
             # where the deadband is off regardless). Direction-agnostic general principle.
             if _churn_dz > 0.0:
-                _deadband_hold_profile = 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0)
+                # Branch step1: ONE-SIDED early-bar widening only. The opener's two-sided
+                # profile (widen early AND narrow late) caused rally/mixed/crash to collapse
+                # (Sh 0.747->-0.889 rally, 0.627->-0.573 mixed): the late-bar narrowing let
+                # through trend-continuation resizes that should stay suppressed (rally's
+                # grinding uptrend has small resizes that are NOT dead capital). Keep ONLY
+                # the beneficial early-bar widening (suppress scale-in wobble -> bull +1.5,
+                # sideways +0.6 in the opener), return to baseline 1.0x for mid/late bars.
+                # max(...,1.0) makes the profile one-sided: >=1.0 (wider) for bars<=5,
+                # ==1.0 (baseline) for bars>5. Continuous (no boundary).
+                _deadband_hold_profile = max(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
                 _deadband_frac = _deadband_frac * _deadband_hold_profile
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
