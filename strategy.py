@@ -2218,26 +2218,6 @@ class Strategy:
                     # (same as other ret_vlong ct gates -> near-constant, noise-free).
                     _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
-                    # Exp4 (architectural, indep): TREND-ALIGNED DEEP-MAE scale-in freeze.
-                    # The _adv_freeze above is ct-gated (trend-aligned bypasses -- rally
-                    # pullback noise recovers). But bull's trend-aligned longs that MAE-dip
-                    # DEEP (>=0.5*|stop|) and are STILL declining (pos_pnl near MAE) are likely
-                    # extending losers, not pullback noise. Freeze their scale-in (stop
-                    # growing, don't cut) -- a safer action than trim (Exp2 trimmed and cut
-                    # winners that dipped; freeze only delays growth, the position still
-                    # recovers from a smaller base if it recovers). Distinct from the ct
-                    # _adv_freeze (which fires on any adverse move for ct positions): this
-                    # fires ONLY for trend-aligned positions with DEEP MAE (the extending-
-                    # loser signature from Exp1's diagnostic). Smaller magnitude (0.40 vs
-                    # 0.75) since trend-aligned positions are more likely to recover than ct.
-                    # The _ta_freeze_gate combines: deep MAE (>=0.5*|stop|) AND not recovering
-                    # (recovery margin (pos_pnl-MAE)/|MAE| < 0.30, the validated discriminator).
-                    # Byte-identical when MAE shallow (<0.5*|stop|) or recovering (margin high).
-                    _ta_mae = self._mae.get(symbol, 0.0)
-                    _ta_mae_depth = -_ta_mae / abs(STOP_LOSS_PCT)
-                    _ta_recov_margin = (pos_pnl - _ta_mae) / max(abs(_ta_mae), 1e-10)
-                    _ta_freeze_gate = max(0.0, min(1.0, np.tanh((_ta_mae_depth - 0.5) / 0.2))) * max(0.0, min(1.0, np.tanh((0.30 - _ta_recov_margin) / 0.15)))
-                    _adv_freeze = max(_adv_freeze, 0.40 * _ta_freeze_gate)
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp1 (architectural, indep): FEED-FORWARD scale_frac quantization
                     # to a FIXED discrete fraction grid. The continuous scale-in ramp
