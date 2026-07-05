@@ -2191,7 +2191,7 @@ class Strategy:
                 # (crash's profitable trend shorts). Longs byte-identical (threshold 0.0004
                 # unchanged). Continuous (tanh, no boundary). Direction-asymmetry is a
                 # structural property (long/short bounce-risk asymmetry), NOT a regime label.
-                _slope_conf_scale = 0.0004 if current_pos > 0 else 0.0008  # longs baseline, shorts need 2x stronger slope
+                _slope_conf_scale = 0.0004 if current_pos > 0 else 0.0012  # longs baseline, shorts need 3x stronger slope (step3: 0.0008->0.0012 test headroom)
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / _slope_conf_scale))
                 _win_accel = _win_accel * _slope_conf
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
