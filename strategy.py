@@ -3559,6 +3559,22 @@ class Strategy:
                     # (the binding positive regime whose dead-capital longs bleed across
                     # many bars) while sparing early-bar reductions everywhere.
                     _hold_dur_profile = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
+                    # branch step8: CALM-CHURN amplification of the hold-duration profile.
+                    # The step1 profile benefits sideways (high-trade-count chop regime where
+                    # mid/late-life reductions are genuine dead capital). Rally's churny re-
+                    # entries (high len(_eh)) don't benefit the same way -- rally's late-bar
+                    # reductions are often trend-aligned profit-takes, not dead capital.
+                    # Amplify the profile for LOW-churn positions (sideways, single holds)
+                    # and FADE it for HIGH-churn positions (rally bursts). Uses the noise-
+                    # IMMUNE integer churn count len(_eh) (the validated rally-stab gate
+                    # family). Continuous tanh on (len(_eh)-1.5)/0.6 (same fast-saturating
+                    # scale as _churn_dz); max 30pct amplification at low churn, fading to
+                    # baseline at high churn. Byte-identical when _mtm_chop=0 (smooth winners
+                    # unaffected regardless of churn). Direction-agnostic. Targets sideways
+                    # (low churn, high dead-capital) while sparing rally (high churn, trend-
+                    # aligned reductions).
+                    _hold_dur_churn_amp = 1.0 + 0.3 * (1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6)))
+                    _hold_dur_profile = _hold_dur_profile * _hold_dur_churn_amp
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
                     _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile
