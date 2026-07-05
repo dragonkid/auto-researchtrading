@@ -3059,24 +3059,6 @@ class Strategy:
                     # Sideways fresh dips spared; crash/bull/rally extending losers trimmed.
                     if _pnl_scale < 0.0:
                         _de_floor -= 0.13 * (1.0 - _port_dd_atten) * _exit_dd_gate
-                        # Branch step8: COUNTER-TREND-AT-MULTI-DAY de-risk floor lowering. A
-                        # SEPARATE term (composes with step5's portfolio-DD lowering): a loser
-                        # that is COUNTER-TREND at the multi-day scale (ret_vlong*pos_dir < 0)
-                        # is structurally wrong — rally pullback shorts (ret_vlong>0, pos_dir=-1)
-                        # and mixed wrong-side longs (ret_vlong<0, pos_dir=+1). These extend
-                        # regardless of portfolio DD state and regardless of the 4-bar sustained
-                        # signal (a structural ct loser may be only 1-2 bars negative but still
-                        # extend). Distinct signal from sustained_loss (position-path) and
-                        # portfolio DD (portfolio-level): this is POSITION-DIRECTION-vs-MULTI-
-                        # DAY-TREND alignment. Uses the validated fast-saturating /0.01
-                        # ret_vlong scale (near-constant where it fires, noise-free per the
-                        # ct-gate family lesson). Max +0.05 floor lowering at full ct-at-multi-
-                        # day saturation. Trend-aligned losers (bull longs, crash shorts --
-                        # ret_vlong*pos_dir > 0) byte-identical (gate 0). Sideways byte-
-                        # identical-ish (low |ret_vlong| -> gate near 0).
-                        _pos_dir_dr = 1.0 if current_pos > 0 else -1.0
-                        _ct_vlong_dr = max(0.0, np.tanh(-_pos_dir_dr * ret_vlong / 0.01))
-                        _de_floor -= 0.05 * _ct_vlong_dr
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
