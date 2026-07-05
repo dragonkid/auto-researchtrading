@@ -2631,6 +2631,27 @@ class Strategy:
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                # Exp11 (architectural, this session): ATTENUATE _time_pressure for the SAME
+                # trend-aligned-winner population that gets pp_pressure attenuation (longs in
+                # persistent uptrend, in profit, past scale-in, gradual pullback). pp_pressure
+                # attenuation (Exp1-7 keeps) lets bull winners ride pullbacks by suppressing
+                # giveback-exit; time_pressure is the OTHER soft-exit that fires after max_hold
+                # bars (bar-count-driven, not giveback-driven). For the same winner population,
+                # time_pressure also pushes to exit -- attenuating it lets trend-aligned persistent-
+                # uptrend long winners hold LONGER (past max_hold) toward bigger peaks -> larger
+                # avg win -> higher PF -> higher bull Sharpe (the same mechanism as pp_pressure
+                # attenuation, applied to a different soft-exit source). NEW cross-component data
+                # dep: time_pressure depends on the trend-aligned-winner gate (was bar-count only).
+                # Uses the SAME _ta_winner_gate (long-only x up_persist x profit x hold x giveback
+                # x slope gates) -- if ALL gates pass (gradual pullback persistent-uptrend long
+                # winner past scale-in), attenuate time_pressure by 0.50 (let winner hold 50%
+                # longer past max_hold before time_pressure ramps). Smaller magnitude than pp's 0.95
+                # (time_pressure is a slower-ramping, less binding soft-exit; a large attenuation
+                # risks over-holding into the reversals the giveback/slope gates catch). Crash
+                # byte-identical (long-only gate=0 for crash shorts; crash bounce longs have
+                # down_persist~0.9 -> up_persist gate=0). Sideways/rally byte-identical (ret_vlong~0
+                # or negative for their long winners -> trend_align gate~0).
+                _time_pressure = _time_pressure * (1.0 - 0.50 * _ta_winner_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
