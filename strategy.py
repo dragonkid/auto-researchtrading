@@ -391,6 +391,12 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_SPOT_MOVE_ONSET = 0.030   # |6-bar log return| above which cap engages (~3% move over 6h)
 PORT_SPOT_MOVE_SCALE = 0.015
 PORT_SPOT_MOVE_MAX_SHRINK = 0.15  # max shrink at full saturation (-> 0.85x)
+# step6: dedicated deep-bear gate for the spot-move cap. The shared PORT_DEEP_BEAR_ONSET/
+# SCALE (0.03/0.02) leaves crash at 54% cap strength (deep_bear_mag~0.04 -> gate~0.46). A
+# steeper gate (lower onset, smaller scale) fully spares crash. Dedicated constants so the
+# shared deep-bear signal (load-bearing for SIZE/ADMIT caps) is unchanged.
+PORT_SPOT_MOVE_DB_GATE_ONSET = 0.015   # lower onset -> engages earlier in crash
+PORT_SPOT_MOVE_DB_GATE_SCALE = 0.005  # steeper ramp -> fully engaged by 0.02 (crash ~0.04)
 
 
 class Strategy:
@@ -732,7 +738,7 @@ class Strategy:
         # The cap fires only in TRENDING NON-DEEP-BEAR regimes (bull/rally uptrend pullbacks).
         _port_ret_short_abs_max = max(_port_ret_short_abs_vals) if _port_ret_short_abs_vals else 0.0
         _port_spot_move_shrink = PORT_SPOT_MOVE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_ret_short_abs_max - PORT_SPOT_MOVE_ONSET) / PORT_SPOT_MOVE_SCALE)))
-        _port_deep_bear_spot_gate = max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ONSET) / PORT_DEEP_BEAR_SCALE)))  # 0 non-deep-bear, 1 deep-bear
+        _port_deep_bear_spot_gate = max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_SPOT_MOVE_DB_GATE_ONSET) / PORT_SPOT_MOVE_DB_GATE_SCALE)))  # 0 non-deep-bear, 1 deep-bear (steeper, step6)
         _port_weak_spot_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - PORT_WEAK_PERSIST_AVG_ONSET) / PORT_WEAK_PERSIST_AVG_SCALE)))  # 0 non-weak, 1 weak (sideways)
         _port_spot_move_cap = 1.0 - _port_spot_move_shrink * (1.0 - _port_deep_bear_spot_gate) * (1.0 - _port_weak_spot_gate)
         _port_weak_cap = _port_weak_cap * _port_spot_move_cap
