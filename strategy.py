@@ -2892,19 +2892,21 @@ class Strategy:
                     # sideways small-DD gain] + 0.07*deep_DD_ramp [additional, only fires
                     # at deep DD, captures crash/mixed deep-DD gain]. The two gains are at
                     # DIFFERENT DD magnitudes: sideways (4.46pct DD) needs small-DD firing;
-                    # crash (17.65pct DD) / mixed (4.80pct DD) extend with deep-DD firing.
-                    # Applying the SAME structure to _exit_thresh (currently single-term
-                    # 0.12 continuous): total = 0.12*(1-_port_dd_atten) + 0.07*_port_dd_active.
-                    # At sideways small DD: 0.12*small + 0 ~= small (sideways-safe, under
-                    # the ~0.135 sideways over-trim cliff confirmed for BOTH exit paths in
-                    # the prior session). At crash/mixed deep DD: 0.12*large + 0.07*~1 ~= 0.19
-                    # (extends crash/mixed full-exit firing sooner). NEW cross-component data
-                    # dep: _exit_thresh now reads the deep-DD state (_port_dd_active, the
-                    # same deep-DD ramp _de_floor uses) -> upper and lower bounds of the exit
-                    # graduation now BOTH respond to deep-DD. Byte-identical at portfolio peak
-                    # (both terms 0). Same _exit_dd_gate (sustained_loss 4-bar * trend_gate)
-                    # spares sideways fresh dips; trend-aligned winners byte-identical.
-                    _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
+                    # crash (17.65pct DD) extends with deep-DD firing.
+                    # BRANCH STEP2: the _de_floor boost used _port_dd_atten-based onset 0.30
+                    # (1-_port_dd_atten space). That onset fires fully for BOTH crash
+                    # (17.65pct DD, 1-_port_dd_atten~1.0) AND mixed (4.80pct DD, 1-_port_dd_atten
+                    # ~0.905) -- _port_dd_atten saturates quickly (tanh), so moderate and deep
+                    # DD are near-indistinguishable in _port_dd_atten space. The result:
+                    # _de_floor (lower bound, gradual ramp) handled mixed fine (reversible --
+                    # a recovering position re-peaks), but _exit_thresh (upper bound, FULL
+                    # exit, irreversible) over-trimmed mixed's wrong-side longs (-0.0026).
+                    # FIX: key the deep-DD boost on raw _port_dd_frac (NOT the saturated
+                    # _port_dd_atten) with onset 0.10 DD-fraction. crash (0.1765) >> 0.10 ->
+                    # boost fires fully; mixed (0.048) << 0.10 -> boost ~0 (mixed spared).
+                    # NEW data dep: _exit_thresh boost reads _port_dd_frac directly (not via
+                    # _port_dd_atten) -> finer DD-resolution. Continuous tanh, no boundary.
+                    _port_dd_active = max(0.0, np.tanh((_port_dd_frac - 0.10) / 0.03))
                     _exit_thresh = _exit_thresh * (1.0 - (0.12 * (1.0 - _port_dd_atten) + 0.07 * _port_dd_active) * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
