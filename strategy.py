@@ -2471,22 +2471,7 @@ class Strategy:
                 # already provided by peak_pnl's high-water-mark mechanic.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
-                _pp_lin = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
-                # Exp5 (architectural, indep): CONVEX pp_pressure ramp. The prior LINEAR
-                # ramp (_pp_raw = _pp_lin) translates moderate giveback 1:1 into pressure --
-                # a winner that gives back 30% of its peak gets ~30% pressure to exit, cutting
-                # it before it can recover. A CONVEX ramp (_pp_raw = _pp_lin^k, k>1) holds near-
-                # zero pressure through MODERATE giveback (lets small pullbacks pass -- winners
-                # ride and recover) then ramps SHARPLY at deep giveback (still cuts big giveback
-                # that signals a real reversal). Same structural principle as the validated de-
-                # risk convex cushion (DERISK_CONVEX_AMP, Exp2 keep ce66fec6) applied to the
-                # giveback-trailing pressure source. k = 1.5 (gentle convexity -- moderate
-                # giveback reduced, deep giveback preserved since _pp_lin^1.5 -> 1.0 at
-                # _pp_lin=1.0). Continuous (smooth x^k, no new boundary). Profit-side only
-                # (_pp_activation gates it). Byte-identical at _pp_lin=0 (no giveback) and
-                # _pp_lin=1 (full giveback -> full pressure). Targets bull/crash where winners
-                # are small and a 30% giveback is a real pullback, not a reversal.
-                _pp_raw = _pp_lin ** 1.5
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
