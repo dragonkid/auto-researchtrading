@@ -2536,7 +2536,7 @@ class Strategy:
                 # signal pp_pressure ramps on, so this gates the attenuation OFF precisely
                 # when pp_pressure is about to fire strongly -- protects crash's shorts from
                 # riding bounces while preserving bull's gradual-pullback winner relief.
-                _gb_mag_gate = max(0.0, 1.0 - max(0.0, (_giveback_ratio - 0.15) / 0.20))
+                _gb_mag_gate = max(0.0, 1.0 - max(0.0, (_giveback_ratio - 0.20) / 0.20))
                 # Branch step3: SHORT-TERM SLOPE-AGAINST gate (faster than giveback). The
                 # giveback gate (step2) was too slow for crash bounces -- by the time
                 # giveback_ratio>0.30 the bounce has already done damage. Add a slope-
