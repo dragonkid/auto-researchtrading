@@ -2836,25 +2836,7 @@ class Strategy:
                 # separator pattern as _w_time (which is heavier-in-chop for time-pressure,
                 # here inverted: break-even fires in trend not chop).
                 _be_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                # Exp1 (architectural, indep): PORTFOLIO-DD-ADAPTIVE break-even pressure
-                # magnitude boost. NEW cross-component data dep: the _be_pressure MAGNITUDE
-                # (a soft-exit PRESSURE SOURCE, distinct from the exit-threshold/floor DD
-                # changes at lines ~2964/3154 which lower the EXIT THRESHOLD) now reads
-                # portfolio DD state. A position stuck near breakeven past scale-in during a
-                # portfolio drawdown (correlated regime hit) is more likely dead capital that
-                # will bleed than mean-revert -- the DD state is a regime-level signal that
-                # the current environment is adverse. Boost the BE pressure magnitude by up
-                # to +20% at deep portfolio DD so stuck dead-capital exits sooner (smaller
-                # realized loss) -> raises Sharpe in the negative-Sharpe regimes whose
-                # binding constraint is dead-capital bleeding (crash PF 0.9, sideways PF 1.2
-                # with 154 trades). The _be_trend_gate (line above) already spares sideways
-                # chop (BE pressure near-zero in chop regardless of this boost), so the DD
-                # boost fires for TRENDING-regime stuck positions during DD (crash/rally/mixed
-                # dead capital). Byte-identical at portfolio peak (_port_dd_atten=1.0 ->
-                # _be_dd_boost=1.0). Continuous (no boundary); uses the validated top-level
-                # asymmetric-EMA _port_dd_atten (leverage-coupled 0.008*LEVERAGE_K scale).
-                _be_dd_boost = 1.0 + 0.20 * (1.0 - _port_dd_atten)
-                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_trend_gate * _be_dd_boost
+                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_trend_gate
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
