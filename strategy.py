@@ -2883,7 +2883,7 @@ class Strategy:
                     # identical; crash/mixed (trending) keep the gain. Continuous tanh ramp.
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
-                    _exit_thresh = _exit_thresh * (1.0 - 0.14 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
