@@ -3403,25 +3403,7 @@ class Strategy:
                 # (max(...,1.0)), baseline 1.0x for late bars. If mixed recovers, the late-bar
                 # finer grid was the culprit; if mixed stays regressed, the early-bar coarsening
                 # is absorbing mixed's small-position scale-in.
-                # Exp2 (architectural, indep): DIRECTION-CONDITIONED grid profile. Sanctioned
-                # untested lead #3 from c71be666 session-summary: "The grid hold-duration
-                # profile could be made DIRECTION-CONDITIONED (coarser for reductions, baseline
-                # for growth) -- might recover mixed's -0.012 by not over-snapping mixed's
-                # small-position scale-in growth at early bars." The step6 keep coarsened BOTH
-                # growth and reductions at early bars; mixed's small-position scale-in GROWTH
-                # (target > current_pos, same sign) was over-snapped onto the coarser lattice
-                # -> mixed's growth resizes executed at a coarser quantization -> small
-                # position-value drift -> mixed regressed -0.012. Apply the coarsening profile
-                # ONLY to reductions (abs(target) < abs(current_pos), same sign): the wobble
-                # the grid suppresses is bidirectional noise on the resize DELTA, but the
-                # GROWTH resizes (scale-in steps) carry genuine signal (the position is being
-                # built up) and should execute precisely. Reductions (tp_harvest, de-risk
-                # trims) are where noise-driven micro-resize churn lives -> keep the coarser
-                # early-bar grid there. New control flow: grid lattice spacing reads resize
-                # direction jointly with bars_held (was bars-held-only). Byte-identical for
-                # growth resizes (profile=1.0); coarsening retained for reductions.
-                _is_reduction_resize = abs(target) < abs(current_pos)
-                _grid_hold_profile = max(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0)) if _is_reduction_resize else 1.0
+                _grid_hold_profile = max(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
                 _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _grid_hold_profile
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
