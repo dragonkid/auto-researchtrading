@@ -42,11 +42,12 @@ STABILITY_THRESHOLD = 0.80  # no-penalty zone starts at 0.80
 # overlap. (Validated on baseline de412448: cross-seed-set std 0.069 single-seed
 # -> 0.037 avg5, a 47% variance reduction.)
 FIXED_STABILITY_SEEDS = (10_000_019, 20_000_003, 30_000_001, 40_000_003, 50_000_021)
-STABILITY_WORKERS = 4  # parallel trial workers inside one regime (nested under
-# regime_test's 4-regime pool; total ~16 procs on a 14-core box, but only score>0
+STABILITY_WORKERS = 3  # parallel trial workers inside one regime (nested under
+# regime_test's 4-regime pool; total ~15 procs on a 14-core box, but only score>0
 # regimes trigger stability so rarely all 4 run it at once). Parallelism does NOT
 # change stability values: each (seed, trial) work unit is deterministic via
 # seed+trial and the per-seed trimmed mean is order-independent. Set to 1 to force serial.
+# (2026-07-05: lowered 4→3 to match 14 cores: 5 regimes x 3 workers = 15 ≈ 14)
 
 # Empirical parameters: demeaned cross-source random std (basis removed).
 # Measured 2026-06: cached source ≈ Binance/OKX perp; demeaned random dispersion
