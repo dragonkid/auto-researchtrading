@@ -3317,6 +3317,29 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
+                # Exp4 (architectural, indep): PORTFOLIO-DD-adaptive FURTHER alpha reduction
+                # for ct LOSERS. NEW cross-component data dep: _te_alpha now ALSO reads
+                # portfolio DD state x loss-side (gated on _te_loss_gate>0). During portfolio
+                # DD, a counter-trend LOSER (rally pullback shorts, mixed wrong-side longs) is
+                # at correlated-regime-hit risk -> track the raw (shrinking) target FASTER ->
+                # de-risk/exit sooner -> smaller realized losses -> higher Sharpe in the
+                # binding regimes (rally Sh0.76 DD5.64pct streak_gate 0.875 = structural limit;
+                # mixed Sh0.63). DISTINCT from the walled Exp3 (max_hold DD-lowering, crash -999
+                # dead-cat wall: that was a HARD exit accelerator on a TREND-ALIGNED gate which
+                # fired on crash's trend-aligned shorts during giveback dips). This operates on
+                # the COUNTER-TREND gate (_ct_te_str>0 -> ret_vlong opposes pos_dir) which
+                # SPARES crash's trend-aligned shorts (ret_vlong<0, pos_dir=-1 -> product>0 ->
+                # _ct_te_str=0 -> alpha 0 -> byte-identical). rally pullback shorts (ret_vlong>0,
+                # pos_dir=-1 -> product<0 -> _ct_te_str>0) and mixed wrong-side longs (ret_vlong<0,
+                # pos_dir=+1 -> product<0 -> _ct_te_str>0) are the targets. The loss-gate ensures
+                # ct WINNERS (still in profit) keep full smoothing (stability preserved); only
+                # ct LOSERS get the DD-adaptive further reduction. Byte-identical at portfolio
+                # peak (dd_frac=0 -> _port_dd_atten=1.0 -> reduction 0) and for trend-aligned
+                # positions (ct gate 0 -> alpha 0 -> reduction multiplies 0). Continuous tanh,
+                # no boundary. Direction-agnostic general principle (no regime label): a ct loser
+                # during a portfolio drawdown is at correlated-regime-hit risk -> de-risk sooner.
+                _te_dd_reduce = (1.0 - _port_dd_atten) * _te_loss_gate  # 0 at peak or for winners
+                _te_alpha = _te_alpha * (1.0 - 0.30 * _te_dd_reduce)  # max 30% further alpha cut
                 # Exp5 (architectural, indep): CHURN-CONCENTRATED target-EMA alpha. The
                 # _target_ema is the proven rally-stab lever (smoothing the counter-trend
                 # held-position LEVEL dampens the noise-driven position-value cascade that is
