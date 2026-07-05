@@ -2176,33 +2176,6 @@ class Strategy:
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
-                # Exp1 (architectural, indep): PROFIT-VELOCITY factor on the win-accelerator.
-                # The accelerator currently keys on profit MAGNITUDE (tanh(pos_pnl/|stop|)):
-                # a position 1 stop in profit gets ~full acceleration regardless of whether
-                # it reached 1 stop in 2 bars (fast trend, high conviction) or 8 bars (slow
-                # grind, weaker). PROFIT VELOCITY = the recent bar-over-bar pos_pnl increase
-                # in the position's direction, normalized by |stop|, is a distinct data
-                # dimension (rate of profit accumulation, not level) absent from the existing
-                # 3-factor accelerator (magnitude × trend-strength × slope-confirm). A
-                # position whose pos_pnl is climbing FAST is a stronger ongoing trend ->
-                # accelerate scale-in harder to capture more of the move; one stagnating
-                # (low velocity despite being in profit) is losing momentum -> damp accel so
-                # scale-in does not over-commit into a stalling trend. Uses _pnl_path (the
-                # 12-bar pos_pnl trajectory, already maintained for the MTM-chop trim),
-                # mean of last 2 deltas (smooths single-bar noise), signed by pos_dir.
-                # Factor in [0.7, 1.3]: 0.7 damp at zero velocity (stalling), 1.0 baseline
-                # at moderate velocity, 1.3 boost at fast velocity (~0.5 stop/bar). One-
-                # sided only via max(0, tanh) on velocity (a position whose pos_pnl is
-                # DECLINING toward zero -- losing its profit -- gets factor 0.7, the
-                # stagnation floor; never reverses accel sign). New cross-component data
-                # dep at scale-in pace: accelerator now depends on profit-rate-of-change.
-                _pv_vel = 0.0
-                if len(_pp_hist) >= 3:
-                    _pv_d1 = (_pp_hist[-1] - _pp_hist[-2]) * _pos_dir_acc
-                    _pv_d2 = (_pp_hist[-2] - _pp_hist[-3]) * _pos_dir_acc
-                    _pv_vel = 0.5 * (_pv_d1 + _pv_d2) / abs(STOP_LOSS_PCT)
-                _pv_factor = 0.7 + 0.6 * max(0.0, min(1.0, np.tanh(_pv_vel / 0.5)))
-                _win_accel = _win_accel * _pv_factor
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
                 # recovered via slope gate). The fixed 0.8 magnitude rarely saturates the
