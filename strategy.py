@@ -726,14 +726,15 @@ class Strategy:
         _port_weak_cap = _port_weak_cap * _port_vol_spike_cap
         # Exp4: MAX-aggregation spot-move SIZE cap. Fires when ANY ONE symbol has a sharp
         # 6-bar move (|6-bar log return| elevated). step4: GATE OFF during deep-bear (crash)
-        # via the _port_deep_bear_mag signal. In deep-bear, sharp moves are trend-continuation
-        # (profitable for shorts) -> cap off -> crash byte-identical. In non-deep-bear regimes
-        # (bull/rally/sideways), sharp moves are pullbacks/mean-reversion -> cap fires. The
-        # gate ramps the cap's shrink to 0 as deep-bear engages (continuous, no boundary).
+        # via the _port_deep_bear_mag signal. step5: ALSO GATE OFF during weak-trend (sideways)
+        # via _port_weak_persist_avg. In deep-bear, sharp moves are trend-continuation
+        # (profitable for shorts); in sideways, sharp moves are mean-reversion (profitable).
+        # The cap fires only in TRENDING NON-DEEP-BEAR regimes (bull/rally uptrend pullbacks).
         _port_ret_short_abs_max = max(_port_ret_short_abs_vals) if _port_ret_short_abs_vals else 0.0
         _port_spot_move_shrink = PORT_SPOT_MOVE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_ret_short_abs_max - PORT_SPOT_MOVE_ONSET) / PORT_SPOT_MOVE_SCALE)))
         _port_deep_bear_spot_gate = max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ONSET) / PORT_DEEP_BEAR_SCALE)))  # 0 non-deep-bear, 1 deep-bear
-        _port_spot_move_cap = 1.0 - _port_spot_move_shrink * (1.0 - _port_deep_bear_spot_gate)
+        _port_weak_spot_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - PORT_WEAK_PERSIST_AVG_ONSET) / PORT_WEAK_PERSIST_AVG_SCALE)))  # 0 non-weak, 1 weak (sideways)
+        _port_spot_move_cap = 1.0 - _port_spot_move_shrink * (1.0 - _port_deep_bear_spot_gate) * (1.0 - _port_weak_spot_gate)
         _port_weak_cap = _port_weak_cap * _port_spot_move_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
