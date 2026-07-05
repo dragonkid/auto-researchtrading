@@ -2548,17 +2548,42 @@ class Strategy:
                 # 0.0004, fading to 0 by 0.0012 (fast-saturating, distinguishes gradual from
                 # sharp reversal). Continuous tanh-style ramp.
                 _slope_against_gate = max(0.0, 1.0 - max(0.0, (_slope_against - 0.0004) / 0.0008))
-                # Branch step4: LONG-ONLY gate. steps2-3 gates were too slow -- crash's shorts
-                # ride bounces faster than giveback/slope gates detect. Structural asymmetry:
-                # LONGS in an uptrend riding a pullback (bull) is the canonical let-winners-run
-                # scenario; SHORTS in a downtrend riding a bounce (crash) face asymmetric upside
-                # risk (downtrends are choppier, bounces sharper). Position direction is a
-                # structural property (long/short risk asymmetry), NOT a regime label. Gate the
-                # attenuation to LONG positions only -- bull longs get pullback relief, crash
-                # shorts get full pp_pressure (exit bounces normally). Shorts byte-identical to
-                # baseline. This is the cleanest separator: crash's problem is specifically its
-                # trend-aligned SHORTS; bull's benefit is specifically its trend-aligned LONGS.
-                _long_only_gate = 1.0 if current_pos > 0 else 0.0
+                # Exp2 (architectural, this session): SHORT-SIDE MAE-CLEANLINESS gate that
+                # REPLACES the giveback/slope gates for shorts. The session-summary's sanctioned
+                # untested lead: "a DIFFERENT gate form for shorts might activate the short
+                # extension (Exp10 was inert because the long-style gates starve it)." Exp1
+                # (this session) confirmed Exp10's inertness reproduces with a MAE-cleanliness
+                # gate ADDED alongside the giveback/slope gates: the giveback_ratio<0.15 AND
+                # slope_against<0.0006 gates are applied to BOTH longs and shorts in the
+                # _ta_winner_gate product, and crash bounces have larger giveback_ratio AND
+                # slope_against -> both gates -> 0 -> the short-side MAE gate never fires (gate
+                # product stays 0 regardless of MAE). The ROOT CAUSE is that the giveback/slope
+                # gates were designed for LONGS (bull's gradual pullbacks have small giveback/
+                # slope; crash's sharp bounces have large giveback/slope = the long-side
+                # separator). For SHORTS the symmetric separator is structurally different: a
+                # short's "gradual pullback" (steady downtrend, let it ride) vs "sharp reversal"
+                # (bounce happening, exit) is measured by the ADVERSE PATH (MAE), NOT by giveback/
+                # slope. A steady downtrend short has pos_pnl climbing smoothly (MAE ~ 0, never
+                # went against the short); a bouncing short dipped negative during the bounce
+                # (MAE << 0). So for SHORTS: replace the giveback/slope gate product with a
+                # MAE-cleanliness gate. For LONGS: keep the giveback/slope gates (byte-identical,
+                # they protect bull). NEW cross-component data dep: short-side pp_pressure
+                # attenuation gate composition differs from long-side (was: giveback/slope for
+                # both; now: giveback/slope for longs, MAE-cleanliness for shorts). The MAE signal
+                # is the low-water pos_pnl since entry (already tracked self._mae). Fast-saturating
+                # /0.5*|stop| scale: a deep bounce (MAE beyond half the stop) fully kills the
+                # attenuation; a shallow dip keeps partial attenuation. Continuous (no boundary).
+                if current_pos > 0:
+                    # Longs: giveback/slope gates (byte-identical to baseline).
+                    _bounce_gate = _gb_mag_gate * _slope_against_gate
+                else:
+                    # Shorts: MAE-cleanliness gate replaces giveback/slope (which starve shorts).
+                    _short_mae_clean = max(0.0, 1.0 - max(0.0, -self._mae.get(symbol, 0.0) / (0.5 * abs(STOP_LOSS_PCT))))
+                    _bounce_gate = _short_mae_clean
+                # Branch step4: LONG-ONLY gate removed (was: _long_only_gate = 1.0 if long else 0.0).
+                # Exp2 replaces it with the direction-aware _bounce_gate above (longs keep giveback/
+                # slope, shorts use MAE-cleanliness). The _long_only_gate zeroed shorts entirely;
+                # removing it lets the short-side attenuation fire for the first time.
                 # Branch step5: UPTREND-PERSISTENCE gate. step4 long-only still blew up crash
                 # because ret_vlong (96-bar) FLIPS positive during crash bounces (e.g. Nov 2021
                 # bounce off Luna low) -> crash bounce longs become trend-aligned-at-ret_vlong
@@ -2572,8 +2597,23 @@ class Strategy:
                 # duration-count separator principle (fe6acd4d keep) applied to the pp_pressure
                 # attenuation gate. Crash (down_persist~0.9) byte-identical (gate 0); bull
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
-                _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
+                # Exp2 (architectural, this session): DIRECTION-AWARE persist gate for shorts.
+                # The prior form gated attenuation to LOW _down_persist (persistent uptrend = longs).
+                # For SHORTS in a persistent DOWNTREND (crash, down_persist~0.9) the symmetric
+                # condition is HIGH _down_persist (persistent downtrend = the short's trend is
+                # intact). Now that shorts have a working bounce-gate (MAE-cleanliness), the
+                # direction-aware persist gate can fire for crash's persistent-downtrend shorts.
+                # Longs: byte-identical (gate on down_persist<0.40). Shorts: gate on
+                # down_persist>0.60 (persistent downtrend); crash bounce shorts (down_persist dips
+                # as ret_vlong flips positive during bounces) get gate ~0 -> no attenuation ->
+                # full pp_pressure exits the bounce. Byte-identical for longs.
+                if current_pos > 0:
+                    _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
+                else:
+                    # Shorts: persistent DOWNTREND (high down_persist) -> attenuation fires.
+                    # Full attenuation above 0.60, fading to 0 by 0.40 (mirror of the long gate).
+                    _up_persist_gate = max(0.0, min(1.0, (_down_persist - 0.40) / 0.20))
+                _ta_winner_gate = _ta_winner_gate * _bounce_gate * _up_persist_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
