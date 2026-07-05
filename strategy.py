@@ -3077,35 +3077,6 @@ class Strategy:
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
 
-                # Exp3 (architectural, indep): LOSS-FRACTION partial-exit path. NEW exit
-                # decision path: position size depends directly on the loss-to-stop ratio
-                # (_loss/_stop_abs), independent of _exit_pressure. DIAGNOSTIC MOTIVATION
-                # (Exp1+Exp2 this session): bull's large losers (PF 0.7 despite 71.8pct WR)
-                # exit via the HARD STOP -- the exit_thresh lowering (Exp1) was byte-identical
-                # for bull (the _sl_pressure>=0.95 exemption forces _exit_thresh=1.0), and
-                # stop tightening (Exp2) was byte-identical (stop not binding, soft-exit
-                # fires first). The lever is the POSITION SIZE as the loss grows toward the
-                # stop: a pure loss-magnitude partial exit cuts exposure smoothly as the loss
-                # deepens, so the realized loss at the stop is smaller -> higher PF -> higher
-                # Sharpe. The de-risk ramp (above) does this on the _exit_pressure axis, but
-                # _exit_pressure for a pure stop-approach loser is dominated by _sl_pressure
-                # which only ramps in the last ~0.4pct before the stop (_band_half~0.0034) --
-                # too late to reduce the realized loss meaningfully. This path reads the loss
-                # DIRECTLY: a loser at 50pct of the stop cuts ~15pct of position, at 75pct
-                # cuts ~35pct, at 90pct cuts ~55pct. Smooth tanh ramp on _loss/_stop_abs,
-                # loss-only (pos_pnl<0 -> _pnl_scale<0 -> fires; winners byte-identical).
-                # Gated to bars_held>=2 (same fresh-entry exemption as de-risk: scale-in
-                # conflict). Distinct from de-risk (pressure-based), binary stop (full exit),
-                # opp-gate (voter-based). Direction-agnostic (uses _pnl_scale only).
-                # Risk: cutting losers early reduces WR (some would recover) -- the tanh
-                # ramp is gentle at mid-loss (only ~15pct at 50pct of stop) so recoveries
-                # keep most of their size; the deep-loss cut (55pct at 90pct) targets
-                # positions that were going to hit the stop anyway.
-                if target != 0 and bars_held >= 2 and _pnl_scale < 0.0:
-                    _loss_frac = max(0.0, min(1.0, _loss / max(_stop_abs, 1e-6)))
-                    _loss_trim = 0.55 * max(0.0, np.tanh((_loss_frac - 0.40) / 0.20))
-                    target = target * (1.0 - _loss_trim)
-
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
                 # the dominant cost driver (flip_pnl -560 to -960 per regime).
