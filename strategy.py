@@ -3382,7 +3382,22 @@ class Strategy:
                 # shorts. _mtm_chop_early is computed at line ~2095 (lifted from the
                 # reduction throttle). Smooth positions (chop~0) -> factor*1 = baseline
                 # grid (byte-identical). Choppy positions (chop~1) -> full coarsening.
-                _hold_dur_grid = 1.0 + 0.3 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0))) * _mtm_chop_early
+                # BRANCH step4: ADD TREND-ALIGNMENT gate. step2/step3 showed the chop
+                # gate alone insufficient -- crash LOSING shorts are also choppy during
+                # dead-cat bounces (_mtm_chop_early>0) so the chop gate still coarsened
+                # their reductions. The separator: crash shorts (incl losing ones) are
+                # TREND-ALIGNED (ret_vlong<0, pos_dir=-1, product>0); mixed wrong-side
+                # longs are COUNTER-TREND (ret_vlong<0, pos_dir=+1, product<0). Gate
+                # the coarsening on COUNTER-TREND-AT-MULTI-DAY so it only fires on
+                # genuine dead-capital positions (mixed), exempting ALL trend-aligned
+                # positions (crash shorts + bull/rally longs -- both winners AND losers
+                # need their reductions to execute). Uses the validated _ct_si_gate
+                # pattern (multi-day ret_vlong*pos_dir, fast-saturating /0.01 -> near-
+                # constant noise-free). Trend-aligned -> gate 0 -> factor 1.0 -> baseline
+                # grid (byte-identical). Counter-trend -> gate ~1 -> full coarsening.
+                _pos_dir_hd = 1.0 if current_pos > 0 else -1.0
+                _ct_hd_gate = max(0.0, np.tanh(-_pos_dir_hd * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct
+                _hold_dur_grid = 1.0 + 0.3 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0))) * _mtm_chop_early * _ct_hd_gate
                 _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _hold_dur_grid
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
