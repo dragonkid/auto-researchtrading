@@ -253,9 +253,9 @@ COOLDOWN_TREND_DECAY = 0.06
 # only (deep MAE implies pos_pnl < 0). Direction-agnostic. Continuous tanh on
 # the recovery margin (no boundary). Targets bull (worst drag); crash spared by
 # the recovery-margin discriminator (large margin -> gate ~0).
-MAE_EARLY_ONSET = 0.50    # MAE depth as fraction of |stop| at which the gate begins
-MAE_EARLY_MARGIN = 0.25   # recovery margin (pos_pnl-MAE)/|MAE| below which gate is full
-MAE_EARLY_LOWER = 0.15    # max fractional reduction of _exit_thresh
+MAE_EARLY_ONSET = 0.30    # MAE depth as fraction of |stop| at which the gate begins (lowered from 0.50: at bars 2-4 most extending losers haven't reached half-stop yet)
+MAE_EARLY_MARGIN = 0.30   # recovery margin (pos_pnl-MAE)/|MAE| below which gate is full (raised from 0.25 to catch more extending losers; crash recoveries still have large margin by bar 2)
+MAE_EARLY_LOWER = 0.20    # max fractional reduction of _exit_thresh (raised from 0.15 to ensure the lowering actually flips the de-risk threshold)
 
 
 def ema(values, span):
@@ -2898,7 +2898,7 @@ class Strategy:
                 # trajectory shape vs portfolio DD state). Bypassed by _sl_pressure>=0.95
                 # exemption (near-stop) -- but at MAE=-0.5*stop the loss is ~half the stop,
                 # _sl_pressure ~0, so NOT bypassed for the target population.
-                if 2 <= bars_held <= 4:
+                if 2 <= bars_held <= 5:
                     _mae_val = self._mae.get(symbol, 0.0)
                     _mae_depth = -_mae_val / abs(STOP_LOSS_PCT)  # >=0, depth of adverse dip in stop-units
                     if _mae_depth >= MAE_EARLY_ONSET:
