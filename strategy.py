@@ -1335,35 +1335,6 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
-                # Exp5 (architectural, indep): SHORT-TERM MOMENTUM-FADE entry size attenuator.
-                # Exp1-Exp4 PROVED bull's large losers (PF 0.7 despite 71.8pct WR) are
-                # unreachable via the EXIT subsystem (exit_thresh byte-identical, stop
-                # tightening byte-identical x2, loss-fraction trim crashes crash). The
-                # diagnostic: bull's losers are FAST stop-hits (sustained_loss=0 -- they hit
-                # the stop within 1-2 bars of going negative). At ENTRY, these are trend-
-                # following longs entered INTO a local pullback: ret_long>0 (uptrend still
-                # intact, voter passes) BUT ret_short<0 (local reversal underway). The entry
-                # buys into a pullback that continues down -> fast stop-hit. The existing
-                # _ct_atten uses |ret_long| MAGNITUDE (fires for ct entries on strong ret_long);
-                # it does NOT fire for trend-aligned entries where ret_short opposes ret_long
-                # (a trend-follow entry into a pullback -- the bull-loser population). NEW
-                # cross-timescale data dep: entry size depends on the SHORT-vs-LONG momentum
-                # divergence (ret_short sign opposing ret_long sign for the entry direction).
-                # Shrink first-bar size by up to 25pct when ret_short solidly opposes the entry
-                # while ret_long supports it. Fast-saturating /0.006 (near-constant, noise-free
-                # per validated branch-step-9 lesson). Trend-aligned-with-momentum entries
-                # (ret_short*pos_dir>0 -> signal 0) byte-identical. Sideways (ret_long~0 ->
-                # gate 0) byte-identical. Pure counter-trend entries (ret_long*pos_dir<0 ->
-                # already shrunk by _ct_atten, this adds nothing: gate requires ret_long*pos_dir>0)
-                # byte-identical. Direction-agnostic (uses pos_dir sign).
-                _entry_pos_dir = 1.0  # bull entry direction
-                _mf_long_align = max(0.0, np.tanh(ret_long * _entry_pos_dir / 0.04))  # 1 when ret_long supports bull entry
-                _mf_short_against = max(0.0, np.tanh(-ret_short * _entry_pos_dir / 0.006))  # 1 when ret_short opposes bull entry
-                _bull_mfade_atten = 1.0 - 0.25 * _mf_long_align * _mf_short_against
-                _entry_pos_dir = -1.0  # bear entry direction
-                _mf_long_align_b = max(0.0, np.tanh(ret_long * _entry_pos_dir / 0.04))
-                _mf_short_against_b = max(0.0, np.tanh(-ret_short * _entry_pos_dir / 0.006))
-                _bear_mfade_atten = 1.0 - 0.25 * _mf_long_align_b * _mf_short_against_b
                 # Exp4 (architectural simplification, indep): REMOVED dead _vol_entry_atten
                 # stub (was =1.0 constant no-op multiplied into the target chain at lines
                 # ~1761/1765). The prior _vol_entry_atten (low-volume entry size attenuator,
@@ -2096,11 +2067,11 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _bull_mfade_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _bear_mfade_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
