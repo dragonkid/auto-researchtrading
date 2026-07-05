@@ -221,6 +221,32 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+# Exp2 (architectural, indep): MAE-RECOVERY-MARGIN DIRECT partial-exit for fresh
+# entries. Exp1 proved the MAE-recovery-margin DISCRIMINATOR is sound (it correctly
+# identifies extending losers: 5 of 6 bull deep-MAE bars recover, 1 has low margin
+# = the extending loser; crash recoveries have large margin by bar 2 -> gate ~0
+# -> byte-identical) BUT the _exit_thresh lowering LEVER was structurally inert
+# (soft-exit pressures LAG at fresh entries -- _sl_slope_pressure uses 12/16/22-bar
+# slope windows dominated by PRE-ENTRY price action, so at bars 2-5 of a declining
+# position the slope-against pressure has not yet risen; _exit_pressure is below
+# even the lowered de-risk threshold). The fix: a DIRECT exit path (reduce target)
+# rather than threshold modulation. When the gate fires, directly shrink the
+# position toward zero (partial de-risk), bypassing the lagging soft-exit
+# pressures. This is a NEW control-flow path at the exit decision (target
+# reduction) -- structurally distinct from threshold modulation (which only
+# changes WHEN existing pressures trigger). Mechanism: a fresh entry (bars 2-5)
+# that dipped deep (MAE <= -0.3*|stop|) AND is NOT recovering (recovery margin
+# (pos_pnl-MAE)/|MAE| < 0.30, i.e., still near its low-water) gets a partial exit
+# (shrink target by up to MAE_DIRECT_TRIM). Crash recoveries (large recovery
+# margin) -> gate ~0 -> byte-identical. Sideways/rally (no deep MAE on fresh
+# entries) -> byte-identical. Loss-side only by construction (deep negative MAE).
+# Direction-agnostic. Targets bull (worst drag, fast-stop losers). The trim is
+# PARTIAL (not full exit) to avoid the bar-1 pos_pnl failure mode (full exit on a
+# dip that might recover): a partial trim limits the loss exposure while leaving
+# the position open to recover if the gate is wrong. Reduction-only (safe family).
+MAE_DIRECT_ONSET = 0.30    # MAE depth as fraction of |stop| at which the gate begins
+MAE_DIRECT_MARGIN = 0.30   # recovery margin (pos_pnl-MAE)/|MAE| below which gate is full
+MAE_DIRECT_TRIM = 0.35     # max fractional reduction of target (partial exit, not full)
 
 
 def ema(values, span):
@@ -3076,6 +3102,29 @@ class Strategy:
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
+                    # Exp2 (architectural, indep): MAE-RECOVERY-MARGIN DIRECT partial-exit.
+                    # See MAE_DIRECT_* constants for full rationale. Exp1 proved the
+                    # discriminator is sound but the _exit_thresh lever was inert (soft-exit
+                    # pressures lag at fresh entries). This is the DIRECT exit path: when
+                    # the gate fires, shrink target directly (bypassing the lagging soft-exit
+                    # pressures). Partial trim (not full exit) to leave room for recovery
+                    # if the gate is wrong (avoids the bar-1 pos_pnl failure mode of full
+                    # exit on a dip that recovers). Composes with the de-risk ramp above (both
+                    # shrink target; this fires on the MAE-recovery signal, de-risk on soft-
+                    # exit pressure). Reduction-only (safe family). Loss-side only by
+                    # construction (deep negative MAE).
+                    if 2 <= bars_held <= 5:
+                        _mae_val_d = self._mae.get(symbol, 0.0)
+                        _mae_depth_d = -_mae_val_d / abs(STOP_LOSS_PCT)
+                        if _mae_depth_d >= MAE_DIRECT_ONSET:
+                            _recov_margin_d = (pos_pnl - _mae_val_d) / max(abs(_mae_val_d), 1e-10)
+                            _recov_gate_d = max(0.0, min(1.0, np.tanh((MAE_DIRECT_MARGIN - _recov_margin_d) / (MAE_DIRECT_MARGIN * 0.5))))
+                            _mae_depth_gate_d = max(0.0, min(1.0, np.tanh((_mae_depth_d - MAE_DIRECT_ONSET) / 0.25)))
+                            _mae_trim = MAE_DIRECT_TRIM * _recov_gate_d * _mae_depth_gate_d
+                            if _mae_trim > 0.0:
+                                _new_t = current_pos + (target - current_pos) * (1.0 - _mae_trim)
+                                if (_new_t > 0) == (current_pos > 0) and abs(_new_t) < abs(current_pos):
+                                    target = _new_t
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
