@@ -3199,6 +3199,32 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Branch step4: CONCAVE loser ramp at deep DD. The _exit_thresh
+                        # boost (step2) and _de_floor keep both lower the exit graduation
+                        # BOUNDS for losers during deep DD. This is a DIFFERENT lever:
+                        # the ramp SHAPE between the bounds. Currently losers get
+                        # _dr_k=1.0 (LINEAR: _de_risk = 1 - _dr_x, de-risks proportionally
+                        # to pressure across [0,1]). A CONCAVE ramp (_dr_k<1, _de_risk =
+                        # 1 - _dr_x^k with k<1) de-risks FASTER in the mid-range (smaller
+                        # _dr_x -> larger shrink) -> a losing position during deep DD shrinks
+                        # sooner as pressure rises from the lowered floor -> smaller position
+                        # -> smaller realized loss if it continues to bleed -> higher crash
+                        # Sharpe (the target regime; crash's extending shorts are the
+                        # population). Distinct from the convex cushion (k>1 for trend-
+                        # aligned winners, ride giveback): concave (k<1) for losers during
+                        # deep DD cuts faster. Gated by _dr_deep_dd (the SAME _port_dd_frac-
+                        # based deep-DD ramp from step2, onset 0.10 -> crash fires, sideways/
+                        # mixed ~0 -> byte-identical) AND _exit_dd_gate (sustained losers,
+                        # spares fresh dips). Max concavity 0.85 (k from 1.0 -> 0.85 at deep
+                        # DD + sustained loser). Recomputed here with a DISTINCT name to avoid
+                        # collision with the _de_floor keep's _port_dd_active (onset 0.30 in
+                        # _port_dd_atten space, fires for mixed too -- WRONG for this lever).
+                        # Smooth, no boundary. New control flow: the de-risk ramp exponent
+                        # now depends on (profit, trend-align, slope-conf) for winners AND
+                        # (deep-DD, sustained-loss) for losers.
+                        if _pnl_scale < 0.0:
+                            _dr_deep_dd = max(0.0, np.tanh((_port_dd_frac - 0.10) / 0.03))
+                            _dr_k -= 0.15 * _dr_deep_dd * _exit_dd_gate
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
