@@ -3531,9 +3531,37 @@ class Strategy:
                     # ~breakeven and rally's modest-PnL trims keep full throttle, only
                     # CLEAR winners (crash profit-take shorts) are spared. Smooth.
                     _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
+                    # STRUCTURAL_EXPLORATION step1: HOLD-DURATION-CONDITIONED trim profile
+                    # on the emission-layer reduction throttle. The prior single multiplicative
+                    # amplifier (_trim_mult = 1 + AMP*chop*grind*trend_fade*winner_fade) is
+                    # at its structural ceiling -- every gate factor has been tuned (grind,
+                    # trend_fade, winner_fade each a validated keep). The remaining untested
+                    # axis is the POSITION'S LIFE-CYCLE PHASE: the trim should be WEAKER for
+                    # early-bar reductions (let the position establish -- a bar-3 choppy
+                    # reduction might be a scale-in wobble, not dead capital) and STRONGER
+                    # for mid/late-life choppy reductions (a bar-8 choppy reduction IS dead
+                    # capital that has bled for 8 bars). NEW cross-component data dep: trim
+                    # magnitude reads bars_held jointly with mtm_chop (was chop-only). This
+                    # is a subsystem rewrite of the emission throttle's MAGNITUDE FUNCTION
+                    # (was a flat single multiplier across all held bars -> now a hold-
+                    # duration-profiled multiplier). The OLD mechanism at its structural
+                    # ceiling: prior sessions tuned grind/trend_fade/winner_fade to isolate
+                    # mixed's beneficial trims from bull/crash/rally regressions, but the
+                    # trim MAGNITUDE is uniform across the position's life -- a bar-2 choppy
+                    # reduction gets the SAME trim as a bar-10 choppy reduction, even though
+                    # the bar-10 one is far more likely to be genuine dead capital. The new
+                    # mechanism: _hold_durations factor = 0.5 at bars_held<=3 (light trim,
+                    # let position establish), ramping to 1.0 at bars_held>=6 (full trim),
+                    # then to 1.4 at bars_held>=12 (aggressive trim on clearly-dead capital).
+                    # Continuous tanh profile (no boundary); reduction-only (safe family);
+                    # byte-identical when _mtm_chop=0 (smooth winners, chop~0 -> trim_mult
+                    # ~1.0 regardless of hold_duration). Direction-agnostic. Targets mixed
+                    # (the binding positive regime whose dead-capital longs bleed across
+                    # many bars) while sparing early-bar reductions everywhere.
+                    _hold_dur_profile = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
