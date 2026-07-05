@@ -2748,7 +2748,23 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Exp4 (architectural, indep): LOSS-SIDE attenuation of the own-side
+                # voter_bias SUBTRACTION. The own-side term (-0.20*_chop_amp*tanh(side_margin/
+                # 0.30)) SUBTRACTS from exit_pressure when own-side conviction is strong
+                # (lets winners run in chop). For a LOSING position, this "let it run" benefit
+                # is counterproductive -- a loser bleeding in chop should not have its exit
+                # pressure reduced by its own (lagging) voter conviction. NEW cross-component
+                # data dep: the own-side subtraction magnitude now reads PnL sign. Attenuate
+                # the subtraction by up to 30pct for losing positions (_pnl_scale<0) so losers
+                # in chop exit sooner (less own-side hold relief) -> smaller realized losses ->
+                # higher Sharpe for the negative-Sharpe regimes (crash PF 0.9, sideways PF 1.2
+                # with 154 trades). LOSS-SIDE-ONLY (gated on max(0,-_pnl_scale) -> 0 for winners)
+                # so trend-aligned WINNERS (crash profitable shorts: pos_pnl>0 -> atten=1.0
+                # byte-identical; bull/rally longs: winners byte-identical) are fully protected
+                # -- dead-cat-wall-safe by construction (only LOSING positions get less hold
+                # relief; crash's winning shorts are not losing). Byte-identical at profit.
+                _own_loss_atten = 1.0 - 0.30 * max(0.0, -_pnl_scale)
+                _voter_bias = -0.20 * _chop_amp * _own_loss_atten * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
