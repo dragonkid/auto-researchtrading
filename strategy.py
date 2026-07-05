@@ -365,6 +365,22 @@ PORT_DEEP_BEAR_MAX_SHRINK = 0.25  # max shrink at full saturation (-> 0.75x)
 PORT_DEEP_BEAR_ADMIT_ONSET = 0.03   # same onset as Exp8 SIZE cap (deep bear magnitude)
 PORT_DEEP_BEAR_ADMIT_SCALE = 0.02
 PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
+# Exp1 (architectural, indep): MAX-AGGREGATION portfolio VOL-SPIKE SIZE CAP. Extends the
+# validated max-aggregation portfolio-cap pattern (4 keeps on SIZE: avg down_persist, max
+# down_persist, max weak_persist, max |ret_vlong| -- all on the TREND/bear axis) to a NEW
+# signal axis: per-symbol REALIZED VOLATILITY (vol_ratio). The prior portfolio caps key on
+# TREND (down_persist, weak_persist, |ret_vlong|); they do NOT fire on vol-spike episodes
+# where the trend is still up but realized vol is elevated (bull 2021's sharp pullbacks:
+# ret_vlong stays positive through pullbacks, so the trend/bear caps are byte-identical in
+# bull; but vol_ratio spikes during pullbacks). The MAX-aggregation principle (sanctioned
+# untested lead: "max-aggregation might extend to max ATR, max vol_ratio, max RSI") fires
+# when ANY ONE symbol's vol_ratio is elevated -> catches cross-symbol vol-spike events
+# (a single symbol spiking often signals regime transition / sharp pullback). Byte-
+# identical when all symbols' vol_ratio below ONSET (calm grind = rally/sideways). Shrink-
+# only; composes multiplicatively with the trend/bear caps (independent signal axes).
+PORT_VOL_SPIKE_ONSET = 1.30   # vol_ratio above which cap engages (calm<1.0, chop>1.2; 1.3 = elevated)
+PORT_VOL_SPIKE_SCALE = 0.30
+PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 
 
 class Strategy:
@@ -622,6 +638,7 @@ class Strategy:
         _port_down_persist_vals = []
         _port_weak_persist_vals = []  # Exp6: per-symbol weak_persist for max-aggregation
         _port_rv_vals = []  # Exp8: per-symbol raw ret_vlong for max-aggregation deep-bear cap
+        _port_vol_ratio_vals = []  # Exp1: per-symbol vol_ratio for max-aggregation vol-spike cap
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
@@ -640,6 +657,15 @@ class Strategy:
             if len(_pwvh) > PERSIST_WINDOW:
                 _pwvh = _pwvh[-PERSIST_WINDOW:]
             _port_weak_persist_vals.append((float(sum(_pwvh)) / len(_pwvh)) if _pwvh else 0.0)
+            # Exp1: per-symbol vol_ratio for MAX-aggregation vol-spike cap. Uses the SAME
+            # VOL_LOOKBACK realized_vol / _target_vol_dyn computation as the per-symbol loop
+            # (line ~795), lifted to the portfolio section so MAX across symbols can fire.
+            if len(_pc) > VOL_LOOKBACK + 1:
+                _p_rv_short = max(np.std(np.diff(np.log(_pc[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+                _p_long_n = min(200, len(_pc) - 1)
+                _p_baseline_vol = max(np.std(np.diff(np.log(_pc[-_p_long_n - 1:-1]))), 1e-6)
+                _p_target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _p_baseline_vol
+                _port_vol_ratio_vals.append(_p_rv_short / max(_p_target_vol_dyn, 1e-6))
         _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
         # Exp1: portfolio-level deep-bear size cap (AVERAGE aggregation). Continuous tanh
         # ramp above ONSET; shrink-only (caps at 1.0; never amplifies size).
@@ -673,6 +699,14 @@ class Strategy:
         _port_deep_bear_mag = max(0.0, -_port_rv_min)  # magnitude of the deepest bear symbol
         _port_deep_bear_cap = 1.0 - PORT_DEEP_BEAR_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ONSET) / PORT_DEEP_BEAR_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_deep_bear_cap
+        # Exp1: MAX-aggregation vol-spike SIZE cap (composes with the trend/bear caps above).
+        # Fires when ANY ONE symbol's vol_ratio exceeds ONSET (vol-spike regime). Distinct
+        # axis from the trend/bear caps: catches vol-spike episodes where the trend is still
+        # up but realized vol is elevated (bull 2021 pullbacks where ret_vlong stays
+        # positive but vol_ratio spikes). Byte-identical when all vol_ratios < ONSET.
+        _port_vol_ratio_max = max(_port_vol_ratio_vals) if _port_vol_ratio_vals else 0.0
+        _port_vol_spike_cap = 1.0 - PORT_VOL_SPIKE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ONSET) / PORT_VOL_SPIKE_SCALE)))
+        _port_weak_cap = _port_weak_cap * _port_vol_spike_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
