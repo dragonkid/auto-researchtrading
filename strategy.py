@@ -3364,17 +3364,19 @@ class Strategy:
             # capital trims through). Byte-identical when _churn_dz=0 (low-churn regimes
             # where the deadband is off regardless). Direction-agnostic general principle.
             if _churn_dz > 0.0:
-                # Branch step3: LATE-BAR narrowing only (inverse of step1/step2). The opener
-                # widened early bars (suppressing scale-in) which destroyed rally/mixed; step1
-                # (one-sided widen) and step2 (reduction-only widen) were both byte-identical
-                # to opener or baseline. The opener's late-bar NARROWING was confounded with
-                # the early-bar widening. Isolate pure late-bar narrowing: keep early bars at
-                # baseline 1.0x (don't touch scale-in), narrow only for bars>=8 (let dead-
-                # capital trims through for held positions). min(...,1.0) makes the profile
-                # one-sided: <=1.0 (narrower) for bars>=8, ==1.0 (baseline) for bars<8.
-                # Targets mixed's dead-capital longs (held many bars) without touching any
-                # regime's scale-in. Continuous (no boundary).
-                _deadband_hold_profile = min(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
+                # Branch step4: LOSER-ONLY late-bar narrowing. Step3 (narrow for all late bars)
+                # showed the late-bar narrowing is the active mechanism (bull +1.5, sideways
+                # +0.6, but rally -1.0, mixed -0.9). The discriminator: narrowing lets late-bar
+                # trims through -- GOOD for LOSING positions (dead capital, cut it) but BAD for
+                # WINNING positions (cutting a trend-continuation winner). Gate the narrowing
+                # on pos_pnl < 0 (losers only): narrow for losers (let dead-capital trims
+                # through), keep baseline 1.0x for winners (let winners run, suppress trims).
+                # This should preserve bull/sideways (their late-bar losers ARE dead capital)
+                # while restoring rally/mixed (their late-bar winners stop getting trimmed).
+                if pos_pnl < 0:
+                    _deadband_hold_profile = min(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
+                else:
+                    _deadband_hold_profile = 1.0
                 _deadband_frac = _deadband_frac * _deadband_hold_profile
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
