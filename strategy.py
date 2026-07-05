@@ -2576,15 +2576,16 @@ class Strategy:
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
                 # Exp1 (this session): TUNE the trend-aligned-winner pp_pressure attenuation
                 # magnitude 0.35 -> 0.50 (KEEP +0.004283, bull -0.3006->-0.2839, crash byte-identical).
-                # Exp2 (this session): push magnitude further 0.50 -> 0.65. The mechanism has
-                # headroom: bull is still negative-Sharpe (-0.28) so any further winner-attenuation
-                # gain = direct composite. Crash separator (down_persist gate at 0.40 onset,
-                # crash ~0.9) held cleanly at 0.50 -> expect byte-identical crash again. The gates
-                # (giveback_ratio<0.10, slope_against<0.0004, long-only, up_persist<0.40) ensure
-                # attenuation only fires on GRADUAL pullbacks in PERSISTENT uptrends -- 0.65 still
-                # leaves 35% of pp_pressure active, so sharp reversals (gates off) get full pp
-                # protection. Testing whether the linear bull improvement continues or plateaus.
-                _pp_pressure = _pp_pressure * (1.0 - 0.65 * _ta_winner_gate)
+                # Exp2 (this session): push magnitude further 0.50 -> 0.65 (KEEP +0.004766, bull -0.2839->-0.2653,
+                # crash byte-identical). Linear improvement continues (slightly accelerating, not plateauing).
+                # Exp3 (this session): push magnitude further 0.65 -> 0.80. bull Sh -0.265 still negative
+                # so headroom remains for direct composite gain. The gates (giveback_ratio<0.10,
+                # slope_against<0.0004, long-only, up_persist<0.40) ensure attenuation only fires on
+                # GRADUAL pullbacks in PERSISTENT uptrends; 0.80 leaves 20% pp_pressure active even at
+                # full gate pass, so sharp reversals (gates off -> attenuation=0) keep full pp
+                # protection. Crash separator (down_persist gate at 0.40 onset, crash ~0.9) held cleanly
+                # through 0.50 and 0.65 -> expect byte-identical crash. Testing the upper limit.
+                _pp_pressure = _pp_pressure * (1.0 - 0.80 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
