@@ -2087,21 +2087,6 @@ class Strategy:
                 if len(_pp_hist) > 12:
                     _pp_hist = _pp_hist[-12:]
                 self._pnl_path[symbol] = _pp_hist
-                # BRANCH step2: compute MTM-chop EARLY (before the grid quantization)
-                # so the hold-dur grid factor can be gated on it. Mirrors the _mtm_chop
-                # computation in the reduction throttle (line ~3525) but lifted to here
-                # so the grid (line ~3341) can read it. MTM-path-efficiency = |net|/sum|delta|
-                # over the 12-bar pos_pnl path; chop = 1 - eff. HIGH = choppy dead capital
-                # (mixed wrong-side longs); LOW = smooth climber (crash trend-aligned shorts).
-                # Used to gate the hold-dur grid coarsening so it only fires on choppy
-                # positions (the dead-capital population), exempting crash's smooth shorts.
-                _mtm_chop_early = 0.0
-                if len(_pp_hist) >= 4:
-                    _ppa_e = np.array(_pp_hist)
-                    _net_e = abs(_ppa_e[-1] - _ppa_e[0])
-                    _tot_e = float(np.sum(np.abs(np.diff(_ppa_e))))
-                    _mtm_eff_e = _net_e / max(_tot_e, 1e-10)
-                    _mtm_chop_early = max(0.0, min(1.0, 1.0 - _mtm_eff_e))
 
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
@@ -3325,34 +3310,7 @@ class Strategy:
             _deadband_frac = 0.13 * _churn_dz
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
-                # BRANCH step6: ASYMMETRIC HOLD-DURATION-CONDITIONED deadband. Steps
-                # 1-5 applied hold-dur to the grid quantization (all crashed crash --
-                # the grid ABSORBS reductions; crash losing positions need reductions
-                # to execute). The deadband has the SAME absorption problem IF applied
-                # symmetrically, but an ASYMMETRIC deadband avoids it: widen the
-                # deadband for late-life GROWTH resizes (scale-in wobble suppression --
-                # a bar-10 micro-growth is likely noise, snap to hold), while keeping
-                # the baseline deadband for SHRINK resizes (let reductions execute --
-                # a late-life reduction passes through to the validated trim throttle).
-                # NEW cross-component data dep: deadband width depends on (bars_held,
-                # resize_direction) -- was symmetric uniform. The hold-dur factor
-                # (0.5 at bars<=3, 1.0 at bars>=6, ~1.4 at bars>=12, the validated
-                # profile from the trim throttle keep) modulates the GROWTH-side
-                # deadband only. For shrinks, deadband stays at baseline (byte-identical
-                # for crash's reductions). Byte-identical for shrinks AND for bars<=3
-                # (early-bar growth deadband halved -> still narrow -> scale-in signal
-                # preserved). Continuous tanh. Mechanism: late-life growth wobble is
-                # suppressed (stability via fewer noise-driven micro-growths), while
-                # late-life reductions always execute (no crash regression).
-                _is_grow = abs(target) > abs(current_pos)
-                if _is_grow:
-                    _hd_grow = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
-                    _db_grow = _deadband_frac * _hd_grow
-                    if abs(target - current_pos) < _db_grow * abs(current_pos):
-                        target = current_pos  # snap-to-hold: suppress growth micro-resize
-                    # else: growth exceeds (widened for late-life) deadband -> execute
-                else:
-                    target = current_pos  # baseline shrink deadband (snap micro-reductions)
+                target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
             # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
@@ -3381,12 +3339,6 @@ class Strategy:
             # is stable across the noise ensemble (a perturbed bar barely moves equity).
             # Also finer (0.06) so rally's bidirectional fine resizes are less coarsened.
             if _is_resize and _churn_dz > 0.0:
-                # BRANCH step6: REVERTED hold-dur grid (steps 1-5 all crashed crash
-                # -- the grid ABSORBS reductions; crash losing positions need their
-                # reductions to execute; mixed dead capital and crash dead-cat longs
-                # are indistinguishable at (chop, trend-align, churn) level). Back to
-                # baseline uniform 0.06 lattice. The hold-dur insight is being applied
-                # to the DEADBAND instead (asymmetric: growth-only, see below).
                 _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
@@ -3498,17 +3450,6 @@ class Strategy:
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
                 _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
                 if _grid_c > 0 and not _small_pos_exempt:
-                    # BRANCH step3: REVERTED calm-path hold-dur grid (was crashing crash
-                    # -1.139 even with chop gate). The calm path fires for never-bursting
-                    # symbols (crash/sideways/bull). Crash's LOSING shorts have chop during
-                    # dead-cat bounces -> the chop gate still coarsened their reductions ->
-                    # absorbed reductions -> losing shorts held bigger -> larger realized
-                    # losses. The calm-path grid's job is noise suppression in stability-
-                    # factor-1.0 regimes; coarsening it for late-life fights the small-pos
-                    # and chop exemptions. Keep baseline uniform 0.06 lattice here; the
-                    # hold-dur grid only applies to the churn path (rally) where it's a net
-                    # win. _mtm_chop_early no longer used here but kept computed (churn path
-                    # still reads it).
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
