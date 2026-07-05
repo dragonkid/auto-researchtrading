@@ -2220,6 +2220,18 @@ class Strategy:
                 # Direction-asymmetric: longs easier, shorts harder. Crash byte-identical (shorts
                 # unchanged); sideways spared (chop ~0 accel via _accel_align).
                 _slope_conf_scale = 0.0003 if current_pos > 0 else 0.0008  # longs easier (0.0003), shorts harder (0.0008)
+                # STRUCTURAL_EXPLORATION step7: COUNTER-TREND-AT-MULTI-DAY short slope-conf
+                # threshold boost (0.0008 -> 0.0012 for ct-at-multi-day shorts only). Step2
+                # gave bull +0.0037 via weak-slope bull shorts getting less accel. Steps 3-6
+                # saturated. New lever: distinguish crash's TREND-ALIGNED shorts (ret_vlong<0,
+                # pos_dir=-1 -> product>0, clean downtrend, KEEP 0.0008) from bull/rally ct-at-
+                # multi-day shorts (ret_vlong>0, pos_dir=-1 -> product<0, counter-trend, RAISE
+                # to 0.0012). ct-at-multi-day shorts are fighting the multi-day trend -> even
+                # higher bar to accelerate -> smaller ct short position -> if bounced, smaller
+                # realized loss. Crash trend shorts byte-identical (product>0 -> 0.0008).
+                # Continuous (tanh, no boundary); direction × multi-day-trend structural property.
+                if current_pos < 0 and ret_vlong * _pos_dir_acc < 0:  # ct-at-multi-day short
+                    _slope_conf_scale = 0.0012
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / _slope_conf_scale))
                 _win_accel = _win_accel * _slope_conf
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
