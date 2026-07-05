@@ -3058,7 +3058,20 @@ class Strategy:
                     # _exit_thresh) and lower bound (this _de_floor) of the exit graduation.
                     # Sideways fresh dips spared; crash/bull/rally extending losers trimmed.
                     if _pnl_scale < 0.0:
-                        _de_floor -= 0.13 * (1.0 - _port_dd_atten) * _exit_dd_gate
+                        # Branch step11: DEEP-DD onset + higher magnitude. step3/step7/step9
+                        # showed magnitude >0.13 over-trims sideways (its 4.47pct portfolio DD
+                        # fires the gate too aggressively). Gate the lowering on a DEEPER
+                        # portfolio DD onset: only fire when (1 - _port_dd_atten) > 0.30 (i.e.,
+                        # _port_dd_atten < 0.70, a meaningful portfolio drawdown). This spares
+                        # sideways's small DD episodes (its _port_dd_atten rarely drops below
+                        # 0.85) while still firing on crash (17.7pct DD) and bull (12.9pct DD).
+                        # With the stricter onset, raise magnitude to 0.18 (deeper DD = more
+                        # confident the loser extends). Continuous tanh ramp above onset (no
+                        # hard boundary): _deep_dd_ramp = max(0, tanh(((1-_port_dd_atten) - 0.30)/0.10)).
+                        # Byte-identical when (1-_port_dd_atten) < 0.30 (sideways mild DD,
+                        # portfolio peak). Composes with _exit_dd_gate (sustained_loss * trend).
+                        _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
+                        _de_floor -= 0.18 * _port_dd_active * _exit_dd_gate
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
