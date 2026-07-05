@@ -2907,7 +2907,7 @@ class Strategy:
                     # NEW data dep: _exit_thresh boost reads _port_dd_frac directly (not via
                     # _port_dd_atten) -> finer DD-resolution. Continuous tanh, no boundary.
                     _port_dd_active = max(0.0, np.tanh((_port_dd_frac - 0.10) / 0.03))
-                    _exit_thresh = _exit_thresh * (1.0 - (0.12 * (1.0 - _port_dd_atten) + 0.10 * _port_dd_active) * _exit_dd_gate)
+                    _exit_thresh = _exit_thresh * (1.0 - (0.12 * (1.0 - _port_dd_atten) + 0.07 * _port_dd_active) * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
