@@ -2954,47 +2954,6 @@ class Strategy:
                 # identical exit behavior via de-risk ramp (de_risk=0 at pressure=thresh).
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif target != 0 and bars_held == 1 and pos_pnl < 0.0:
-                    # Exp1 (architectural, indep): FRESH-LOSER BAR-1 FAST PARTIAL-EXIT.
-                    # NEW exit decision path on the EARLY-BAR pos_pnl trajectory, the
-                    # sanctioned-but-untested lead from the prior session-summary: bull's
-                    # large losers are FAST STOP-HITS (sustained_loss=0 in bull -- they hit
-                    # the stop within 1-2 bars of going negative, so the fd6a9169 keep's
-                    # sustained_loss x trend_strength gate cannot catch them -- it needs 4
-                    # bars). A fresh entry that goes NEGATIVE on bar 1 (the first bar after
-                    # entry) is more likely to fast-stop than one that goes positive: the
-                    # entry bar's immediate adverse move signals the entry was poorly timed
-                    # (a pullback-into long that bounce-faded, a counter-trend short that
-                    # reversed). Trim the position PARTIALLY on bar 1 (before the loser
-                    # runs to stop) so the eventual stop-hit realizes a smaller loss.
-                    # STRUCTURALLY DISTINCT from prior walled approaches (all MEASURED in
-                    # prior sessions, verifiable):
-                    #   - sustained_loss (fd6a9169 keep) needs 4 bars of negativity -> inert
-                    #     for bull's fast stop-hits (bars 1-2);
-                    #   - loss-fraction partial-exit (prior Exp3, crashed crash -1.73) read
-                    #     the CURRENT-LOSS LEVEL (loss-to-stop ratio), which caught crash's
-                    #     trend-aligned shorts on adverse MAE dips that then RECOVERED
-                    #     profitable -> PF 0.9->0.2. THIS reads the EARLY-BAR trajectory
-                    #     (bars_held==1 specifically -- the first bar after entry), not the
-                    #     current loss level. Crash's trend-aligned shorts that recover
-                    #     profitable generally go POSITIVE on bar 1 (the trend is with them
-                    #     from the start) -> NOT trimmed;
-                    #   - exit_thresh lowering (fd6a9169 keep) is byte-identical for bull
-                    #     (_sl_pressure>=0.95 exemption forces _exit_thresh=1.0);
-                    #   - stop tightening byte-identical (stop not binding, soft-exit fires
-                    #     first);
-                    #   - entry-size attenuator (prior Exp5) scales winners/losers
-                    #     proportionally -> PF unchanged.
-                    # The bar-1 negative signal is the earliest possible trajectory read,
-                    # unavailable to sustained_loss (needs 4 bars) and orthogonal to
-                    # loss-fraction (level not trajectory). Partial trim (max 30pct) keeps
-                    # the position open so a recovery still profits (unlike a full exit
-                    # which would lock the loss). Trend-aligned crash/rally winners that go
-                    # positive on bar 1 are byte-identical. Reduction-only (safe family).
-                    # New cross-component data dep: exit subsystem reads (bars_held==1,
-                    # pos_pnl sign) jointly -- the position's early trajectory shape.
-                    _fresh_loss_trim = 0.30 * max(0.0, min(1.0, -pos_pnl / (0.5 * abs(STOP_LOSS_PCT))))
-                    target = target * (1.0 - _fresh_loss_trim)
                 elif target != 0 and bars_held >= 2:
                     # Architectural: PnL-conditioned partial-exit floor (replaces
                     # vol-conditioning). New cross-subsystem data dep at exit
