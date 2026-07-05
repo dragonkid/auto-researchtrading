@@ -2849,7 +2849,28 @@ class Strategy:
                     # identical; crash/mixed (trending) keep the gain. Continuous tanh ramp.
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
-                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # Exp1 (architectural, indep): REMOVE the (1.0 - _port_dd_atten) portfolio-DD
+                    # multiplier from the exit_thresh lowering. The prior fd6a9169 keep gated the
+                    # sustained-loss x trend-strength signal on portfolio DD fraction, which made
+                    # the lowering BYTE-IDENTICAL at portfolio peak (dd_frac=0 -> multiplier 0).
+                    # That blocked the WORST drag (bull Sh-0.645, PF 0.7 despite 71.8pct WR = large
+                    # losers) from ever benefiting: bull is at peak equity throughout its regime
+                    # -> portfolio-DD multiplier = 0 -> exit_thresh never lowered -> bull's
+                    # sustained-losing trend-aligned longs ride corrections to full stop. The
+                    # sustained_loss x trend_strength gates ALONE already filter to "extending
+                    # loser in a trending regime" (validated by the prior branch step5/step7:
+                    # step5 added sustained_loss, step7 added trend_strength to spare sideways
+                    # mean-reverters). The portfolio-DD multiplier is redundant with those gates
+                    # (a sustained loser in a trending regime IS the correlated-regime-hit signal,
+                    # regardless of portfolio state) AND it blocks bull. New control flow: this
+                    # exit_thresh path no longer depends on portfolio DD -- the validated position-
+                    # level signal fires on its own. Bull (trending, peak equity, sustained-losing
+                    # longs) now gets the lowering -> cut losers ~1 bar earlier -> smaller large
+                    # losers -> higher Sharpe. Crash byte-identical (was already at full portfolio-
+                    # DD activation ~1.0). Sideways byte-identical (trend_strength gate ~0).
+                    # Rally/mixed: peak-equity sustained losers (ct shorts that bleed during grind)
+                    # now also get the lowering -- should help (cut wrong-side bleeders faster).
+                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
