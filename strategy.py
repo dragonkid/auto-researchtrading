@@ -3342,6 +3342,30 @@ class Strategy:
             # to-hold (Zeno-free). Symmetric growth/shrink. Entries/exits/flips exempt.
             _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # FAST saturation: ~0 at len<=1, ~1 at len>=3
             _deadband_frac = 0.13 * _churn_dz
+            # Exp2 (architectural, indep): HOLD-DURATION-CONDITIONED DEADBAND. Sanctioned
+            # untested lead from prior session-summary (b00ace8f keep note): "The hold-
+            # duration profile could be applied to OTHER emission-layer signals (the grid
+            # quantization, the deadband) -- step1 applied it only to the mtm_chop trim."
+            # Distinct decision-architecture change: new data dependency on the deadband
+            # WIDTH (currently depends only on churn, NOT on hold-duration). The b00ace8f
+            # keep proved hold-duration-conditioning breaks a structural ceiling on the
+            # mtm_chop trim (uniform magnitude across the position's life was suboptimal;
+            # early-bar reductions need lighter trim, mid/late-life reductions need heavier
+            # trim). The SAME principle applies to the deadband: an early-bar small resize
+            # (bars<=3) is likely scale-in wobble (the position is still establishing -- a
+            # micro-resize here is noise, suppress it with a WIDER deadband), while a mid/
+            # late-life small resize (bars>=6) is genuine dead-capital trimming that SHOULD
+            # execute (a NARROWER deadband lets the trim through). The OLD uniform-width
+            # deadband applied the same snap-to-hold threshold to bar-2 and bar-10 resizes
+            # alike, even though a bar-10 small resize is far more likely to be a real trim.
+            # New cross-component data dep: deadband width depends on bars_held jointly with
+            # churn. Continuous tanh profile (no boundary); ~1.3x wider at bars<=3 (suppress
+            # scale-in wobble), 1.0x at bars~5 (baseline), ~0.7x narrower at bars>=8 (let dead-
+            # capital trims through). Byte-identical when _churn_dz=0 (low-churn regimes
+            # where the deadband is off regardless). Direction-agnostic general principle.
+            if _churn_dz > 0.0:
+                _deadband_hold_profile = 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0)
+                _deadband_frac = _deadband_frac * _deadband_hold_profile
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
