@@ -2559,7 +2559,21 @@ class Strategy:
                 # baseline. This is the cleanest separator: crash's problem is specifically its
                 # trend-aligned SHORTS; bull's benefit is specifically its trend-aligned LONGS.
                 _long_only_gate = 1.0 if current_pos > 0 else 0.0
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate
+                # Branch step5: UPTREND-PERSISTENCE gate. step4 long-only still blew up crash
+                # because ret_vlong (96-bar) FLIPS positive during crash bounces (e.g. Nov 2021
+                # bounce off Luna low) -> crash bounce longs become trend-aligned-at-ret_vlong
+                # -> attenuation fires -> ride bounce top -> down-trend resumes -> hit stops ->
+                # DD explodes. The separator between bull (PERSISTENT uptrend) and crash (TRANSIENT
+                # bounce uptrend) is the DURATION of ret_vlong positivity, not the instantaneous
+                # sign. Use _down_persist (fraction of last 48 bars where ret_vlong<0, already
+                # computed line ~910): bull ~0.3 (transient pullback dips), crash ~0.9 (persistent
+                # bear). Gate attenuation to fire only when _down_persist is LOW (persistent uptrend).
+                # Full attenuation below 0.40, fading to 0 by 0.60. This is the SAME validated
+                # duration-count separator principle (fe6acd4d keep) applied to the pp_pressure
+                # attenuation gate. Crash (down_persist~0.9) byte-identical (gate 0); bull
+                # (down_persist~0.3) gets full attenuation. Continuous ramp.
+                _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
                 _pp_pressure = _pp_pressure * (1.0 - 0.35 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
