@@ -2385,6 +2385,30 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp4 (architectural, indep): TIGHTEN stop for positions where the LOCAL
+                # 20-bar trend has turned against the position (ret_long sign opposes pos_dir).
+                # Exp1+Exp2+Exp3 PROVED bull's large losers (PF 0.7 despite 71.8pct WR) are
+                # FAST stop-hits (sustained_loss=0 in bull -- losers hit stop within 1-2 bars
+                # of going negative, so sustained_loss x trend_strength cannot catch them;
+                # current-loss-level trim crashes crash). Exp2's MULTI-DAY ct-vlong stop
+                # tightening was byte-identical (bull trend-aligned at multi-day horizon ->
+                # ret_vlong>0 -> signal 0). The LOCAL 20-bar trend (ret_long) catches what
+                # the multi-day misses: a trend-aligned long whose LOCAL trend has turned
+                # down (ret_long<0 while ret_vlong>0 -- a real local reversal within the
+                # bull regime) is the population that fast-stops. Tighten the stop by up to
+                # 30pct (0.70x _stop_abs) when the local trend is solidly against the position.
+                # Fast-saturating /0.015 (near-constant, noise-free per validated branch-step-9
+                # lesson -- bull's local reversal ret_long~-0.015 to -0.03 sits in the flat
+                # saturated tail). Trend-aligned positions (ret_long*pos_dir>0 -> signal 0)
+                # byte-identical. Sideways (ret_long~0 -> signal ~0) byte-identical. NEW cross-
+                # component data dep: stop distance depends on LOCAL trend-alignment (was ATR
+                # only; Exp2 added multi-day). Distinct from entry-side _ct_atten (line ~1245:
+                # that shrinks SIZE at entry on |ret_long|>0.03; this tightens STOP post-entry
+                # on the SIGN of ret_long opposing pos_dir -- a different population and
+                # decision subsystem). Direction-agnostic (uses pos_dir sign).
+                _pos_dir_stop = 1.0 if current_pos > 0 else -1.0
+                _local_against = max(0.0, np.tanh(-_pos_dir_stop * ret_long / 0.015))
+                _stop_abs = _stop_abs * (1.0 - 0.30 * _local_against)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
