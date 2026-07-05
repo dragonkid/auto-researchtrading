@@ -3058,7 +3058,22 @@ class Strategy:
                     # _exit_thresh) and lower bound (this _de_floor) of the exit graduation.
                     # Sideways fresh dips spared; crash/bull/rally extending losers trimmed.
                     if _pnl_scale < 0.0:
-                        _de_floor -= 0.13 * (1.0 - _port_dd_atten) * _exit_dd_gate
+                        # Branch step12: COMBINE step5 baseline (0.13 continuous, captures the
+                        # sideways small-DD gain) with a deep-DD BOOST (additional 0.05 that
+                        # only fires at deep portfolio DD, captures crash's extended gain).
+                        # step5 alone: +0.002270 (sideways +0.0024, crash +0.0075). step11
+                        # (deep-DD onset only, mag 0.18): +0.002279 (sideways lost, crash
+                        # extended +0.0019). The two gains are at DIFFERENT DD magnitudes:
+                        # sideways gain needs small-DD firing (its 4.47pct DD), crash gain
+                        # extends with deep-DD firing (its 17.7pct DD). Combining: total
+                        # magnitude = 0.13*(1-_port_dd_atten) [continuous, small at small DD]
+                        # + 0.05*deep_DD_ramp [additional, only at deep DD]. At sideways small
+                        # DD: 0.13*small + 0 = small (sideways gain preserved). At crash deep
+                        # DD: 0.13*large + 0.05*~1 = 0.18 (crash extended gain). Continuous
+                        # tanh ramp on (1-_port_dd_atten - 0.30)/0.10 for the boost (no
+                        # boundary). Byte-identical at portfolio peak (both terms 0).
+                        _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
+                        _de_floor -= (0.13 * (1.0 - _port_dd_atten) + 0.05 * _port_dd_active) * _exit_dd_gate
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
