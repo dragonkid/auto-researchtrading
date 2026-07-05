@@ -2526,6 +2526,18 @@ class Strategy:
                 # dip negative the profit-gate goes to 0 -> full pp protection resumes.
                 _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
                 _ta_winner_gate = max(0.0, np.tanh(ret_vlong * _pos_dir_pp / 0.01)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * (1.0 if bars_held > ENTRY_FULL_BARS else 0.0)
+                # Branch step2: GIVEBACK-MAGNITUDE gate. step1 let crash's trend-aligned
+                # shorts ride into dead-cat bounces (sharp reversals) -> crash DD 20pct.
+                # Distinguish bull's GRADUAL pullbacks (small giveback_ratio, attenuation
+                # stays on) from crash's SHARP bounces (large giveback_ratio, attenuation
+                # turns off -> pp_pressure fires normally -> exit the reversing short).
+                # Full attenuation when giveback_ratio<0.10 (gradual pullback), fading to 0
+                # by giveback_ratio=0.30 (sharp reversal). The giveback_ratio is the SAME
+                # signal pp_pressure ramps on, so this gates the attenuation OFF precisely
+                # when pp_pressure is about to fire strongly -- protects crash's shorts from
+                # riding bounces while preserving bull's gradual-pullback winner relief.
+                _gb_mag_gate = max(0.0, 1.0 - max(0.0, (_giveback_ratio - 0.10) / 0.20))
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate
                 _pp_pressure = _pp_pressure * (1.0 - 0.35 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
