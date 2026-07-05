@@ -2877,6 +2877,28 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
+                # Exp3 (architectural, this session): MULTI-SOURCE CONFIRMATION BONUS on
+                # _soft_max. The existing agreement attenuator (above) can only REDUCE
+                # pressure (single-source spikes -> 0.75x in chop). The SYMMETRIC missing
+                # pathway: when 2+ soft sources AGREE strongly (both near the max), the exit
+                # signal is HIGH-CONFIDENCE (multi-source confirmation) -> a small BOOST above
+                # the raw MAX. The MAX fusion takes only the single highest term, so when two
+                # sources are BOTH near-saturated the MAX under-counts the total exit pressure
+                # (a confirmed reversal with slope-against AND pp-giveback AND time-overstay
+                # firing together is a stronger exit signal than any one alone). Boost via
+                # tanh on the 2nd-highest term's RATIO (the SAME _agree_gate signal the
+                # attenuator reads, but used as a BOOST above 1.0 instead of an attenuator
+                # below 1.0). Trend-gated (the COMPLEMENT of _chop_atten_w): fires in TRENDS
+                # where multi-source agreement is real signal, OFF in chop where it would
+                # amplify noise (preserves the attenuator's chop protection). Max +10pct boost
+                # at full 2-source agreement in strong trends. Continuous (no boundary);
+                # direction-agnostic general principle (no regime label): multi-source exit
+                # confirmation raises confidence above the single-best-source level. Byte-
+                # identical when _agree_gate=0 (single source) or in chop (_trend_w=0). New
+                # cross-source data dep at exit fusion (was attenuate-only).
+                _trend_w_fuse = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend (complement of _chop_atten_w)
+                _conf_boost = 1.0 + 0.10 * _agree_gate * _trend_w_fuse
+                _soft_max = _soft_max * _conf_boost
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
