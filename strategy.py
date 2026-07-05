@@ -3043,9 +3043,22 @@ class Strategy:
                     # recover). Continuous tanh ramp on rsi_trend_str/0.20 (saturates by ~0.4
                     # trend strength -- the SAME scale as _be_trend_gate / _exit_dd_gate).
                     # Sideways byte-identical; crash/rally/mixed keep gains.
-                    _de_floor_dd_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                    # Branch step2: ADD SUSTAINED-LOSS gate (full Exp4 keep gate). Step1 used
+                    # trend_gate only -> sideways still regressed (-0.243 vs opener -0.244).
+                    # Diagnosis: the trend_gate alone spares sideways CHOP, but sideways DD
+                    # episodes often coincide with brief TRENDING stretches within the chop
+                    # (a multi-day directional leg in 2023) where rsi_trend_str spikes ->
+                    # trend_gate fires -> fresh dips get trimmed. The Exp4 keep's full gate
+                    # adds sustained_loss (fraction of last 4 pos_pnl bars negative): a FRESH
+                    # dip (1-2 bars negative, likely to recover) is spared; only a SUSTAINED
+                    # loser (3-4 bars negative = extending, not mean-reverting) triggers the
+                    # floor lowering. This is the validated fresh-dip-vs-extending-loser
+                    # separator. Use _exit_dd_gate (already computed above for Exp4) instead
+                    # of re-computing -- SAME gate, applied to BOTH the upper bound (Exp4
+                    # _exit_thresh) and lower bound (this _de_floor) of the exit graduation.
+                    # Sideways fresh dips spared; crash/bull/rally extending losers trimmed.
                     if _pnl_scale < 0.0:
-                        _de_floor -= 0.10 * (1.0 - _port_dd_atten) * _de_floor_dd_gate
+                        _de_floor -= 0.10 * (1.0 - _port_dd_atten) * _exit_dd_gate
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
