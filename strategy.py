@@ -365,6 +365,16 @@ PORT_DEEP_BEAR_MAX_SHRINK = 0.25  # max shrink at full saturation (-> 0.75x)
 PORT_DEEP_BEAR_ADMIT_ONSET = 0.03   # same onset as Exp8 SIZE cap (deep bear magnitude)
 PORT_DEEP_BEAR_ADMIT_SCALE = 0.02
 PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
+# Exp2 (architectural, indep): MAX-AGGREGATION portfolio VOL-SPIKE ADMISSION TIGHTENER.
+# Extends the validated pattern (deep-bear magnitude applied to BOTH SIZE Exp8 + ADMISSION
+# Exp3 +0.031 keep) to the vol-spike signal: when ANY ONE symbol's vol_ratio is elevated
+# (vol-spike regime), tighten admission to filter noise-driven entries. Vol-spike bars are
+# when noise-driven counter-trend entries are most likely to be false breakouts. Byte-
+# identical when all vol_ratios < ONSET (calm grind). Composes with the deep-bear and weak-
+# avg admission tighteners (independent signal axes: vol vs trend vs chop).
+PORT_VOL_SPIKE_ADMIT_ONSET = 1.30   # same onset as Exp1 SIZE cap
+PORT_VOL_SPIKE_ADMIT_SCALE = 0.30
+PORT_VOL_SPIKE_ADMIT_MAX_TIGHTEN = 0.10  # smaller than SIZE shrink (admission is the COUNT lever)
 # Exp1 (architectural, indep): MAX-AGGREGATION portfolio VOL-SPIKE SIZE CAP. Extends the
 # validated max-aggregation portfolio-cap pattern (4 keeps on SIZE: avg down_persist, max
 # down_persist, max weak_persist, max |ret_vlong| -- all on the TREND/bear axis) to a NEW
@@ -707,6 +717,11 @@ class Strategy:
         _port_vol_ratio_max = max(_port_vol_ratio_vals) if _port_vol_ratio_vals else 0.0
         _port_vol_spike_cap = 1.0 - PORT_VOL_SPIKE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ONSET) / PORT_VOL_SPIKE_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_spike_cap
+        # Exp2: MAX-aggregation vol-spike ADMISSION tightener. Same signal as Exp1 SIZE cap
+        # (max vol_ratio), applied to ADMISSION threshold. Byte-identical when all vol_ratios
+        # below ONSET (calm grind = rally/sideways). Composes with deep-bear and weak-avg
+        # admission tighteners (independent signal axes: vol vs trend vs chop).
+        _port_vol_spike_admit_tighten = 1.0 + PORT_VOL_SPIKE_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ADMIT_ONSET) / PORT_VOL_SPIKE_ADMIT_SCALE)))
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
@@ -1057,6 +1072,11 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp2: apply MAX-aggregation vol-spike ADMISSION tightener (computed at top
+            # level). Tightens admission when ANY symbol's vol_ratio is elevated. Composes
+            # with deep-bear and weak-avg tighteners (independent axes). Byte-identical when
+            # _port_vol_spike_admit_tighten=1.0 (calm grind).
+            _strong_min = _strong_min * _port_vol_spike_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
