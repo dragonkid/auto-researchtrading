@@ -3339,7 +3339,29 @@ class Strategy:
             # is stable across the noise ensemble (a perturbed bar barely moves equity).
             # Also finer (0.06) so rally's bidirectional fine resizes are less coarsened.
             if _is_resize and _churn_dz > 0.0:
-                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
+                # Exp1 (architectural, indep): HOLD-DURATION-CONDITIONED grid step.
+                # The explicit untested lead from the prior session-summary: the
+                # hold-duration profile (validated +0.0043 keep on the trim throttle)
+                # could be applied to OTHER emission-layer signals. The grid currently
+                # uses a UNIFORM 0.06 lattice across the position's whole life. A
+                # bar-2 resize might be a scale-in wobble (need FINE grid to preserve
+                # the signal-driven step), whereas a bar-10 resize is more likely
+                # genuine dead-capital reduction (can tolerate COARSE grid -> more
+                # noise suppression on the position-value cascade that drives
+                # stability tracking error). NEW cross-component data dep: grid step
+                # depends on bars_held (was uniform). Mirrors the validated
+                # _hold_dur_profile shape but inverted in sign (trim AMPLIFIES for
+                # late-life; grid step GROWS for late-life -> coarser quantization).
+                # Factor: 0.7 at bars<=3 (fine, preserve scale-in signal), 1.0 at
+                # bars>=6 (baseline), 1.3 at bars>=12 (coarse, suppress late-life
+                # noise). Continuous tanh profile (no boundary); reduction-only is
+                # not required here (grid is symmetric on grow/shrink resizes, both
+                # round to nearest lattice -> the coarser grid for late-life applies
+                # to both directions symmetrically). Byte-identical at bars_held where
+                # factor=1.0 (bars>=6 the validated baseline region). Trend-aligned
+                # and ct positions both benefit from late-life noise suppression.
+                _hold_dur_grid = 0.7 + 0.6 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
+                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _hold_dur_grid
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
@@ -3450,6 +3472,16 @@ class Strategy:
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
                 _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
                 if _grid_c > 0 and not _small_pos_exempt:
+                    # Exp1 (architectural, indep): HOLD-DURATION-CONDITIONED grid step
+                    # on the calm path (mirror of the churn-path hold-dur grid above).
+                    # The calm grid fires on never-bursting symbols (crash/sideways/
+                    # bull). The same hold-duration insight applies: early-bar resizes
+                    # might be scale-in wobble (need fine grid), late-bar resizes are
+                    # more likely genuine reductions (can tolerate coarser grid -> more
+                    # noise suppression). NEW data dep on calm grid step. The factor
+                    # (0.7 early -> 1.3 late) mirrors the churn-path grid.
+                    _hold_dur_grid_c = 0.7 + 0.6 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
+                    _grid_c = _grid_c * _hold_dur_grid_c
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
