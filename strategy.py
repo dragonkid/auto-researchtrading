@@ -2575,21 +2575,16 @@ class Strategy:
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
                 # Exp1 (this session): TUNE the trend-aligned-winner pp_pressure attenuation
-                # magnitude 0.35 -> 0.50. The 0.35 was the BRANCH OPENER value (step1 ungated),
-                # never tuned (steps2-5 added gates; magnitude untouched). Prior session's
-                # UNTESTED lead #1: "bull Sharpe -0.30 has headroom toward 0; a larger
-                # attenuation might extend bull further if crash stays byte-identical (down_persist
-                # gate isolates crash at ~0.9, far below the 0.40 onset)." Mechanism: when ALL gates
-                # pass (trend-aligned persistent-uptrend LONG winner, in profit, past scale-in,
-                # gradual pullback giveback_ratio<0.10, slope_against<0.0004, down_persist<0.40),
-                # attenuating pp_pressure by 50% (vs 35%) lets the winner keep more of its peak
-                # through the gradual pullback -> larger avg win -> higher PF -> higher Sharpe.
-                # bull is negative-Sharpe so any Sharpe gain = direct composite gain. Crash
-                # byte-identical (down_persist~0.9 -> up_persist_gate=0 -> attenuation never fires).
-                # Risk: too-aggressive attenuation could let winners ride into reversals the gates
-                # don't catch; 0.50 is a moderate step (43% above 0.35) below the 0.70 that would
-                # risk over-riding sharp reversals.
-                _pp_pressure = _pp_pressure * (1.0 - 0.50 * _ta_winner_gate)
+                # magnitude 0.35 -> 0.50 (KEEP +0.004283, bull -0.3006->-0.2839, crash byte-identical).
+                # Exp2 (this session): push magnitude further 0.50 -> 0.65. The mechanism has
+                # headroom: bull is still negative-Sharpe (-0.28) so any further winner-attenuation
+                # gain = direct composite. Crash separator (down_persist gate at 0.40 onset,
+                # crash ~0.9) held cleanly at 0.50 -> expect byte-identical crash again. The gates
+                # (giveback_ratio<0.10, slope_against<0.0004, long-only, up_persist<0.40) ensure
+                # attenuation only fires on GRADUAL pullbacks in PERSISTENT uptrends -- 0.65 still
+                # leaves 35% of pp_pressure active, so sharp reversals (gates off) get full pp
+                # protection. Testing whether the linear bull improvement continues or plateaus.
+                _pp_pressure = _pp_pressure * (1.0 - 0.65 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
