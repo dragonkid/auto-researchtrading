@@ -1105,35 +1105,6 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
-            # Exp5 (architectural): CROSS-SYMBOL CONVICTION-CONCORDANCE admission tightener.
-            # NEW cross-symbol data dep at admission: when admission is being considered for
-            # this symbol, check whether the OTHER active symbols' entry accumulators are ALSO
-            # building conviction (concordance). In chop (sideways), convictions are scattered
-            # across symbols (each oscillates independently) -> isolated admission signal ->
-            # tighten (filter noise entries). In broad trends (crash/bull), convictions align
-            # across symbols -> concordant admission -> keep admission (broad-market signal).
-            # Distinct from _consensus_strength (sign-agreement SIZING boost at the top level):
-            # this is an ADMISSION gate on the conviction-LEVEL of other symbols' smoothed
-            # accumulators (different signal, different decision point). The accumulator is a
-            # smoothed conviction margin (already noise-robust per symbol); averaging across
-            # the OTHER symbols' max(bull, bear) accumulators gives a [0, ~1+] concordance
-            # measure. Tighten admission up to 15pct when concordance is LOW (isolated);
-            # byte-identical when concordance is HIGH (broad). Continuous tanh on
-            # (0.5 - concordance)/0.3 (saturates: high concordance -> tighten 0; low -> 0.15).
-            # General principle (no regime label): an isolated conviction signal is lower-quality
-            # than a concordant one. Composes multiplicatively with the per-symbol admission
-            # gates above (freq, trend, streak_ct). self._entry_accum holds the OTHER symbols'
-            # accumulators from their last update (previous bar) -- exactly the cross-symbol
-            # conviction state.
-            _other_accs = []
-            for _osym in ACTIVE_SYMBOLS:
-                if _osym != symbol and _osym in self._entry_accum:
-                    _ob, _os = self._entry_accum[_osym]
-                    _other_accs.append(max(_ob, _os))
-            _concordance = (sum(_other_accs) / len(_other_accs)) if _other_accs else 0.0
-            _concord_tighten = 1.0 + 0.15 * max(0.0, min(1.0, np.tanh((0.5 - _concordance) / 0.3)))
-            _bull_strong_min = _bull_strong_min * _concord_tighten
-            _bear_strong_min = _bear_strong_min * _concord_tighten
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
