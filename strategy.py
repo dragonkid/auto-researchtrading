@@ -3462,25 +3462,7 @@ class Strategy:
             self._churn_hist[symbol] = _cm
             _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
-                # Exp1 (architectural, indep): HOLD-DURATION-CONDITIONED calm grid width.
-                # Sanctioned untested lead from prior session-summary (c71be666 keep note):
-                # "The hold-duration profile could be applied to the COMPLEMENTARY _calm_gate
-                # grid (fires in low-churn never-burst symbols like crash/sideways/bull) --
-                # step6 applied it only to the high-churn _churn_dz grid."
-                # Apply the SAME validated profile (max(1.0, 1.0 - 0.3*tanh((bars_held-5)/3)))
-                # to the calm-grid lattice spacing: COARSER grid for early bars (bars<=3:
-                # profile up to ~1.26 -> larger _grid_c -> more aggressive rounding -> suppress
-                # scale-in wobble), baseline 1.0x for bars>=5. The calm grid serves the
-                # negative-Sharpe regimes (bull Sh -0.61, crash Sh -0.25, sideways Sh -0.22,
-                # all raw==score, all stab 1.0 -> binding constraint is RAW Sharpe). Coarser
-                # early-bar grid reduces noise-driven micro-resize churn in those regimes
-                # -> cleaner trade sequences -> potentially higher Sharpe. ONE-SIDED
-                # (coarsen early only, never finer) per the step6 keep lesson: two-sided
-                # (finer late) regressed mixed via extra churn. Continuous tanh (no boundary);
-                # byte-identical at bars_held>=5 (profile=1.0). New control flow: calm-grid
-                # lattice spacing reads bars_held jointly with _calm_gate (was calm-gate-only).
-                _grid_hold_profile_c = max(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
-                _grid_c = 0.06 * equity * BASE_POSITION_SIZE * _grid_hold_profile_c
+                _grid_c = 0.06 * equity * BASE_POSITION_SIZE
                 # Exp1 (architectural, indep): POSITION-SIZE-CONDITIONED grid exemption
                 # on the calm path. The calm grid quantizes same-sign resizes onto a
                 # 0.06 lattice to cut noise-driven micro-resize churn in stability-
