@@ -2883,7 +2883,29 @@ class Strategy:
                     # identical; crash/mixed (trending) keep the gain. Continuous tanh ramp.
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
-                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # Exp1 (architectural, indep): TWO-TERM _exit_thresh lowering
+                    # (continuous + deep-DD boost). Sanctioned untested lead #3 from
+                    # 194ff425 session-summary: give the COMPLEMENTARY Exp4 _exit_thresh
+                    # (upper bound, full-exit trigger) the SAME two-term treatment that
+                    # the _de_floor keep (lower bound) validated at +0.003018. The _de_floor
+                    # keep uses magnitude = 0.13*(1-_port_dd_atten) [continuous, captures
+                    # sideways small-DD gain] + 0.07*deep_DD_ramp [additional, only fires
+                    # at deep DD, captures crash/mixed deep-DD gain]. The two gains are at
+                    # DIFFERENT DD magnitudes: sideways (4.46pct DD) needs small-DD firing;
+                    # crash (17.65pct DD) / mixed (4.80pct DD) extend with deep-DD firing.
+                    # Applying the SAME structure to _exit_thresh (currently single-term
+                    # 0.12 continuous): total = 0.12*(1-_port_dd_atten) + 0.07*_port_dd_active.
+                    # At sideways small DD: 0.12*small + 0 ~= small (sideways-safe, under
+                    # the ~0.135 sideways over-trim cliff confirmed for BOTH exit paths in
+                    # the prior session). At crash/mixed deep DD: 0.12*large + 0.07*~1 ~= 0.19
+                    # (extends crash/mixed full-exit firing sooner). NEW cross-component data
+                    # dep: _exit_thresh now reads the deep-DD state (_port_dd_active, the
+                    # same deep-DD ramp _de_floor uses) -> upper and lower bounds of the exit
+                    # graduation now BOTH respond to deep-DD. Byte-identical at portfolio peak
+                    # (both terms 0). Same _exit_dd_gate (sustained_loss 4-bar * trend_gate)
+                    # spares sideways fresh dips; trend-aligned winners byte-identical.
+                    _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
+                    _exit_thresh = _exit_thresh * (1.0 - (0.12 * (1.0 - _port_dd_atten) + 0.07 * _port_dd_active) * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
