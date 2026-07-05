@@ -457,26 +457,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp1 (this session, architectural): PORTFOLIO rolling EMA of realized trade
-        # PnL. A NEW portfolio-level temporal data dependency distinct from every
-        # existing state: _loss_streak counts consecutive losses (ignores MAGNITUDE);
-        # _port_dd_atten reads UNREALIZED equity drawdown (open positions, not closed
-        # trade outcomes); _last_exit_pnl is per-symbol SINGLE last value (no temporal
-        # aggregation across trades). This is an EMA over the SIGNED realized PnL of
-        # recent CLOSED trades across ALL symbols (portfolio trade-outcome trajectory).
-        # A persistently negative rolling realized PnL = the strategy's current trade
-        # selection is systematically losing in the prevailing regime -> shrink new
-        # entry first-bar size to cut the magnitude of the next losers (Sharpe is
-        # scale-invariant so raw is preserved for winners; smaller losers -> higher
-        # Sharpe in the negative-Sharpe regimes bull/crash/sideways where score =
-        # bare Sharpe). A positive rolling PnL leaves entries unshrunk. Smooth tanh
-        # on the rolling PnL (no boundary); shrink-only (caps at 1.0). General risk
-        # principle (no regime label): a strategy in a realized-loss regime de-risks.
-        # Scaled by LEVERAGE_K at use (2x size -> 2x PnL per trade -> scale the
-        # activation threshold by 2x so the SAME fraction-of-stop loss PnL level
-        # activates the shrink, preserving decision invariance under leverage).
-        self._trade_pnl_ema = 0.0
-        self._trade_pnl_count = 0
         # Exp1 (this session): per-symbol rolling pos_pnl PATH history (the MTM
         # trajectory since entry). Used to compute MTM-path-efficiency =
         # |net pos_pnl| / sum(|bar-to-bar pos_pnl change|) over the window, in [0,1].
@@ -1508,43 +1488,6 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                # Exp1 (this session, architectural): PORTFOLIO rolling-trade-PnL EMA
-                # first-bar entry-size shrink. NEW portfolio-level temporal data dep:
-                # _trade_pnl_ema (EMA of signed realized trade PnL / STOP_LOSS_PCT across
-                # recent closed trades portfolio-wide, updated at exit). Distinct from
-                # _loss_streak (consecutive-loss COUNT, ignores magnitude), _port_dd_atten
-                # (UNREALIZED equity drawdown, open positions), and _last_exit_pnl (per-
-                # symbol SINGLE last trade, no temporal aggregation). A persistently
-                # negative rolling realized PnL = the strategy's trade selection is
-                # systematically losing in the prevailing regime -> shrink new entry
-                # first-bar size so the next losers are smaller (Sharpe is scale-invariant
-                # so winners' raw is preserved; smaller losers -> higher Sharpe in the
-                # negative-Sharpe regimes bull/crash/sideways where score = bare Sharpe).
-                # Mechanism: tanh on (negative) rolling PnL -> shrink ramps in as the
-                # realized-loss regime deepens; saturates at max 0.30 shrink. A positive
-                # rolling PnL (winning regime) leaves entries unshrunk. ONSET at -0.5 (in
-                # EMA units where -1.0 = one stop-loss) so a single small loss does NOT
-                # fire it; requires a sustained losing trajectory. Shrink-only (caps at
-                # 1.0). Byte-identical for the first ~8 trades of a regime (EMA at 0 ->
-                # tanh(-0.5-0)/1 = -0.39 -> max(0,1+tanh)=0 wait, only fires when EMA <
-                # -0.5). Scale 1.0 in the tanh denominator = gradual ramp. No new boundary
-                # (continuous). Requires _trade_pnl_count>=3 so the EMA has signal.
-                _tpn_ema = self._trade_pnl_ema
-                # Branch step3: rolling-PnL EMA applied at the EXIT side (_exit_thresh
-                # lowering for losers) instead of entry size/admission. The entry-side
-                # applications were walled: size-shrink hurt crash -0.014 (dead-cat longs
-                # indistinguishable from bounce longs), admission tighten was inert (ct
-                # admission path saturated by _streak_ct_admit + _ct_vlong + _churn_ct_atten).
-                # The exit_thresh lowering for losers (line ~3014) is an UNSATURATED path
-                # (validated by the portfolio-DD lowering keep), and the rolling-PnL EMA
-                # is a DISTINCT portfolio temporal signal from _port_dd_atten (UNREALIZED
-                # equity drawdown) -- a strategy can be in realized-loss regime while
-                # unrealized equity is flat (open positions not yet marked). Computed here
-                # for use in the exit block; _trade_pnl_shrink_* kept as 1.0 no-ops (size
-                # shrink removed).
-                _trade_pnl_shrink_bull = 1.0
-                _trade_pnl_shrink_bear = 1.0
-                _trade_pnl_shrink = _trade_pnl_shrink_bull  # legacy scalar alias (unused below; per-direction used)
                 # Architectural: anti-noise-dip admission stickiness (avg5 RE-TEST).
                 # Re-tests commit 45942a93 (results.tsv row 689) which was RAW BYTE-IDENTICAL
                 # on all 4 regimes (zero clean-trade delta: prev-bar crossings are already
@@ -2158,11 +2101,11 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _trade_pnl_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _trade_pnl_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
@@ -3019,39 +2962,6 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
-                    # Exp1 branch step3 (architectural): PORTFOLIO rolling-trade-PnL EMA
-                    # ADDITIONAL exit_thresh lowering for sustained losers in a realized-
-                    # loss regime. NEW portfolio-level temporal data dep on the exit
-                    # threshold (an UNSATURATED path, unlike the walled ct admission /
-                    # size-shrink). When recent CLOSED trades are systematically losing
-                    # (rolling PnL EMA < -0.5) AND the current position is a sustained
-                    # loser in a trending regime, lower the full-exit threshold FURTHER
-                    # (cut the loser ~1 extra bar earlier). Mechanism: a realized-loss
-                    # regime (detected in CLOSED trade PnL, distinct from _port_dd_atten's
-                    # UNREALIZED equity drawdown) signals the prevailing regime is adverse
-                    # to the strategy's selection -> sustained losers are likely to EXTEND
-                    # (not recover) -> exit sooner -> smaller realized losses -> higher
-                    # Sharpe in the negative-Sharpe trending regimes (crash -0.241,
-                    # mixed-direction; sideways is chop so _sustained_loss_trend_gate
-                    # ~0 -> byte-identical, sparing the sideways mean-reverter wall).
-                    # Byte-identical when rolling PnL > -0.5 (onset) or chop (trend gate
-                    # 0) or fresh dip (sustained_loss 0). Max 10% additional lowering;
-                    # composes multiplicatively with the DD lowering (different portfolio
-                    # signal: realized trade PnL vs unrealized equity). Requires
-                    # _trade_pnl_count>=3 so the EMA has signal.
-                    if self._trade_pnl_count >= 3:
-                        # Branch step5: GATE by counter-trend direction (spare trend-
-                        # aligned crash shorts). Step4 catastrophic (-0.283) because the
-                        # trend gate (rsi_trend_str high in crash) made _exit_dd_gate fire
-                        # for crash's TREND-ALIGNED shorts (sustained-loss during bounces
-                        # but they recover). Spare trend-aligned: only lower exit_thresh
-                        # for COUNTER-TREND losers (bull long in downtrend / bear short in
-                        # uptrend = crash dead-cat longs, rally pullback shorts -- the ct
-                        # losers). Uses the validated multi-day ct indicator /0.01.
-                        _pos_dir_ex = 1.0 if current_pos > 0 else -1.0
-                        _ct_dir_ex = max(0.0, np.tanh(-ret_vlong * _pos_dir_ex / 0.01))
-                        _tpn_exit_amp = max(0.0, min(1.0, np.tanh(-(self._trade_pnl_ema + 0.20) / 0.5)))
-                        _exit_thresh = _exit_thresh * (1.0 - 0.30 * _tpn_exit_amp * _exit_dd_gate * _ct_dir_ex)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -3896,18 +3806,6 @@ class Strategy:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         _exit_pnl_signed = -_ep if current_pos < 0 else _ep
                         self._last_exit_pnl[symbol] = _exit_pnl_signed
-                        # Exp1 (this session, architectural): update portfolio rolling
-                        # EMA of realized trade PnL (signed fraction-of-entry). EMA span
-                        # ~8 trades (alpha 2/9): a slow-moving regime-quality signal that
-                        # averages over individual trade noise. Resets only across many
-                        # trades (not on a single win, unlike _loss_streak) so a losing
-                        # regime's drag persists through isolated winners. Normalized to
-                        # STOP_LOSS_PCT scale (so a -1 stop loss = -1.0 in EMA units,
-                        # leverage-invariant since _ep is a fraction). Updated for every
-                        # closed trade across all symbols (portfolio-level signal).
-                        _tp_alpha = 2.0 / 9.0
-                        self._trade_pnl_ema = (1.0 - _tp_alpha) * self._trade_pnl_ema + _tp_alpha * (_exit_pnl_signed / abs(STOP_LOSS_PCT))
-                        self._trade_pnl_count += 1
                         # Exp3: update portfolio consecutive-loss streak (mirrors
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
