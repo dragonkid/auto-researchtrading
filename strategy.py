@@ -3396,7 +3396,14 @@ class Strategy:
                 # lattice spacing to bar-2 and bar-10 resizes alike. Continuous tanh profile
                 # (no boundary). Byte-identical when _churn_dz=0 (low-churn regimes use the
                 # complementary _calm_gate grid below, untouched).
-                _grid_hold_profile = 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0)
+                # Branch step6: ONE-SIDED early-bar coarsening only. Step5 (two-sided) gave
+                # composite +0.017 but mixed regressed -0.017 (Sh 0.627->0.618). Hypothesis:
+                # the late-bar FINER grid increased mixed's churn (more distinct position
+                # values -> more trades -> fees). Test one-sided: only coarser for early bars
+                # (max(...,1.0)), baseline 1.0x for late bars. If mixed recovers, the late-bar
+                # finer grid was the culprit; if mixed stays regressed, the early-bar coarsening
+                # is absorbing mixed's small-position scale-in.
+                _grid_hold_profile = max(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
                 _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _grid_hold_profile
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
