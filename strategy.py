@@ -2836,7 +2836,29 @@ class Strategy:
                 # separator pattern as _w_time (which is heavier-in-chop for time-pressure,
                 # here inverted: break-even fires in trend not chop).
                 _be_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_trend_gate
+                # Exp2 (architectural, indep): PORTFOLIO-DD-ADAPTIVE break-even pressure
+                # magnitude boost, DURATION-COUNT-GATED to spare sideways. Exp1 (reverted)
+                # used the instantaneous _be_trend_gate (rsi_trend_str, 20-bar) which FLICKERS
+                # in sideways during its brief trending stretches within chop -> killed
+                # sideways mean-reverters (-0.023). The fix: gate the DD-boost on a
+                # PERSISTENT-trend DURATION count (max(_down_persist, 1-_down_persist) over
+                # PERSIST_WINDOW=48 bars), which is HIGH for crash/rally (persistent
+                # one-directional multi-day trend) and LOW for sideways (oscillating, the
+                # 48-bar fraction of ret_vlong<0 hovers ~0.5 -> max(0.5,0.5)=0.5 -> below
+                # onset). This is the SAME validated duration-count separator principle
+                # (fe6acd4d keep, _down_persist gate on pp_pressure attenuation) applied to
+                # the BE-pressure DD boost. NEW cross-component data dep: _be_pressure
+                # magnitude now reads portfolio DD state x persistent-trend duration. The
+                # boost fires only for stuck-near-breakeven dead capital in PERSISTENT
+                # trends during portfolio DD (crash dead-capital longs bleeding in a
+                # persistent downtrend; rally pullback dead-capital shorts) -- the
+                # population Exp1's crash +0.0014 came from. Sideways (oscillating) is
+                # byte-identical even during its rsi_trend_str spikes (duration gate ~0).
+                # Byte-identical at portfolio peak (_port_dd_atten=1.0 -> boost=1.0).
+                _persist_trend_be = max(_down_persist, 1.0 - _down_persist)
+                _persist_trend_be_gate = max(0.0, np.tanh((_persist_trend_be - 0.60) / 0.10))
+                _be_dd_boost = 1.0 + 0.20 * (1.0 - _port_dd_atten) * _persist_trend_be_gate
+                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_trend_gate * _be_dd_boost
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
