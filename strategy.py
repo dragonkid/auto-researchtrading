@@ -3122,7 +3122,10 @@ class Strategy:
                             _mae_depth_gate_d = max(0.0, min(1.0, np.tanh((_mae_depth_d - MAE_DIRECT_ONSET) / 0.25)))
                             _mae_trim = MAE_DIRECT_TRIM * _recov_gate_d * _mae_depth_gate_d
                             if _mae_trim > 0.0:
-                                _new_t = current_pos + (target - current_pos) * (1.0 - _mae_trim)
+                                # Shrink the position toward zero by the trim fraction
+                                # (partial exit, not just reduced growth). _new_t moves
+                                # from current_pos toward 0 by _mae_trim of |current_pos|.
+                                _new_t = current_pos * (1.0 - _mae_trim)
                                 if (_new_t > 0) == (current_pos > 0) and abs(_new_t) < abs(current_pos):
                                     target = _new_t
 
