@@ -3040,8 +3040,8 @@ class Strategy:
                     # signal: realized trade PnL vs unrealized equity). Requires
                     # _trade_pnl_count>=3 so the EMA has signal.
                     if self._trade_pnl_count >= 3:
-                        _tpn_exit_amp = max(0.0, min(1.0, np.tanh(-(self._trade_pnl_ema + 0.50) / 1.0)))
-                        _exit_thresh = _exit_thresh * (1.0 - 0.10 * _tpn_exit_amp * _exit_dd_gate)
+                        _tpn_exit_amp = max(0.0, min(1.0, np.tanh(-(self._trade_pnl_ema + 0.20) / 0.5)))
+                        _exit_thresh = _exit_thresh * (1.0 - 0.30 * _tpn_exit_amp * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
