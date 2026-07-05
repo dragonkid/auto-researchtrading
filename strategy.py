@@ -2211,7 +2211,15 @@ class Strategy:
                 # (crash's profitable trend shorts). Longs byte-identical (threshold 0.0004
                 # unchanged). Continuous (tanh, no boundary). Direction-asymmetry is a
                 # structural property (long/short bounce-risk asymmetry), NOT a regime label.
-                _slope_conf_scale = 0.0004 if current_pos > 0 else 0.0008  # longs baseline, shorts need 2x stronger slope
+                # STRUCTURAL_EXPLORATION step6: lower long-side slope-conf threshold (0.0004 -> 0.0003).
+                # Step2 (short 0.0008) gave bull +0.0037 via smaller bull shorts. Steps 3/4/5
+                # saturated (bull shorts already zeroed; floor not binding). New lever: make
+                # LONGS easier to accelerate (threshold 0.0003) so trend-aligned long winners
+                # (bull/rally longs) accelerate at LOWER slope -> more longs get full accel ->
+                # bigger winners -> higher PF -> higher Sharpe. Shorts keep step2's 0.0008.
+                # Direction-asymmetric: longs easier, shorts harder. Crash byte-identical (shorts
+                # unchanged); sideways spared (chop ~0 accel via _accel_align).
+                _slope_conf_scale = 0.0003 if current_pos > 0 else 0.0008  # longs easier (0.0003), shorts harder (0.0008)
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / _slope_conf_scale))
                 _win_accel = _win_accel * _slope_conf
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
