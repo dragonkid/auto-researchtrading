@@ -2574,19 +2574,17 @@ class Strategy:
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
-                # Exp1-4 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 -> 0.95 (4 KEEPS,
-                # +0.0172 composite total; bull -0.3006->-0.2329; crash byte-identical throughout).
-                # Trajectory re-accelerated at 0.95 (+0.0187 bull) so the floor is not reached.
-                # Exp5 (this session): push magnitude 0.95 -> 1.0 (complete suppression of pp_pressure
-                # when ALL gates pass). This is the natural endpoint of the magnitude axis. At 1.0,
-                # a trend-aligned persistent-uptrend long winner (in profit, past scale-in, gradual
-                # pullback giveback_ratio<0.10, slope_against<0.0004, down_persist<0.40) gets ZERO
-                # pp_pressure -- it will not exit on giveback until a gate turns off (sharp reversal
-                # -> slope_against gate 0 OR giveback_ratio>0.30 -> gb_mag gate 0 -> pp_pressure
-                # resumes). The gates ARE the safety: attenuation only fires on gradual pullbacks in
-                # persistent uptrends. Testing whether complete suppression helps or whether the
-                # last 5% pp_pressure at 0.95 was load-bearing for catching reversals the gates miss.
-                _pp_pressure = _pp_pressure * (1.0 - 1.0 * _ta_winner_gate)
+                # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
+                # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
+                # crossing +0.003 at 0.80.
+                # Exp4 (this session): push magnitude 0.80 -> 0.95. Testing the floor of the magnitude
+                # axis. 0.95 leaves only 5% pp_pressure active at full gate pass -- near-complete
+                # suppression of giveback-pressure on trend-aligned persistent-uptrend long winners.
+                # The gates (giveback_ratio<0.10, slope_against<0.0004, long-only, up_persist<0.40)
+                # are the safety: attenuation ONLY fires on gradual pullbacks in persistent uptrends,
+                # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
+                # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
+                _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
