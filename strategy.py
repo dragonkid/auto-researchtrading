@@ -3265,31 +3265,6 @@ class Strategy:
                     _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
                     _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
-                    # Exp5 (architectural, indep): PORTFOLIO-DD-adaptive opp-gate exit
-                    # FRACTION FLOOR LOWERING. NEW cross-component data dep: the opp-gate
-                    # graduated exit fraction floor (0.4 = min partial exit when opp-margin
-                    # is low -> 60% kept) now ALSO reads portfolio DD state. During portfolio
-                    # DD, LOWER the floor (less trimming of trend-aligned in-profit winners
-                    # when opp-voter reversal evidence is WEAK). Mechanism: during DD episodes
-                    # the DD-relaxation of _ts_supp already harvests more at peaks (locks
-                    # gains); the opp-gate graduated exit (which fires on opp-voter reversal
-                    # signals during the ongoing trend) should COMPENSATE by trimming LESS
-                    # on weak reversal evidence -> trend-aligned in-profit winners ride opp-
-                    # voter noise spikes during DD -> higher Sharpe for trend-aligned regimes
-                    # (rally Sh0.76 streak_gate 0.875; crash Sh-0.24 return-limited). The
-                    # MAX opp_exit_frac_grad (1.0 at high opp-margin = strong reversal) is
-                    # UNCHANGED -- a strong opp-voter reversal signal still triggers near-full
-                    # exit (the noise filter only applies to WEAK reversal evidence). Math:
-                    # _opp_exit_frac = 1.0 + (grad - 1.0)*_grad_gate; LOWER grad -> LOWER
-                    # exit_frac -> LESS trimmed (more kept). Byte-identical at portfolio peak
-                    # (dd_frac=0 -> _port_dd_atten=1.0 -> floor lower 0). Profit-side only
-                    # (opp-gate graduated exit only fires for trend-aligned + in-profit winners;
-                    # ct/losers byte-identical via the _grad_gate). Continuous tanh, no boundary.
-                    # Direction-agnostic general principle (no regime label): during a
-                    # portfolio drawdown, weak reversal evidence is more likely noise (DD
-                    # episodes are choppy) -> trim less.
-                    _opp_dd_floor_lower = 0.10 * (1.0 - _port_dd_atten)  # 0 at peak, 0.10 at deep DD
-                    _opp_exit_frac_grad = max(0.0, _opp_exit_frac_grad - _opp_dd_floor_lower)  # floor 0.0 (no negative trim)
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
