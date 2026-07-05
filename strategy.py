@@ -2507,6 +2507,26 @@ class Strategy:
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
+                # Exp3 (architectural, indep): TREND-ALIGNED-WINNER pp_pressure attenuation.
+                # bull_2021 has 72.9pct WR but PF 0.7 (avg win ~0.26x avg loss); _pp_pressure
+                # (giveback) is the BINDING soft-exit for winners (MAX fusion -> changes to
+                # non-max terms like _sl_slope_pressure are absorbed, confirmed Exp2). To
+                # raise avg win (-> higher PF/Sharpe for bull), let trend-aligned winners
+                # ride pullbacks by attenuating _pp_pressure when: (1) trend-aligned at the
+                # multi-day scale (ret_vlong*pos_dir>0 -> the uptrend/downtrend is intact
+                # through the pullback), (2) in profit (pos_pnl>0 -> a developing winner,
+                # NOT a loser — losers byte-identical since pos_pnl<0 -> profit-gate 0),
+                # (3) past scale-in (bars_held>ENTRY_FULL_BARS -> only established winners,
+                # fresh entries still get full pp protection). NEW cross-component data dep:
+                # pp_pressure depends on (trend-align, profit, hold-duration). Max 35pct
+                # attenuation (let winner keep up to 35pct more of its peak through pullback);
+                # /0.01 ret_vlong scale (near-constant noise-free); tanh profit-gate saturates
+                # by ~1x stop in profit. Trend-aligned losers (crash shorts in profit then
+                # giving back) are SPARED the attenuation only while in-profit -- once they
+                # dip negative the profit-gate goes to 0 -> full pp protection resumes.
+                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
+                _ta_winner_gate = max(0.0, np.tanh(ret_vlong * _pos_dir_pp / 0.01)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * (1.0 if bars_held > ENTRY_FULL_BARS else 0.0)
+                _pp_pressure = _pp_pressure * (1.0 - 0.35 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
