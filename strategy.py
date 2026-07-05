@@ -2884,6 +2884,22 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # Exp3 (architectural, indep): VOL-SPIKE-GATED exit_thresh lowering for
+                    # losers. Parallel to the portfolio-DD path above, but keyed on the
+                    # portfolio vol-spike regime (_port_vol_ratio_max, the SAME signal
+                    # validated on SIZE in Exp1). Mechanism: during vol-spike regimes (any
+                    # symbol's vol_ratio elevated), losers are more likely to EXTEND further
+                    # (vol-spike = adverse regime) -> trigger full exit at lower exit_pressure
+                    # -> cut losers ~1 bar earlier. DISTINCT from the portfolio-DD path
+                    # (which keys on equity drawdown): vol-spike fires at peak equity during
+                    # sharp pullbacks (bull's vol-spike pullbacks happen at peak equity, not in
+                    # DD -> the DD path is byte-identical in bull). Loss-side only (winners
+                    # byte-identical). Uses the SAME sustained-loss x trend-strength gate as
+                    # the DD path (spares sideways mean-reverters, protects fresh dips).
+                    # Byte-identical when vol_ratio < ONSET (calm grind). New cross-component
+                    # data dep: exit_thresh depends on portfolio vol-spike regime.
+                    _exit_vol_gate = max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ONSET) / PORT_VOL_SPIKE_SCALE))) * _exit_dd_gate
+                    _exit_thresh = _exit_thresh * (1.0 - 0.10 * _exit_vol_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
