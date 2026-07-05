@@ -3059,22 +3059,6 @@ class Strategy:
                     # Sideways fresh dips spared; crash/bull/rally extending losers trimmed.
                     if _pnl_scale < 0.0:
                         _de_floor -= 0.13 * (1.0 - _port_dd_atten) * _exit_dd_gate
-                        # Branch step10: SUSTAINED + COUNTER-TREND-AT-MULTI-DAY de-risk floor
-                        # lowering. step8 (ct-only gate) regressed sideways because ct-multi-day
-                        # fired on sideways's directional legs within chop. Requiring BOTH
-                        # sustained_loss (4-bar, the validated extending-loser signal) AND
-                        # ct-at-multi-day (ret_vlong*pos_dir<0, fast-saturating /0.01) fires
-                        # ONLY on structural ct EXTENDING losers: a position that has been
-                        # negative for multiple bars AND is counter-trend at the multi-day
-                        # scale = mixed's wrong-side longs in a downtrend that bleed across
-                        # many bars. Sideways's ct signals are BRIEF (not sustained 4 bars)
-                        # -> spared. crash/bull/rally trend-aligned losers (product>0) -> gate
-                        # 0 -> byte-identical. Small magnitude (0.04) since this is a STRICTER
-                        # gate (fewer bars fire, smaller total effect). Composes with step5.
-                        _pos_dir_dr10 = 1.0 if current_pos > 0 else -1.0
-                        _ct_vlong_dr10 = max(0.0, np.tanh(-_pos_dir_dr10 * ret_vlong / 0.01))
-                        _sustained_ct_gate = _ct_vlong_dr10 * _sustained_loss
-                        _de_floor -= 0.04 * _sustained_ct_gate
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
