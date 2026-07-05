@@ -1530,9 +1530,27 @@ class Strategy:
                 # -0.5). Scale 1.0 in the tanh denominator = gradual ramp. No new boundary
                 # (continuous). Requires _trade_pnl_count>=3 so the EMA has signal.
                 _tpn_ema = self._trade_pnl_ema
-                _trade_pnl_shrink = 1.0
+                # Branch step1: GATE the shrink by TREND-ALIGNMENT so trend-aligned
+                # entries (crash's profitable shorts in a persistent downtrend, whose
+                # portfolio PnL is negative because OTHER trades lost) are SPARED while
+                # counter-trend entries (the actual bad-trade population in a losing
+                # regime -- rally pullback shorts, crash dead-cat longs) still shrink.
+                # Opener Exp1 shrunk crash -999 because it shrunk the profitable trend-
+                # aligned shorts crash needs to recover (SAME wall as loss-magnitude
+                # cooldown Exp4: crash needs re-entry after losses). Use the validated
+                # multi-day ct indicator (ret_vlong*pos_dir, fast-saturating /0.01,
+                # near-constant noise-free): _ct_dir ~0 trend-aligned (spared), ~1 ct
+                # (shrunk). Computed per direction (bull long ct = ret_vlong<0; bear short
+                # ct = ret_vlong>0). Shrink-only on the ct population.
+                _trade_pnl_shrink_bull = 1.0
+                _trade_pnl_shrink_bear = 1.0
                 if self._trade_pnl_count >= 3:
-                    _trade_pnl_shrink = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh(-(_tpn_ema + 0.50) / 1.0)))
+                    _tpn_amp = 0.30 * max(0.0, min(1.0, np.tanh(-(_tpn_ema + 0.50) / 1.0)))
+                    _ct_dir_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # bull long ct to multi-day downtrend
+                    _ct_dir_bear = max(0.0, np.tanh(ret_vlong / 0.01))   # bear short ct to multi-day uptrend
+                    _trade_pnl_shrink_bull = 1.0 - _tpn_amp * _ct_dir_bull
+                    _trade_pnl_shrink_bear = 1.0 - _tpn_amp * _ct_dir_bear
+                _trade_pnl_shrink = _trade_pnl_shrink_bull  # legacy scalar alias (unused below; per-direction used)
                 # Architectural: anti-noise-dip admission stickiness (avg5 RE-TEST).
                 # Re-tests commit 45942a93 (results.tsv row 689) which was RAW BYTE-IDENTICAL
                 # on all 4 regimes (zero clean-trade delta: prev-bar crossings are already
@@ -2146,11 +2164,11 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _trade_pnl_shrink
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _trade_pnl_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _trade_pnl_shrink
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _trade_pnl_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
