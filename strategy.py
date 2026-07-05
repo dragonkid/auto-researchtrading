@@ -2585,37 +2585,6 @@ class Strategy:
                 # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
                 # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
                 _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
-                # Exp1 (architectural, indep): SECOND pp_pressure attenuation pathway for the
-                # CALM-CHOP (sideways) in-profit long-winner population. The bull pathway above
-                # requires persistent uptrend (ret_vlong*pos_dir>0 AND down_persist<0.40) -> for
-                # sideways (ret_vlong~0 -> trend_align gate ~0) the bull pathway NEVER fires, so
-                # sideways in-profit longs get FULL pp_pressure on every oscillation giveback ->
-                # winners cut at the first pullback -> PF 1.2 but Sharpe -0.217 (the binding
-                # constraint). Prior session-summary (0441725e) explicitly noted this as the
-                # untested sideways-appropriate-separator direction. NEW pathway uses a DIFFERENT
-                # separator: calm chop (LOW vol_ratio AND LOW _trend_strength_w) replaces persistent
-                # uptrend. Crash is excluded by TWO independent gates: (1) vol_ratio -- crash is a
-                # HIGH-vol regime (vol_ratio>1.0 typical, the validated bull/rally-vs-crash
-                # separator) -> the low-vol gate is ~0 for crash; (2) slope_against -- crash
-                # bounces are SHARP (large slope_against) -> the existing _slope_against_gate is 0.
-                # Bull is excluded because bull has HIGH _trend_strength_w (strong 20-bar trend)
-                # -> the weak-trend gate is ~0 for bull (and bull already gets the bull pathway
-                # attenuation via the persistent-uptrend gate, so this is ADDITIVE not replacing).
-                # The conjunction (low vol AND weak trend) is the canonical sideways signature
-                # (calm chop). Same giveback/slope/long-only/in-profit/past-scale-in safety gates
-                # as the bull pathway. Max 0.50 attenuation (smaller than bull's 0.95 -- sideways
-                # mean-reverters genuinely need SOME giveback protection since oscillation
-                # troughs can be the start of a real range break; a smaller magnitude probes for
-                # signal without over-riding the giveback harvest). New control-flow pathway
-                # (a second attenuation branch) with new data deps (vol_ratio x trend_strength
-                # conjunction for the regime separator). Direction-agnostic general principle
-                # (no regime label): a calm-chop in-profit long winner on a gradual pullback is
-                # a mean-reversion candidate that can ride the oscillation.
-                _calm_gate = max(0.0, min(1.0, (0.9 - vol_ratio) / 0.3))  # ~0 vol_ratio>=0.9, ~1 vol_ratio<=0.6
-                _weak_trend_gate = 1.0 - _trend_strength_w  # 1 in chop (|ret_long|~0), 0 in trend
-                _sideways_regime_gate = _calm_gate * _weak_trend_gate
-                _sideways_winner_gate = _gb_mag_gate * _slope_against_gate * _long_only_gate * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * (1.0 if bars_held > ENTRY_FULL_BARS else 0.0) * _sideways_regime_gate
-                _pp_pressure = _pp_pressure * (1.0 - 0.50 * _sideways_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
