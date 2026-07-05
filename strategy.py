@@ -3364,31 +3364,17 @@ class Strategy:
             # capital trims through). Byte-identical when _churn_dz=0 (low-churn regimes
             # where the deadband is off regardless). Direction-agnostic general principle.
             if _churn_dz > 0.0:
-                # Branch step1: ONE-SIDED early-bar widening only. The opener's two-sided
-                # profile (widen early AND narrow late) caused rally/mixed/crash to collapse
-                # (Sh 0.747->-0.889 rally, 0.627->-0.573 mixed): the late-bar narrowing let
-                # through trend-continuation resizes that should stay suppressed (rally's
-                # grinding uptrend has small resizes that are NOT dead capital). Keep ONLY
-                # the beneficial early-bar widening (suppress scale-in wobble -> bull +1.5,
-                # sideways +0.6 in the opener), return to baseline 1.0x for mid/late bars.
-                # max(...,1.0) makes the profile one-sided: >=1.0 (wider) for bars<=5,
-                # ==1.0 (baseline) for bars>5. Continuous (no boundary).
-                # Branch step2: REDUCTION-ONLY widening. Step1 (max(...,1.0)) still collapsed
-                # rally/mixed byte-identically to the opener -- the early-bar widening
-                # suppresses rally's SCALE-IN GROWTH resizes (|target|>|current_pos|) not
-                # just choppy reductions. Rally's scale-in at bars 1-2 grows the position
-                # toward target; a widened deadband there snaps it to current_pos (suppresses
-                # the growth) -> rally never reaches full size -> collapse. Bull/sideways
-                # early-bar resizes that benefit are REDUCTIONS (|target|<|current_pos|,
-                # choppy pullback trimming). Gate the widening on resize DIRECTION: only
-                # widen for reductions (trimming), keep baseline 1.0x for growth (scale-in).
-                # This preserves the bull/sideways reduction-suppression gain while letting
-                # rally/mixed scale-in growth through.
-                _is_reduction = abs(target) < abs(current_pos)
-                if _is_reduction:
-                    _deadband_hold_profile = max(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
-                else:
-                    _deadband_hold_profile = 1.0
+                # Branch step3: LATE-BAR narrowing only (inverse of step1/step2). The opener
+                # widened early bars (suppressing scale-in) which destroyed rally/mixed; step1
+                # (one-sided widen) and step2 (reduction-only widen) were both byte-identical
+                # to opener or baseline. The opener's late-bar NARROWING was confounded with
+                # the early-bar widening. Isolate pure late-bar narrowing: keep early bars at
+                # baseline 1.0x (don't touch scale-in), narrow only for bars>=8 (let dead-
+                # capital trims through for held positions). min(...,1.0) makes the profile
+                # one-sided: <=1.0 (narrower) for bars>=8, ==1.0 (baseline) for bars<8.
+                # Targets mixed's dead-capital longs (held many bars) without touching any
+                # regime's scale-in. Continuous (no boundary).
+                _deadband_hold_profile = min(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
                 _deadband_frac = _deadband_frac * _deadband_hold_profile
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
