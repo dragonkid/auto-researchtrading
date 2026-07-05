@@ -2225,6 +2225,18 @@ class Strategy:
                 # into imminent corrections (gate off when slope weakens). New control
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
+                # STRUCTURAL_EXPLORATION step5: DIRECTION-ASYMMETRIC accel floor for longs.
+                # Step2 (short slope-conf 0.0008) gave bull +0.0037 via smaller bull shorts.
+                # Step4 (direction-aware trend-strength gate) was byte-identical (redundant
+                # with step2). New lever: lower the accel floor for LONGS in strong trends so
+                # trend-aligned long winners (bull/rally longs) get MORE acceleration room ->
+                # bigger winners -> higher PF -> higher Sharpe. Shorts keep baseline floor
+                # (step2 already constrains short accel via slope-conf; lowering short floor
+                # risks crash). Floor for longs: 1.5 chop, 1.1 strong trend (was 1.3); shorts
+                # keep 1.5/1.3. Crash byte-identical (shorts unchanged); sideways spared
+                # (chop floor 1.5 both sides, _accel_align~0 in chop). Continuous (no boundary).
+                if current_pos > 0:
+                    _accel_floor = 1.5 - 0.4 * _trend_strength_w  # longs: 1.5 chop, 1.1 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
                 # Exp4 (architectural, indep): VOL-OF-VOL regime scale-in pace modulation,
                 # COUNTER-TREND-AT-MULTI-DAY GATED (refinement of Exp2 which applied to all
