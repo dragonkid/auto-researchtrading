@@ -3494,14 +3494,17 @@ class Strategy:
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
                 _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
                 if _grid_c > 0 and not _small_pos_exempt:
-                    # Exp1 (architectural, indep): HOLD-DURATION-CONDITIONED grid step
-                    # on the calm path (mirror of the churn-path hold-dur grid above).
-                    # BRANCH step2: GATE on _mtm_chop_early (same as churn path). step1's
-                    # ungated coarsening crashed crash -1.33 (absorbed smooth short
-                    # reductions). The chop gate exempts crash's smooth trend-aligned
-                    # shorts; only coarsens for choppy dead-capital positions (mixed).
-                    _hold_dur_grid_c = 1.0 + 0.3 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0))) * _mtm_chop_early
-                    _grid_c = _grid_c * _hold_dur_grid_c
+                    # BRANCH step3: REVERTED calm-path hold-dur grid (was crashing crash
+                    # -1.139 even with chop gate). The calm path fires for never-bursting
+                    # symbols (crash/sideways/bull). Crash's LOSING shorts have chop during
+                    # dead-cat bounces -> the chop gate still coarsened their reductions ->
+                    # absorbed reductions -> losing shorts held bigger -> larger realized
+                    # losses. The calm-path grid's job is noise suppression in stability-
+                    # factor-1.0 regimes; coarsening it for late-life fights the small-pos
+                    # and chop exemptions. Keep baseline uniform 0.06 lattice here; the
+                    # hold-dur grid only applies to the churn path (rally) where it's a net
+                    # win. _mtm_chop_early no longer used here but kept computed (churn path
+                    # still reads it).
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
