@@ -381,22 +381,6 @@ PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
 PORT_VOL_SPIKE_ONSET = 1.30   # vol_ratio above which cap engages (calm<1.0, chop>1.2; 1.3 = elevated)
 PORT_VOL_SPIKE_SCALE = 0.30
 PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
-# Exp1 (architectural, indep): MAX-AGG VOL-SPIKE SCALE-IN PACE SLOWDOWN. Sanctioned
-# untested lead from prior session-summary: "The max-agg vol-spike signal could be
-# applied to the SCALE-IN PACE (slower scale-in during vol-spike) instead of full-size
-# cap -- a more targeted lever that might avoid over-shrinking." Distinct decision-
-# architecture change: new data dependency on the scale-in pace control-flow path
-# (_entry_full_bars_dyn), NOT a size-cap application. The vol-spike signal is the
-# validated Exp1-keep axis (orthogonal to trend/bear caps). Slowing scale-in during
-# vol-spike commits less capital upfront while the vol-spike regime is uncertain, but
-# still reaches the full target eventually (vs the SIZE cap which shrinks the full
-# target permanently). MAX_PACE_SLOWDOWN bars added to _entry_full_bars_dyn at full
-# saturation; floored at _accel_floor (no override of the existing floor). Continuous
-# tanh on the same (_port_vol_ratio_max, ONSET, SCALE) ramp as the SIZE cap so the
-# pace-slow AMOUNT is bar-to-bar stable under AR(1) (the ramp input is a 24-bar
-# realized_vol / 200-bar-blended target -- smooth). Byte-identical when
-# _port_vol_ratio_max < ONSET (rally grind, calm regimes).
-PORT_VOL_SPIKE_PACE_MAX = 0.8  # max bars added to scale-in duration at full vol-spike saturation
 
 
 class Strategy:
@@ -723,10 +707,6 @@ class Strategy:
         _port_vol_ratio_max = max(_port_vol_ratio_vals) if _port_vol_ratio_vals else 0.0
         _port_vol_spike_cap = 1.0 - PORT_VOL_SPIKE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ONSET) / PORT_VOL_SPIKE_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_spike_cap
-        # Exp1: vol-spike scale-in pace slowdown strength (same ramp input as the SIZE cap,
-        # repurposed for the pace path). Continuous tanh on the same smooth 24/200-bar
-        # vol_ratio ramp -> bar-to-bar stable under AR(1). Byte-identical (0.0) below ONSET.
-        _port_vol_spike_pace_slow = PORT_VOL_SPIKE_PACE_MAX * max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ONSET) / PORT_VOL_SPIKE_SCALE)))
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
@@ -2241,23 +2221,6 @@ class Strategy:
                     _pos_dir_vov = 1.0 if current_pos > 0 else -1.0
                     _ct_vov_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_vov / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
                     _entry_full_bars_dyn = _entry_full_bars_dyn + 0.6 * _vov_gate * _ct_vov_gate
-                # Exp1 (architectural, indep): MAX-AGG VOL-SPIKE scale-in pace slowdown.
-                # The vol-spike SIZE cap (a318addd keep) shrinks the FULL position target
-                # permanently during vol-spike episodes. This applies the SAME validated
-                # signal to a DIFFERENT lever -- the scale-in PACE -- so the position still
-                # reaches its full target (no permanent size cut) but commits less capital
-                # upfront while the vol-spike regime is uncertain. Distinct decision-architecture
-                # change: new data dep on the scale-in pace control-flow path (_entry_full_bars_dyn),
-                # not the size path. Slower scale-in during vol-spike -> smaller wrong-side
-                # losses if the entry is wrong (less capital committed before the signal
-                # clarifies) while preserving full size if the entry is right (the position
-                # still reaches full target after the pace window). Applied AFTER all existing
-                # pace modifiers; floored at _accel_floor (no override of the existing floor).
-                # Byte-identical when _port_vol_spike_pace_slow=0.0 (rally grind, calm regimes
-                # where _port_vol_ratio_max < ONSET). General vol-regime principle (no regime
-                # label): cautious scale-in during vol-spike episodes.
-                if _port_vol_spike_pace_slow > 0.0:
-                    _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn + _port_vol_spike_pace_slow)
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
