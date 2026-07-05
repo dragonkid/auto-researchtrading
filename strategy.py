@@ -1140,25 +1140,7 @@ class Strategy:
             # loss-only outcome-conditioned stretch & first-bar size attenuator.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
             _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
-            # Exp4 (architectural): LOSS-MAGNITUDE-SCALED cooldown window. The prior
-            # _cd_window used a BINARY _loss_only stretch (0.6x extension for any loss past
-            # the tanh knee, regardless of HOW BIG the loss was). A small near-breakeven loss
-            # (-0.3pct) and a full-stop blow-up (-2.4pct) got the SAME 0.6x cooldown extension.
-            # Sideways's mean-reversion losses are small (PF 1.2, losers are modest) -> the
-            # binary stretch either over-cools (small loss gets full extension) or under-cools
-            # (a big loss gets only 0.6x). Scale the cooldown DURATION continuously with the
-            # loss MAGNITUDE: a near-breakeven loss (|exit_pnl| small) gets a SMALL extension
-            # (the signal was close, re-enter on fresh conviction); a full-stop loss gets a
-            # LARGER extension (the signal was badly wrong, wait longer for fresh conviction).
-            # _loss_mag is continuous in [0, ~1+]: 0 for wins, ramps with loss size normalized
-            # by the stop magnitude. The cooldown extension is now loss-magnitude-proportional
-            # (max extension 1.2x at full stop, vs the binary 0.6x). NEW cross-component data
-            # dep: cooldown duration depends on the MAGNITUDE of the last exit loss (was: binary
-            # loss/no-loss). Continuous (no boundary); direction-agnostic general principle
-            # (no regime label): a bigger losing exit signals a worse signal failure -> wait
-            # longer before re-entering. Byte-identical for wins (loss_mag 0 -> no extension).
-            _loss_mag = max(0.0, -self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT))  # continuous [0, ~1+]
-            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 1.2 * _loss_mag)
+            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
