@@ -2764,6 +2764,25 @@ class Strategy:
                 # -- dead-cat-wall-safe by construction (only LOSING positions get less hold
                 # relief; crash's winning shorts are not losing). Byte-identical at profit.
                 _own_loss_atten = 1.0 - 0.30 * max(0.0, -_pnl_scale)
+                # Branch step1: GATE the loss-side own-side attenuation on COUNTER-TREND-
+                # AT-MULTI-DAY. Exp4 (opener) crashed sideways -0.028 because sideways's
+                # LOSING positions are trend-neutral mean-reverters (ret_vlong~0) that
+                # RECOVER -- reducing their hold relief exits them before recovery. The
+                # separator: crash's losing longs are COUNTER-TREND at the multi-day scale
+                # (dead-cat longs in a persistent downtrend: ret_vlong<0, pos_dir=+1, product<0
+                # -> ct); sideways's losing oscillation longs are TREND-NEUTRAL (ret_vlong~0
+                # -> product~0 -> gate~0). Gate the attenuation on the validated ct-at-multi-day
+                # indicator (fast-saturating /0.01, near-constant, noise-free -- the SAME
+                # separator used by _ct_vlong_shrink / _ct_hold_sat / _adv_freeze). The
+                # attenuation now fires ONLY for LOSING COUNTER-TREND positions (crash dead-cat
+                # longs, rally pullback shorts giving back) -- exactly the dead-cat population
+                # Exp4's crash +0.0014 came from. Sideways trend-neutral losers byte-identical.
+                # Trend-aligned losers (crash shorts dipping during a bounce: ret_vlong*pos_dir>0
+                # -> ct gate 0) byte-identical (the dead-cat wall -- crash's profitable shorts
+                # that dip and recover are SPARED). New cross-component data dep: own-side
+                # subtraction now reads (PnL sign, multi-day trend-alignment) jointly.
+                _ct_loss_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_vb / 0.01))  # ~0 trend-aligned/trend-neutral, ~1 ct
+                _own_loss_atten = 1.0 - 0.30 * max(0.0, -_pnl_scale) * _ct_loss_gate
                 _voter_bias = -0.20 * _chop_amp * _own_loss_atten * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
