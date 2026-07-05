@@ -3403,13 +3403,7 @@ class Strategy:
                 # (max(...,1.0)), baseline 1.0x for late bars. If mixed recovers, the late-bar
                 # finer grid was the culprit; if mixed stays regressed, the early-bar coarsening
                 # is absorbing mixed's small-position scale-in.
-                # Branch step7: REDUCE magnitude 0.3->0.2. Step6 gave +0.020 but mixed still
-                # regressed -0.012 (Sh byte-identical, but 4 extra trades -> WR 80->77.7% ->
-                # streak_gate drop). The early-bar coarsening let through 4 extra lower-quality
-                # mixed trades. Smaller magnitude (0.2) lessens the coarsening -> fewer extra
-                # trades in mixed while preserving the bull/rally scale-in-wobble suppression
-                # (the mechanism still fires, just with ~1.17x coarsening at bars<=3 vs ~1.26x).
-                _grid_hold_profile = max(1.0, 1.0 - 0.2 * np.tanh((bars_held - 5.0) / 3.0))
+                _grid_hold_profile = max(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
                 _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _grid_hold_profile
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
