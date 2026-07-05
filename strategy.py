@@ -3059,28 +3059,6 @@ class Strategy:
                     # Sideways fresh dips spared; crash/bull/rally extending losers trimmed.
                     if _pnl_scale < 0.0:
                         _de_floor -= 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate
-                        # Branch step6: POSITION-LEVEL MAE-based de-risk floor lowering. The
-                        # portfolio-DD lowering (step4) only fires when the PORTFOLIO is in
-                        # drawdown -> bull/rally (brief sharp DD episodes, fast recovery via
-                        # the slow-rise 0.05 EMA) rarely have sustained _port_dd_atten < 1.0
-                        # -> bull/rally losers are byte-identical (no floor lowering fires).
-                        # Add a POSITION-LEVEL adverse-excursion signal: the held position's
-                        # OWN MAE depth (max adverse excursion since entry, tracked in _mae).
-                        # A loser with DEEP MAE has bled significantly since entry -> it is
-                        # at extension risk regardless of portfolio state -> start the de-risk
-                        # ramp earlier. Gated by the SAME _exit_dd_gate (sustained_loss * trend)
-                        # so fresh dips / sideways mean-reverters are still spared. The MAE
-                        # signal is POSITION-LEVEL (each loser's own bleed) -> fires for
-                        # bull/rally losers that the portfolio-DD signal misses. Composes with
-                        # step4 (portfolio-level): total lowering = portfolio_DD_term +
-                        # position_MAE_term, both gated by _exit_dd_gate. MAE normalized by
-                        # stop magnitude (continuous tanh, no boundary); max +0.06 floor
-                        # lowering at MAE = 1.5*stop (deep extending loser). Distinct signal
-                        # from portfolio DD (one is position-level bleed, other is portfolio-
-                        # level drawdown). Byte-identical when MAE shallow (early losers) or
-                        # _exit_dd_gate=0 (fresh dips / sideways).
-                        _mae_depth = max(0.0, -self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT))
-                        _de_floor -= 0.06 * max(0.0, np.tanh((_mae_depth - 0.5) / 0.5)) * _exit_dd_gate
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
