@@ -3559,25 +3559,6 @@ class Strategy:
                     # (the binding positive regime whose dead-capital longs bleed across
                     # many bars) while sparing early-bar reductions everywhere.
                     _hold_dur_profile = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
-                    # branch step6: PROFIT-MAGNITUDE modulation on the hold-duration
-                    # profile. A dead-capital trim should be STRONGER for near-breakeven
-                    # positions (genuine dead capital -- whippy ~0 pos_pnl longs) and
-                    # WEAKER for deep winners (real trend extension that might recover).
-                    # The _winner_fade (step9) already fades the trim for clear winners
-                    # (pos_pnl >= +1.5*stop -> fade 0), but its ONSET is at +0.5*stop. This
-                    # adds a SMOOTHER, EARLIER profit-magnitude modulation on the hold-
-                    # duration profile itself: scale the profile by (1 - 0.3*tanh(pos_pnl/|stop|))
-                    # so even modest winners (pos_pnl ~ +0.5*stop) get a 15% softer profile
-                    # while near-breakeven (pos_pnl ~ 0) gets the full profile. Distinct
-                    # from _winner_fade (which fades the whole trim_mult including chop);
-                    # this fades only the hold-duration component, preserving the chop-based
-                    # trim for winners (whose chop is still real) while softening the
-                    # hold-duration amplification (a winner held 10 bars isn't dead capital
-                    # even if choppy). Continuous tanh on pos_pnl/|stop| (no boundary).
-                    # Byte-identical for losers (pos_pnl<0 -> tanh negative -> max(0,..)=0
-                    # -> factor 1.0, full profile for losing dead capital).
-                    _hold_dur_profit_mod = 1.0 - 0.3 * max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
-                    _hold_dur_profile = _hold_dur_profile * _hold_dur_profit_mod
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
                     _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile
