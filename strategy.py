@@ -2087,6 +2087,21 @@ class Strategy:
                 if len(_pp_hist) > 12:
                     _pp_hist = _pp_hist[-12:]
                 self._pnl_path[symbol] = _pp_hist
+                # BRANCH step2: compute MTM-chop EARLY (before the grid quantization)
+                # so the hold-dur grid factor can be gated on it. Mirrors the _mtm_chop
+                # computation in the reduction throttle (line ~3525) but lifted to here
+                # so the grid (line ~3341) can read it. MTM-path-efficiency = |net|/sum|delta|
+                # over the 12-bar pos_pnl path; chop = 1 - eff. HIGH = choppy dead capital
+                # (mixed wrong-side longs); LOW = smooth climber (crash trend-aligned shorts).
+                # Used to gate the hold-dur grid coarsening so it only fires on choppy
+                # positions (the dead-capital population), exempting crash's smooth shorts.
+                _mtm_chop_early = 0.0
+                if len(_pp_hist) >= 4:
+                    _ppa_e = np.array(_pp_hist)
+                    _net_e = abs(_ppa_e[-1] - _ppa_e[0])
+                    _tot_e = float(np.sum(np.abs(np.diff(_ppa_e))))
+                    _mtm_eff_e = _net_e / max(_tot_e, 1e-10)
+                    _mtm_chop_early = max(0.0, min(1.0, 1.0 - _mtm_eff_e))
 
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
@@ -3354,13 +3369,20 @@ class Strategy:
                 # late-life; grid step GROWS for late-life -> coarser quantization).
                 # Factor: 0.7 at bars<=3 (fine, preserve scale-in signal), 1.0 at
                 # bars>=6 (baseline), 1.3 at bars>=12 (coarse, suppress late-life
-                # noise). Continuous tanh profile (no boundary); reduction-only is
-                # not required here (grid is symmetric on grow/shrink resizes, both
-                # round to nearest lattice -> the coarser grid for late-life applies
-                # to both directions symmetrically). Byte-identical at bars_held where
-                # factor=1.0 (bars>=6 the validated baseline region). Trend-aligned
-                # and ct positions both benefit from late-life noise suppression.
-                _hold_dur_grid = 0.7 + 0.6 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
+                # noise). Continuous tanh profile (no boundary).
+                # BRANCH step2: GATE on _mtm_chop_early (the validated chop signal).
+                # step1 (ungated) crashed crash -1.33: the coarser late-life grid on
+                # the calm path ABSORBED crash trend-aligned short reductions (smooth
+                # winners being reduced -> snapped to same lattice point -> reduction
+                # never executed -> losing shorts held bigger -> larger realized losses).
+                # The separator: crash's trend-aligned shorts are SMOOTH climbers (low
+                # _mtm_chop); mixed's dead-capital longs are CHOPPY (high _mtm_chop).
+                # Gate the coarsening on chop so it only fires on dead-capital positions
+                # (the population the trim throttle targets), exempting crash's smooth
+                # shorts. _mtm_chop_early is computed at line ~2095 (lifted from the
+                # reduction throttle). Smooth positions (chop~0) -> factor*1 = baseline
+                # grid (byte-identical). Choppy positions (chop~1) -> full coarsening.
+                _hold_dur_grid = 1.0 + 0.3 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0))) * _mtm_chop_early
                 _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _hold_dur_grid
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
@@ -3474,13 +3496,11 @@ class Strategy:
                 if _grid_c > 0 and not _small_pos_exempt:
                     # Exp1 (architectural, indep): HOLD-DURATION-CONDITIONED grid step
                     # on the calm path (mirror of the churn-path hold-dur grid above).
-                    # The calm grid fires on never-bursting symbols (crash/sideways/
-                    # bull). The same hold-duration insight applies: early-bar resizes
-                    # might be scale-in wobble (need fine grid), late-bar resizes are
-                    # more likely genuine reductions (can tolerate coarser grid -> more
-                    # noise suppression). NEW data dep on calm grid step. The factor
-                    # (0.7 early -> 1.3 late) mirrors the churn-path grid.
-                    _hold_dur_grid_c = 0.7 + 0.6 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
+                    # BRANCH step2: GATE on _mtm_chop_early (same as churn path). step1's
+                    # ungated coarsening crashed crash -1.33 (absorbed smooth short
+                    # reductions). The chop gate exempts crash's smooth trend-aligned
+                    # shorts; only coarsens for choppy dead-capital positions (mixed).
+                    _hold_dur_grid_c = 1.0 + 0.3 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0))) * _mtm_chop_early
                     _grid_c = _grid_c * _hold_dur_grid_c
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
