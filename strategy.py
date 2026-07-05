@@ -551,34 +551,6 @@ class Strategy:
         _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(_port_dd_frac / (0.008 * LEVERAGE_K)))
 
-        # Exp2 (architectural, indep): PORTFOLIO CROSS-SYMBOL DEEP-WINNER-PEAK COUNT.
-        # NEW proactive portfolio-level exit-side signal distinct from every existing
-        # portfolio primitive: _port_dd_atten (equity-based, REACTIVE -- fires AFTER DD
-        # has happened), _port_bear_cap (size cap, trend-based), _conc_shrink (entry-side
-        # notional). This counts symbols with a CURRENTLY OPEN position whose peak_pnl
-        # exceeds a deep-winner threshold (PEAK_PROFIT_MIN_BASE*2 ~= 5pct unrealized gain).
-        # When >=2 symbols simultaneously have deep winners, the portfolio is at a
-        # CORRELATED REGIME PEAK (rally: BTC/ETH/SOL all grind up together -> all three
-        # peak together; crash: correlated bear rallies). A correlated peak precedes a
-        # correlated pullback (the DD source for rally: pullbacks across all three
-        # symbols simultaneously). PROACTIVELY tighten the giveback tolerance across ALL
-        # winners at the moment of correlated peak (before the pullback causes portfolio
-        # DD -> the reactive _port_dd_atten then amplifies it). Distinct from _pp_tighten
-        # (per-position, equity-DD-based): this is cross-symbol peak-count-based, a
-        # structurally different portfolio signal (peak coincidence, not equity drawdown).
-        # Computed once per bar from self.peak_pnl (the per-symbol high-water mark,
-        # already noise-smoothed via confirmed-peak 2-rising-bar update); falls to 0 if
-        # fewer than 2 symbols have open positions with deep peaks. Continuous tanh on
-        # (count-1)/1 so 2 symbols -> ~0.46, 3 symbols -> ~0.76 (near-constant, noise-free
-        # since peak_pnl only updates upward on confirmed rising bars). Direction-agnostic
-        # general principle (no regime label): correlated peaks precede correlated
-        # pullbacks -> harvest before the pullback deepens into portfolio DD.
-        _port_winner_peak_count = 0
-        for _wsym, _wpos in portfolio.positions.items():
-            if _wpos != 0 and self.peak_pnl.get(_wsym, 0.0) > 2.0 * PEAK_PROFIT_MIN_BASE:
-                _port_winner_peak_count += 1
-        _port_winner_peak_strength = max(0.0, min(1.0, np.tanh(max(0, _port_winner_peak_count - 1) / 1.0)))
-
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
         # first-bar entry size: an alt entry that DISAGREES with BTC's multi-day trend is a
@@ -2472,19 +2444,6 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp2: portfolio cross-symbol deep-winner-peak-count giveback tightening.
-                # When multiple symbols have simultaneous deep winners (correlated regime
-                # peak), proactively tighten giveback further (harvest before the correlated
-                # pullback deepens into portfolio DD). PROACTIVE counterpart to the reactive
-                # _port_dd_atten-based tightening above: fires at the moment of correlated
-                # peak, before the pullback causes equity DD. Composes multiplicatively
-                # (independent signals: equity-DD vs peak-coincidence). Byte-identical when
-                # _port_winner_peak_strength=0 (fewer than 2 symbols at deep peak -- single-
-                # leg regimes, sideways, isolated winners). Continuous tanh; near-constant
-                # where it fires (peak_pnl only updates upward on confirmed rising bars ->
-                # noise-free). Direction-agnostic general principle (no regime label):
-                # correlated peaks precede correlated pullbacks -> harvest before DD.
-                _pp_tighten = _pp_tighten * (1.0 - 0.15 * _port_winner_peak_strength)
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
