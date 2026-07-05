@@ -3006,6 +3006,35 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
+                    # Exp3 (architectural, indep): PORTFOLIO-DD-ADAPTIVE de-risk floor
+                    # lowering for LOSERS. NEW cross-component data dep on the de-risk
+                    # graduation ramp: _de_floor (the lower bound of the graduated partial-
+                    # exit ramp) currently depends on PnL sign only (0.55 profit / 0.85 loss).
+                    # The Exp4 keep lowers the UPPER bound _exit_thresh for losers during
+                    # portfolio DD (full-exit triggers sooner). This is the COMPLEMENTARY
+                    # lever on the LOWER bound: during portfolio DD (correlated regime hit),
+                    # a LOSING position is at risk of EXTENDING further -> start the graduated
+                    # partial-exit ramp EARLIER so the position begins shrinking before
+                    # full-exit pressure is reached -> smaller realized losses -> higher
+                    # Sharpe in the negative-Sharpe regimes (bull PF 0.7 / crash PF 0.9
+                    # despite 67-73pct WR = losers too big; bull DD 12.88pct worst, crash
+                    # 17.76pct). DISTINCT from Exp4: that changes the full-exit threshold
+                    # (upper bound), this changes the graduation ramp START (lower bound).
+                    # Both compose: earlier ramp start (this) + sooner full-exit (Exp4) =
+                    # a loser during portfolio DD de-risks gradually from a lower pressure
+                    # AND hits full-exit at a lower pressure. Loss-side only (gated on
+                    # _pnl_scale<0 -> only fires for losers; trend-aligned winners byte-
+                    # identical, _de_floor stays at profit-side 0.55 minus trend relax).
+                    # Byte-identical at portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 ->
+                    # lowering 0). Uses the validated top-level _port_dd_atten (asymmetric-EMA,
+                    # leverage-coupled 0.008*LEVERAGE_K scale). Smooth (no boundary), direction-
+                    # agnostic general principle (no regime label): a losing position during a
+                    # portfolio drawdown is at correlated-regime-hit risk -> start trimming sooner.
+                    # Max lowering 0.10 (0.85 -> 0.75 floor for losers at deep DD) -- smaller
+                    # than the 0.30 profit/loss swing to keep the ramp from firing too early
+                    # on transient mid-range pressure (which would over-trade fees).
+                    if _pnl_scale < 0.0:
+                        _de_floor -= 0.10 * (1.0 - _port_dd_atten)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
