@@ -3558,7 +3558,7 @@ class Strategy:
                     # ~1.0 regardless of hold_duration). Direction-agnostic. Targets mixed
                     # (the binding positive regime whose dead-capital longs bleed across
                     # many bars) while sparing early-bar reductions everywhere.
-                    _hold_dur_profile = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
+                    _hold_dur_profile = 0.3 + 1.1 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
                     _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile
