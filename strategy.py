@@ -567,6 +567,35 @@ class Strategy:
             _btc_hl2 = (bar_data["BTC"].history["high"].values[-_btc_n:] + bar_data["BTC"].history["low"].values[-_btc_n:]) / 2.0
             _btc_trend = _fast_slope(np.log(_btc_hl2)) * _btc_n
 
+        # Exp4 (architectural, indep): BTC SHORT-TERM REVERSAL entry shrink. NEW cross-
+        # symbol short-term data dep, the untested lead #3 from prior session-summary:
+        # "A cross-symbol signal (BTC short-term reversal predicting bull-loser longs)
+        # is untested." _btc_trend above is the 96-bar SLOW trend; this is the 3-bar
+        # SHARP move. When BTC has had a sharp 3-bar move (|return| > onset), entries
+        # that AGREE with the move (long after BTC rallied, short after BTC dropped) are
+        # FOMO/chase entries that frequently reverse -> shrink first-bar size. Mechanism:
+        # bull's losers may be FOMO longs after a sharp BTC rally (chasing the move into
+        # a pullback). DISTINCT from _vol_entry_spike (volume spike, capitulation) and
+        # _xasset (BTC 96-bar trend agreement): this is BTC PRICE short-term REVERSAL
+        # (a 3-bar move is too short to be a trend, too long to be 1-bar noise -- it
+        # captures sharp short-term extensions that mean-revert). Trend-ALIGNMENT gated
+        # on the multi-day ret_vlong: crash's trend-aligned shorts after a sharp BTC
+        # DROP (ret_vlong<0, bear entry aligned) are NOT chase entries (they're trend-
+        # aligned with the multi-day downtrend) -> spared. Only shrinks entries that
+        # chase a short-term move OPPOSITE to the multi-day trend (FOMO longs in
+        # uptrend after a sharp rally pullback bounce, dead-cat-bounce longs in downtrend
+        # after a sharp bounce). Computed once per bar; falls to 0 if BTC absent/short.
+        # Deep-saturated /0.015 (3-bar return scale; near-constant where it fires,
+        # noise-free per the validated safe-family lesson -- 3-bar return averages 3
+        # bars of AR(1) noise, ~1/sqrt(3) attenuation, sign-robust at the deep onset).
+        # Shrink-only (caps at 1.0, safe family), max 0.20, first-bar-only. Direction-
+        # agnostic general principle (no regime label): chasing a sharp short-term move
+        # is a low-quality entry.
+        _btc_st_ret = 0.0
+        if "BTC" in bar_data and len(bar_data["BTC"].history) > 3:
+            _btc_st_c = bar_data["BTC"].history["close"].values
+            _btc_st_ret = (_btc_st_c[-1] - _btc_st_c[-4]) / _btc_st_c[-4]  # 3-bar return
+
         # Exp2 (architectural, indep): PORTFOLIO CROSS-SYMBOL TREND CONSENSUS. NEW
         # portfolio-level data dep distinct from every existing cross-symbol primitive
         # (BTC 96-bar price -> alt sizing; BTC/alt volume -> alt; partner-alt price -> alt):
@@ -2048,6 +2077,24 @@ class Strategy:
                 # bear-side consensus boost depends on _down_persist (was weak_persist).
                 _consensus_boost_bull = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
                 _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
+                # Exp4: BTC short-term reversal entry shrink (computed at top level from
+                # _btc_st_ret, the 3-bar BTC return). Shrinks entries that CHASE a sharp
+                # short-term move OPPOSITE to the multi-day trend (FOMO longs after a sharp
+                # BTC rally in an uptrend = chasing; trend-aligned longs after a sharp BTC
+                # DROP in an uptrend = buying the dip = NOT shrunk). Gated on multi-day
+                # trend-alignment (ret_vlong*pos_dir): only shrinks the CHASE side (entry
+                # sign matches the sharp move sign AND opposes the multi-day trend sign).
+                # crash's trend-aligned shorts after a sharp BTC drop (ret_vlong<0, bear
+                # entry aligned) are NOT chase entries -> spared. Byte-identical when BTC
+                # absent or move is small. Shrink-only (safe family), max 0.20.
+                _btc_st_sharp = max(0.0, min(1.0, np.tanh((abs(_btc_st_ret) - 0.015) / 0.015)))
+                _btc_st_sign = 1.0 if _btc_st_ret > 0 else (-1.0 if _btc_st_ret < 0 else 0.0)
+                # bull entry chases a sharp BTC rally (FOMO long): shrink when BTC up sharply AND multi-day trend NOT up (or up weakly)
+                _bull_chase_gate = _btc_st_sharp * max(0.0, np.tanh(-ret_vlong / 0.02)) * max(0.0, _btc_st_sign)
+                # bear entry chases a sharp BTC drop (FOMO short): shrink when BTC down sharply AND multi-day trend NOT down
+                _bear_chase_gate = _btc_st_sharp * max(0.0, np.tanh(ret_vlong / 0.02)) * max(0.0, -_btc_st_sign)
+                _btc_rev_shrink_bull = 1.0 - 0.20 * _bull_chase_gate
+                _btc_rev_shrink_bear = 1.0 - 0.20 * _bear_chase_gate
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
@@ -2067,11 +2114,11 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _btc_rev_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _btc_rev_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
