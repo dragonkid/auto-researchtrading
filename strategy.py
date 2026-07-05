@@ -2440,6 +2440,26 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp2 (architectural, indep): PROFIT-GATED TREND-ALIGNED attenuation of
+                # slope-against pressure. bull_2021 has 72.9pct WR but PF 0.7 -> avg win is
+                # ~0.26x avg loss (winners exit TOO EARLY on the first slope-against pullback
+                # signal, capping gains while losers run to the stop). The prior unconditional
+                # trend-align attenuation was REMOVED (line above) because it also protected
+                # LOSERS (trend-aligned positions facing a genuine reversal). This re-adds a
+                # NARROWER attenuation gated on IN-PROFIT (pos_pnl>0) AND multi-day trend-
+                # align (ret_vlong*pos_dir>0): only DEVELOPING WINNERS (trend-aligned AND
+                # in profit) get slope-against relief so they ride pullbacks; losers (pos_pnl<0)
+                # and ct positions are byte-identical (gate 0 -> no attenuation). New cross-
+                # component data dep: slope-against pressure depends on (trend-align, profit).
+                # Mechanism: a trend-aligned winner facing a pullback slope-against is more
+                # likely noise than reversal (the multi-day trend is intact) -> attenuate so
+                # the winner runs toward a bigger peak -> higher avg win -> higher PF/Sharpe
+                # for bull. Max 40pct attenuation, /0.01 ret_vlong scale (near-constant
+                # noise-free per validated lesson), tanh on pos_pnl/|stop| for smooth profit
+                # gate (saturates by ~1x stop in profit).
+                _pos_dir_sa = 1.0 if current_pos > 0 else -1.0
+                _ta_profit_gate = max(0.0, np.tanh(ret_vlong * _pos_dir_sa / 0.01)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _sl_slope_pressure = _sl_slope_pressure * (1.0 - 0.40 * _ta_profit_gate)
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
