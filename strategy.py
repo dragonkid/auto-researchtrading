@@ -390,7 +390,7 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 # Exp1's vol cap (independent timescales: 6-bar spot vs 24-bar regime).
 PORT_SPOT_MOVE_ONSET = 0.030   # |6-bar log return| above which cap engages (~3% move over 6h)
 PORT_SPOT_MOVE_SCALE = 0.015
-PORT_SPOT_MOVE_MAX_SHRINK = 0.15  # max shrink at full saturation (-> 0.85x)
+PORT_SPOT_MOVE_MAX_SHRINK = 0.08  # step8: reduced 0.15->0.08 to shrink crash regression while keeping bull gain
 
 
 class Strategy:
