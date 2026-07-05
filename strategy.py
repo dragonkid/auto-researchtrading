@@ -2548,7 +2548,18 @@ class Strategy:
                 # 0.0004, fading to 0 by 0.0012 (fast-saturating, distinguishes gradual from
                 # sharp reversal). Continuous tanh-style ramp.
                 _slope_against_gate = max(0.0, 1.0 - max(0.0, (_slope_against - 0.0004) / 0.0008))
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate
+                # Branch step4: LONG-ONLY gate. steps2-3 gates were too slow -- crash's shorts
+                # ride bounces faster than giveback/slope gates detect. Structural asymmetry:
+                # LONGS in an uptrend riding a pullback (bull) is the canonical let-winners-run
+                # scenario; SHORTS in a downtrend riding a bounce (crash) face asymmetric upside
+                # risk (downtrends are choppier, bounces sharper). Position direction is a
+                # structural property (long/short risk asymmetry), NOT a regime label. Gate the
+                # attenuation to LONG positions only -- bull longs get pullback relief, crash
+                # shorts get full pp_pressure (exit bounces normally). Shorts byte-identical to
+                # baseline. This is the cleanest separator: crash's problem is specifically its
+                # trend-aligned SHORTS; bull's benefit is specifically its trend-aligned LONGS.
+                _long_only_gate = 1.0 if current_pos > 0 else 0.0
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate
                 _pp_pressure = _pp_pressure * (1.0 - 0.35 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
