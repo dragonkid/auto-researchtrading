@@ -3058,7 +3058,7 @@ class Strategy:
                     # _exit_thresh) and lower bound (this _de_floor) of the exit graduation.
                     # Sideways fresh dips spared; crash/bull/rally extending losers trimmed.
                     if _pnl_scale < 0.0:
-                        _de_floor -= 0.14 * (1.0 - _port_dd_atten) * _exit_dd_gate
+                        _de_floor -= 0.13 * (1.0 - _port_dd_atten) * _exit_dd_gate
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
