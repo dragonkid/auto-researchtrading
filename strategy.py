@@ -3086,33 +3086,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Exp2 (architectural, indep): BREAK-EVEN-STUCK de-risk floor lowering
-                    # during portfolio DD. Sanctioned untested lead #4 from 194ff425
-                    # session-summary: apply the de-risk floor mechanism to the BREAK-EVEN
-                    # STAGNATION path (_be_pressure). The _de_floor keep (Exp3) lowers the
-                    # graduation ramp floor for LOSERS (_pnl_scale<0, gated by _exit_dd_gate =
-                    # sustained_loss * trend_gate). A position stuck NEAR BREAKEVEN (pos_pnl ~0)
-                    # after scale-in during a portfolio drawdown is DEAD CAPITAL -- it occupies
-                    # risk capacity without contributing return, while the portfolio is in DD.
-                    # The _de_floor keep does NOT fire for it (pos_pnl~0 -> _pnl_scale~0 ->
-                    # _exit_dd_gate via sustained_loss is ~0). This adds a SEPARATE small
-                    # lowering for break-even-stuck positions during DD, gated by _be_pressure
-                    # (which captures near-zero pos_pnl via _be_near_zero + post-scale-in via
-                    # _be_hold_gate + trending via _be_trend_gate -- the SAME validated gate
-                    # the break-even pressure uses, already spares sideways chop) and _port_dd_atten
-                    # (portfolio DD state). NEW cross-component data dep: _de_floor now reads
-                    # _be_pressure (break-even stagnation signal) jointly with portfolio DD state.
-                    # Loss-side only: skip when _pnl_scale < -0.10 (deep losers handled by the
-                    # _de_floor keep, would double-count). Byte-identical at portfolio peak
-                    # (dd_frac=0 -> _port_dd_atten=1.0 -> lowering 0). Sideways byte-identical
-                    # (_be_trend_gate~0 in chop; _port_dd_atten~1 at sideways small DD). Magnitude
-                    # 0.06 (smaller than the loss-side 0.13 to avoid over-trimming marginal
-                    # positions that might re-trend). Smooth (no boundary), direction-agnostic
-                    # general principle (no regime label): break-even-stuck dead capital during a
-                    # portfolio drawdown should de-risk gradually to free risk capacity.
-                    _be_stuck_dd = _be_pressure * (1.0 - _port_dd_atten)  # break-even-stuck AND in DD
-                    _be_stuck_neutral = max(0.0, min(1.0, -_pnl_scale / 0.10)) if _pnl_scale < 0.0 else 1.0  # full near BE (pos_pnl>=0), fades by pos_pnl=-0.10
-                    _de_floor -= 0.06 * _be_stuck_dd * _be_stuck_neutral
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
