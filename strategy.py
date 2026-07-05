@@ -382,6 +382,18 @@ PORT_VOL_SPIKE_ONSET = 1.30   # vol_ratio above which cap engages (calm<1.0, cho
 PORT_VOL_SPIKE_SCALE = 0.30
 PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 
+# Exp3: MAX-aggregation portfolio ATR SIZE cap. Sanctioned untested lead from a318addd
+# session-summary ('max-aggregation might extend to max ATR'). Per-symbol ATR (mean true
+# range / close) max-aggregated across symbols, applied as SIZE cap. ATR captures
+# intrabar range (wicks/shadows, gap-intraday reversals) that close-to-close vol_ratio
+# misses: a bar with a long wick reversed to close near open has LOW close-to-close vol
+# but HIGH ATR. Onset as ATR-fraction-of-price (typical BTC hourly 0.4-1.0pct, vol-spike
+# 1.5-3pct; alts 0.8-2.0pct typical, 2-4pct spike). 0.018 = 1.8pct catches vol-spike bars.
+PORT_ATR_ONSET = 0.018   # ATR/price fraction above which cap engages (calm<0.012, spike>0.018)
+PORT_ATR_SCALE = 0.006
+PORT_ATR_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
+PORT_ATR_LOOKBACK = 24  # same window as vol_ratio for direct comparison
+
 
 class Strategy:
     def __init__(self):
@@ -639,6 +651,7 @@ class Strategy:
         _port_weak_persist_vals = []  # Exp6: per-symbol weak_persist for max-aggregation
         _port_rv_vals = []  # Exp8: per-symbol raw ret_vlong for max-aggregation deep-bear cap
         _port_vol_ratio_vals = []  # Exp1: per-symbol vol_ratio for max-aggregation vol-spike cap
+        _port_atr_vals = []  # Exp3: per-symbol ATR/price for max-aggregation ATR cap
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
@@ -666,6 +679,21 @@ class Strategy:
                 _p_baseline_vol = max(np.std(np.diff(np.log(_pc[-_p_long_n - 1:-1]))), 1e-6)
                 _p_target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _p_baseline_vol
                 _port_vol_ratio_vals.append(_p_rv_short / max(_p_target_vol_dyn, 1e-6))
+            # Exp3: per-symbol ATR (mean true range / close) for MAX-aggregation ATR cap.
+            # True Range = max(high-low, |high-prev_close|, |low-prev_close|). Captures
+            # intrabar range incl wicks/shadows that close-to-close vol_ratio misses.
+            # Normalized by close -> scale-invariant fraction (typical 0.4-2.0pct hourly).
+            if len(_pc) > PORT_ATR_LOOKBACK + 1:
+                _p_hi = bar_data[_psym].history["high"].values[-PORT_ATR_LOOKBACK:]
+                _p_lo = bar_data[_psym].history["low"].values[-PORT_ATR_LOOKBACK:]
+                _p_cl_prev = bar_data[_psym].history["close"].values[-PORT_ATR_LOOKBACK - 1:-1]
+                _p_tr = np.maximum.reduce([
+                    _p_hi - _p_lo,
+                    np.abs(_p_hi - _p_cl_prev),
+                    np.abs(_p_lo - _p_cl_prev),
+                ])
+                _p_atr_frac = float(np.mean(_p_tr)) / max(_pc[-1], 1e-6)
+                _port_atr_vals.append(_p_atr_frac)
         _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
         # Exp1: portfolio-level deep-bear size cap (AVERAGE aggregation). Continuous tanh
         # ramp above ONSET; shrink-only (caps at 1.0; never amplifies size).
@@ -707,6 +735,14 @@ class Strategy:
         _port_vol_ratio_max = max(_port_vol_ratio_vals) if _port_vol_ratio_vals else 0.0
         _port_vol_spike_cap = 1.0 - PORT_VOL_SPIKE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ONSET) / PORT_VOL_SPIKE_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_spike_cap
+        # Exp3: MAX-aggregation ATR SIZE cap (composes with the vol-spike cap above on a
+        # DIFFERENT vol axis: intrabar range vs close-to-close). Fires when ANY ONE symbol's
+        # ATR/price exceeds ONSET (intrabar vol-spike regime). Catches vol episodes the
+        # vol_ratio cap misses (long-wick reversal bars where close-to-close vol is low but
+        # intrabar range is large). Byte-identical when all ATRs < ONSET (calm grind).
+        _port_atr_max = max(_port_atr_vals) if _port_atr_vals else 0.0
+        _port_atr_cap = 1.0 - PORT_ATR_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_atr_max - PORT_ATR_ONSET) / PORT_ATR_SCALE)))
+        _port_weak_cap = _port_weak_cap * _port_atr_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
