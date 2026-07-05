@@ -1125,35 +1125,6 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
-            # Exp1 branch step2 (architectural): PORTFOLIO rolling-trade-PnL EMA
-            # counter-trend ADMISSION tightening. NEW portfolio-level temporal data dep:
-            # _trade_pnl_ema (EMA of signed realized trade PnL / STOP_LOSS_PCT across
-            # recent closed trades portfolio-wide, updated at exit). Distinct from
-            # _loss_streak (consecutive-loss COUNT, ignores magnitude), _port_dd_atten
-            # (UNREALIZED equity drawdown), _last_exit_pnl (per-symbol SINGLE last trade).
-            # A persistently negative rolling realized PnL = the strategy's trade
-            # selection is systematically losing in the prevailing regime -> tighten the
-            # admission bar for COUNTER-TREND entries (bull long in downtrend / bear short
-            # in uptrend = rally pullback shorts, crash dead-cat longs -- the marginal
-            # ct losers) so only HIGH-conviction ct entries pass -> cuts ct loser COUNT
-            # -> directly raises Sh via fewer losers (Sharpe is count-weighted). Trend-
-            # aligned entries (crash's profitable shorts in persistent downtrend) are
-            # SPARED (ct indicator 0 -> byte-identical) -> crash's recovery mechanism
-            # preserved (the opener/step1 lesson: shrinking ct SIZE hurt crash -0.014
-            # because crash dead-cat longs are indistinguishable from bounce longs at the
-            # signal level; filtering at ADMISSION cuts the COUNT without altering entry-
-            # exit timing of the ones that DO pass). Onset -0.5 (in stop-loss units) so a
-            # single loss does NOT fire it; requires sustained realized-loss trajectory.
-            # Max 15% tighten on ct entries in a realized-loss regime. Composes with the
-            # existing _streak_ct_admit (same ct direction gate, different portfolio
-            # signal: streak COUNT vs rolling PnL MAGNITUDE). Byte-identical when rolling
-            # PnL > -0.5 (onset) or trend-aligned (ct indicator 0). Requires
-            # _trade_pnl_count>=3 so the EMA has signal. New cross-component data dep at
-            # admission boundary (portfolio temporal trade-outcome -> ct admission).
-            if self._trade_pnl_count >= 3:
-                _tpn_amp = max(0.0, min(1.0, np.tanh(-(self._trade_pnl_ema + 0.50) / 1.0)))
-                _bull_strong_min *= 1.0 + 0.15 * _tpn_amp * max(0.0, np.tanh(-ret_vlong / 0.01))
-                _bear_strong_min *= 1.0 + 0.15 * _tpn_amp * max(0.0, np.tanh(ret_vlong / 0.01))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -1559,9 +1530,18 @@ class Strategy:
                 # -0.5). Scale 1.0 in the tanh denominator = gradual ramp. No new boundary
                 # (continuous). Requires _trade_pnl_count>=3 so the EMA has signal.
                 _tpn_ema = self._trade_pnl_ema
-                # Branch step2: placeholder (admission tighten now applied earlier, at the
-                # _bull_strong_min/_bear_strong_min computation). Kept for reference; size
-                # shrink removed (step1 hurt crash -0.014).
+                # Branch step3: rolling-PnL EMA applied at the EXIT side (_exit_thresh
+                # lowering for losers) instead of entry size/admission. The entry-side
+                # applications were walled: size-shrink hurt crash -0.014 (dead-cat longs
+                # indistinguishable from bounce longs), admission tighten was inert (ct
+                # admission path saturated by _streak_ct_admit + _ct_vlong + _churn_ct_atten).
+                # The exit_thresh lowering for losers (line ~3014) is an UNSATURATED path
+                # (validated by the portfolio-DD lowering keep), and the rolling-PnL EMA
+                # is a DISTINCT portfolio temporal signal from _port_dd_atten (UNREALIZED
+                # equity drawdown) -- a strategy can be in realized-loss regime while
+                # unrealized equity is flat (open positions not yet marked). Computed here
+                # for use in the exit block; _trade_pnl_shrink_* kept as 1.0 no-ops (size
+                # shrink removed).
                 _trade_pnl_shrink_bull = 1.0
                 _trade_pnl_shrink_bear = 1.0
                 _trade_pnl_shrink = _trade_pnl_shrink_bull  # legacy scalar alias (unused below; per-direction used)
@@ -3039,6 +3019,29 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # Exp1 branch step3 (architectural): PORTFOLIO rolling-trade-PnL EMA
+                    # ADDITIONAL exit_thresh lowering for sustained losers in a realized-
+                    # loss regime. NEW portfolio-level temporal data dep on the exit
+                    # threshold (an UNSATURATED path, unlike the walled ct admission /
+                    # size-shrink). When recent CLOSED trades are systematically losing
+                    # (rolling PnL EMA < -0.5) AND the current position is a sustained
+                    # loser in a trending regime, lower the full-exit threshold FURTHER
+                    # (cut the loser ~1 extra bar earlier). Mechanism: a realized-loss
+                    # regime (detected in CLOSED trade PnL, distinct from _port_dd_atten's
+                    # UNREALIZED equity drawdown) signals the prevailing regime is adverse
+                    # to the strategy's selection -> sustained losers are likely to EXTEND
+                    # (not recover) -> exit sooner -> smaller realized losses -> higher
+                    # Sharpe in the negative-Sharpe trending regimes (crash -0.241,
+                    # mixed-direction; sideways is chop so _sustained_loss_trend_gate
+                    # ~0 -> byte-identical, sparing the sideways mean-reverter wall).
+                    # Byte-identical when rolling PnL > -0.5 (onset) or chop (trend gate
+                    # 0) or fresh dip (sustained_loss 0). Max 10% additional lowering;
+                    # composes multiplicatively with the DD lowering (different portfolio
+                    # signal: realized trade PnL vs unrealized equity). Requires
+                    # _trade_pnl_count>=3 so the EMA has signal.
+                    if self._trade_pnl_count >= 3:
+                        _tpn_exit_amp = max(0.0, min(1.0, np.tanh(-(self._trade_pnl_ema + 0.50) / 1.0)))
+                        _exit_thresh = _exit_thresh * (1.0 - 0.10 * _tpn_exit_amp * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
