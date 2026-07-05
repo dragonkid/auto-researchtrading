@@ -2385,31 +2385,6 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Exp2 (architectural, indep): TIGHTEN the stop for positions that are
-                # COUNTER-TREND at the multi-day horizon (ret_vlong sign opposes pos_dir).
-                # The prior fd6a9169 keep PROVED the exit_threshold soft-exit path CANNOT
-                # reach bull's large losers (Exp1 this session: byte-identical for bull --
-                # bull losers exit via the HARD STOP, _sl_pressure>=0.95 forces _exit_thresh=1.0
-                # so threshold tuning is moot). The binding constraint for bull's PF 0.7
-                # (despite 71.8pct WR = large losers) is the STOP DISTANCE itself. A position
-                # that was trend-aligned at entry but BECAME counter-trend at the multi-day
-                # horizon (ret_vlong flipped against pos_dir -- a real trend break, not a
-                # transient pullback) is structurally the population that runs to the full
-                # stop: the multi-day trend against it has the persistence to keep pushing.
-                # Tighten the stop for these by up to 25pct (0.75x _stop_abs) so they exit
-                # earlier at a smaller realized loss. The signal is the SAME validated
-                # _ct_vlong_em used at the emission layer (line ~3560: tanh(-pos_dir*ret_vlong
-                # /0.01), fast-saturating /0.01 -> near-constant, noise-free per the validated
-                # branch-step-9 lesson). Trend-aligned positions (ret_vlong*pos_dir>0 ->
-                # ct_vlong=0) byte-identical. Sideways (ret_vlong~0 -> ct_vlong~0) byte-identical.
-                # NEW cross-component data dep: stop distance depends on the position's multi-day
-                # trend-alignment (was ATR-only). Distinct from entry-side _ct_vlong shrink
-                # (line ~1284: that shrinks SIZE at entry for ct ENTRIES; this tightens STOP
-                # for positions that BECAME ct post-entry -- a different population and a
-                # different decision subsystem). Direction-agnostic (uses pos_dir sign).
-                _pos_dir_stop = 1.0 if current_pos > 0 else -1.0
-                _ct_vlong_stop = max(0.0, np.tanh(-_pos_dir_stop * ret_vlong / 0.01))
-                _stop_abs = _stop_abs * (1.0 - 0.25 * _ct_vlong_stop)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
