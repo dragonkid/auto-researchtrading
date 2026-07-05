@@ -2436,6 +2436,30 @@ class Strategy:
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
+                # Exp3 (architectural, indep): PROFIT-MAGNITUDE-GRADUATED pp_band
+                # narrowing. NEW cross-component data dep: the pp_pressure ramp WIDTH
+                # (how fast pp_pressure saturates as giveback grows) now depends on
+                # peak_pnl magnitude relative to _pp_min. Deep winners (peak_pnl >> _pp_min)
+                # get a NARROWER band -> pp_pressure saturates faster at deep peaks ->
+                # harvest more aggressively at deep-peak re-peak events (mixed's deep
+                # peaks at tp_ratio ~16 re-peak oscillation: a narrower band means the
+                # giveback triggers near-full pp_pressure with less giveback room ->
+                # convert deep-peak paper PnL to realized faster -> cut the re-peak
+                # ride-again churn -> lower MTM oscillation -> higher mixed Sharpe).
+                # Distinct from the _giveback_ratio profit-magnitude amplification (line
+                # ~2437): that amplifies the INPUT (giveback_ratio), this NARROWS the RAMP
+                # (saturation speed). A deep winner with modest giveback still has low
+                # giveback_ratio -> low pp_pressure even with amplification; a narrower
+                # band means the SAME giveback produces higher pp_pressure at deep peaks
+                # (saturation reached sooner). Trend-gated (_pm_trend_atten, same as the
+                # giveback-ratio amp): full effect in chop/moderate-trend where pp
+                # trailing matters; attenuated in strong trends where winners should run
+                # (rally grinding uptrend -- spares rally). Continuous tanh on
+                # _profit_magnitude/0.7 (same scale as the giveback amp); max 20pct
+                # narrowing. Byte-identical for fresh/sub-peak positions (_profit_magnitude
+                # ~0 -> factor 1.0). Direction-agnostic (uses peak magnitude, not sign).
+                _pp_band_narrow = 1.0 - 0.20 * _pm_trend_atten * max(0.0, min(1.0, np.tanh(_profit_magnitude / 0.7)))
+                _pp_band = _pp_band * _pp_band_narrow
                 # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
                 # down from its peak, shrink the effective giveback tolerance so pp_pressure
                 # harvests winners faster (locks gains) -> caps DD from riding winners through
