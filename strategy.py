@@ -3252,27 +3252,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp3 (architectural, indep): PORTFOLIO CONSENSUS TREND-AGREE factor on
-                        # the de-risk convex cushion. The cushion (k>1 -> ride giveback) is
-                        # currently gated by own-symbol ret_long×pos_dir (_dr_align) + profit +
-                        # slope-confirm. A position that is trend-aligned with BOTH its own
-                        # ret_long AND the portfolio cross-symbol consensus direction (all 3
-                        # symbols' 20-bar returns agree with the position) is a BROAD-MARKET
-                        # trend winner -- the move is broad-based, not idiosyncratic -> the
-                        # pullback is more likely a within-trend dip (ride it) than a regime
-                        # reversal (cut it). Strengthen the cushion when consensus agrees.
-                        # NEW cross-component data dep: de-risk cushion now reads portfolio
-                        # consensus (was own-symbol ret_long + slope only). _consensus_strength
-                        # is the cross-symbol 20-bar sign-agreement (deep-saturated, noise-free
-                        # per the validated safe-family lesson); _consensus_dir is its direction.
-                        # Factor in [0.85, 1.15]: 0.85 damp when consensus opposes the position
-                        # (idiosyncratic/counter-broad-market), 1.0 neutral at no consensus,
-                        # 1.15 boost when consensus confirms. Byte-identical when no consensus
-                        # (_consensus_strength=0 -> factor 1.0). Continuous, direction-agnostic
-                        # general principle: broad-market confirmation raises the ride-giveback
-                        # cushion. One multiplicative factor on _dr_k (composes with existing).
-                        _dr_consensus = 1.0 + 0.15 * _consensus_strength * (_consensus_dir * _dr_pos_dir)
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_consensus  # 1.0 loss/ct/slope-weak, up to ~1.84 trend-aligned+profit+slope+consensus
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
