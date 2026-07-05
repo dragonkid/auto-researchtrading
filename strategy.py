@@ -3559,18 +3559,6 @@ class Strategy:
                     # (the binding positive regime whose dead-capital longs bleed across
                     # many bars) while sparing early-bar reductions everywhere.
                     _hold_dur_profile = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
-                    # branch step7: DEEP-WINNER-ONLY profit-magnitude modulation. Step6
-                    # softened the profile for ALL winners (pos_pnl>0) which hurt sideways
-                    # (whose reductions are on modest winners ~0.5*stop). Refine: only
-                    # soften for DEEP winners (pos_pnl > 1*stop), leaving modest winners
-                    # (sideways) with the full profile. Onset at pos_pnl = 1*stop (vs
-                    # step6's onset at 0). Scale by (1 - 0.3*tanh(max(0,pos_pnl-|stop|)/|stop|))
-                    # so the modulation only fires once pos_pnl exceeds 1 full stop. mixed's
-                    # dead-capital longs (near breakeven, pos_pnl ~0) get full profile;
-                    # sideways modest winners (pos_pnl ~0.5*stop) get full profile; only
-                    # clear winners (pos_pnl > 1*stop, crash profit-take shorts) softened.
-                    _hold_dur_profit_mod = 1.0 - 0.3 * max(0.0, min(1.0, np.tanh(max(0.0, pos_pnl / abs(STOP_LOSS_PCT) - 1.0) / 0.5)))
-                    _hold_dur_profile = _hold_dur_profile * _hold_dur_profit_mod
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
                     _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile
