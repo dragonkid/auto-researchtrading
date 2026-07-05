@@ -3175,6 +3175,21 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp5 (architectural, indep): DD-adaptive REDUCTION of the convex
+                        # cushion during portfolio DD. _dr_k currently has NO DD response
+                        # (profit x trend-align x slope-conf only). The cushion (k>1) holds
+                        # trend-aligned winners near full size through giveback (rides pullback
+                        # noise). During portfolio DD (rally pullbacks = the DD source for the
+                        # portfolio), reduce the cushion toward 1.0 so winners de-risk slightly
+                        # more -> cut the giveback-riding -> smaller realized giveback -> lower
+                        # portfolio DD. NEW cross-component data dep: _dr_k now reads _port_dd_atten
+                        # (portfolio DD state) -> the cushion is DD-responsive. Byte-identical at
+                        # portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 -> reduction 0). Max
+                        # reduction 0.15 (k from ~1.6 -> ~1.45 at deep DD; stays >1 so cushion
+                        # preserved, just weaker). Smooth (no boundary), direction-agnostic.
+                        # Distinct from _dd_tp_relax (tp-harvest suppression, a different exit
+                        # path): this weakens the giveback-riding cushion on the de-risk ramp.
+                        _dr_k -= 0.15 * (1.0 - _port_dd_atten) * max(0.0, _pnl_scale) * _dr_align
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
