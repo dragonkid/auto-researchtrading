@@ -1089,6 +1089,22 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Exp1 (architectural, indep): MULTI-DAY (96-bar ret_vlong) counter-trend
+            # admission tightening, complementing the 20-bar ret_long gate above. The
+            # 20-bar gate tightens bear admission in uptrends (ret_long>0) BUT during a
+            # bull pullback ret_long dips negative -> bear admission RELAXES exactly when
+            # the pullback is offering a low-quality short entry (the entry most likely to
+            # fast-stop when the uptrend resumes). ret_vlong (96-bar OLS) stays POSITIVE
+            # through bull pullbacks (uptrend intact at the multi-day scale) -> a
+            # ret_vlong-gated tighten stays ENGAGED during pullbacks, filtering the
+            # weak bear re-entries that the 20-bar gate misses. Symmetric: tightens bull
+            # admission when ret_vlong<0 (crash dead-cat-bounce longs). Same fast-saturating
+            # /0.01 ret_vlong scale used by _ct_vlong / _streak_ct_admit (near-constant,
+            # noise-free per validated lesson). Max 12% tighten, ct-only (trend-aligned
+            # entries byte-identical: bull long in uptrend -> tanh(neg/0.01)=0; bear short
+            # in downtrend -> tanh(neg/0.01)=0). New cross-timescale data dep at admission.
+            _bull_strong_min *= 1.0 + 0.12 * max(0.0, np.tanh(-ret_vlong / 0.01))
+            _bear_strong_min *= 1.0 + 0.12 * max(0.0, np.tanh(ret_vlong / 0.01))
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
