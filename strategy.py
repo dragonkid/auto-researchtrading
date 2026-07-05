@@ -2420,7 +2420,54 @@ class Strategy:
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
                 _loss = -pos_pnl
+                # Exp2 (architectural, indep): TREND-ALIGNED SLOPE-CONFIRMATION widening
+                # of the SL band. NEW cross-component data dep: _band_half (vol-conditioned
+                # only) now ALSO reads slope-agreement with position direction. The SL band
+                # determines how gradually _sl_pressure ramps from 0 to 1 as price approaches
+                # the stop. A TREND-ALIGNED winner (slope still confirms position: bull long
+                # in uptrend, crash short in downtrend) is a GIVEBACK PULLBACK within an
+                # ongoing trend -> WIDEN the band so SL fires later (let the trend winner ride
+                # the pullback, the trend is intact). A slope-DISAGREE position (slope REVERSED:
+                # bull long whose uptrend reversed, rally short whose uptrend resumed) is a
+                # TREND-BREAK loser -> NARROW the band so SL fires sooner (cut the reversing
+                # loser faster -> smaller realized losses -> higher Sharpe). Discriminates
+                # bull's fast losers (slope reversed -> tighter band -> cut fast) from crash's
+                # trend-aligned shorts (slope still down -> wider band -> ride the giveback,
+                # the validated crash winner profile). DISTINCT from the walled prior Exp2
+                # (_w_slope DD-amp, byte-identical MAX-absorbed) and Exp1 this session
+                # (_slope_thresh DD-lowering, byte-identical MAX-absorbed): those changed
+                # the WEIGHT/ACTIVATION of _sl_slope_pressure (a soft term dominated by
+                # _sl_pressure in deep loss); this changes the BAND of _sl_pressure ITSELF
+                # (the dominant exit term for losers), so it is NOT MAX-absorbed. Distinct
+                # from the walled prior Exp2/Exp4 (ATR stop tightening for ct-at-multi-day /
+                # local-trend-against, byte-identical: those changed _stop_abs which only
+                # shifts the SL trigger point, doesn't change the RAMP width that determines
+                # how fast SL engages). Computed upstream so _slope_agrees is available at
+                # the SL band (was previously at line ~2513). Continuous tanh on slope magnitude
+                # (no boundary); direction-agnostic general principle (no regime label): a
+                # position whose slope still confirms is riding a pullback, one whose slope
+                # reversed is breaking. Byte-identical when slope~0 (band unchanged, the
+                # neutral baseline). Widen-only for slope-agree (band can grow, protecting
+                # trend winners); shrink for slope-disagree (cut reversing losers faster).
+                _hl2_sl = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _slopes_sl = []
+                for _w_sl in (12, 16, 22):
+                    _slopes_sl.append(_fast_slope(np.log(_hl2_sl[-_w_sl:])))
+                _exit_slope = float(np.mean(_slopes_sl))
+                _slope_agrees_sl = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
+                _slope_agree_mag = abs(_exit_slope) / 0.0006  # slope magnitude, normalized
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
+                if _slope_agrees_sl:
+                    # Widen band for trend-aligned winners (ride giveback in ongoing trend).
+                    # Max +35% at deep slope agreement. Continuous tanh on slope magnitude.
+                    _band_half *= 1.0 + 0.35 * min(1.0, _slope_agree_mag)
+                else:
+                    # Narrow band for slope-disagree positions (trend-break losers cut faster).
+                    # Max -25% at deep slope disagreement. Smaller magnitude than the widen
+                    # (cutting losers fast is good but over-tightening cuts bull pullback
+                    # longs that resume -- the 194ff425 session proved bull fast losers need
+                    # the SL path, not slower SL).
+                    _band_half *= 1.0 - 0.25 * min(1.0, _slope_agree_mag)
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
@@ -2430,12 +2477,7 @@ class Strategy:
                 # Multi-window slope MEAN (not median): mean averages out window-specific noise
                 # better than median in low-vol where all 3 slopes are small and noise-dominated.
                 # Median can flip on a single window; mean spreads the contribution.
-                _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                _slopes = []
-                for _w in (12, 16, 22):
-                    _ll = _fast_slope(np.log(_hl2[-_w:]))
-                    _slopes.append(_ll)
-                _exit_slope = float(np.mean(_slopes))
+                # _exit_slope computed upstream (Exp2 SL band widening, line ~2456); reuse here.
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
