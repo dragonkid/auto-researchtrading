@@ -2161,27 +2161,7 @@ class Strategy:
                 # Trend-gated by _trend_strength_w (0 in chop -> no accel, protects
                 # sideways mean-reverters; ~1 in trend). Max 0.8 bars faster, floored at
                 # 1.5 bars. New control flow on scale-in pace based on realized PnL.
-                # STRUCTURAL_EXPLORATION step4: DIRECTION-AWARE trend-strength gate on the
-                # accelerator. Step2 (short slope-conf 0.0008) gave bull +0.0037 (less accel
-                # on weak-slope bull shorts during pullbacks). Step3 (0.0012) saturated bull
-                # and micro-regressed crash -> 0.0008 is the slope-conf optimum. New lever:
-                # the trend-strength gate _trend_strength_w = tanh(|ret_long|/0.04) is
-                # DIRECTION-AGNOSTIC -- it fires for both trend-aligned AND counter-trend
-                # positions at the same |ret_long|. A counter-trend position (bull short in
-                # uptrend, rally short in uptrend) should NOT accelerate scale-in at all --
-                # it's fighting the trend. Replace the direction-agnostic _trend_strength_w
-                # with a DIRECTION-AWARE _accel_align = max(0, tanh(ret_long*pos_dir/0.04))
-                # so the accelerator fires only for TREND-ALIGNED positions (bull longs, crash
-                # shorts, rally longs) and is ZERO for counter-trend (bull shorts, rally
-                # shorts). This zeroes bull shorts' acceleration entirely (stronger than the
-                # slope-conf threshold, which still allowed some). Crash shorts (trend-aligned,
-                # ret_long<0, pos_dir=-1, product>0) KEEP full trend-strength gate -> byte-
-                # identical for crash. Sideways (ret_long~0 -> _accel_align~0) spared. Longs
-                # trend-aligned (bull/rally longs, product>0) keep full gate. New cross-
-                # component data dep: accelerator trend-strength gate is now direction-aware.
-                _pos_dir_wa = 1.0 if current_pos > 0 else -1.0
-                _accel_align = max(0.0, np.tanh(ret_long * _pos_dir_wa / 0.04))
-                _win_accel = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * _accel_align
+                _win_accel = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * _trend_strength_w
                 # Exp4 (architectural, indep): slope-confirmation gate on the accelerator.
                 # Exp3 (baseline a73836dc) helped rally +0.021 but cost bull -0.018: the
                 # accelerator grew bull positions right before 2021's sharp corrections.
@@ -2194,45 +2174,7 @@ class Strategy:
                 # scale-in accel now depends on short-term slope agreement (entry voter
                 # slope reused), layered on the long-window trend gate.
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
-                # STRUCTURAL_EXPLORATION step2: DIRECTION-ASYMMETRIC slope-confirm threshold.
-                # Step1 (magnitude reduction 0.5x for shorts) CRASHED crash (-1.483): crash
-                # shorts NEED fast scale-in to capture the downtrend; reducing magnitude cut
-                # WINNERS more than it protected against bounces. Pivot: keep the magnitude
-                # (1.2x both sides) but raise the SLOPE-CONFIRM bar for shorts. The baseline
-                # _slope_conf saturates at slope 0.0004 for both directions. A short in a WEAK
-                # downtrend (slope just below 0) is bounce-prone (choppy downtrend) -> should
-                # NOT accelerate (smaller position if bounced). A short in a STRONG clean
-                # downtrend (steep negative slope) is less bounce-prone -> should accelerate
-                # (capture the down-leg). New mechanism: shorts require a STRONGER slope to
-                # reach full _slope_conf (saturate at 0.0008 instead of 0.0004); longs keep
-                # baseline 0.0004. This raises the bar for shorts to accelerate at all (cutting
-                # acceleration in weak/choppy downtrends where bounces are likely) while
-                # preserving FULL acceleration magnitude for shorts in strong clean downtrends
-                # (crash's profitable trend shorts). Longs byte-identical (threshold 0.0004
-                # unchanged). Continuous (tanh, no boundary). Direction-asymmetry is a
-                # structural property (long/short bounce-risk asymmetry), NOT a regime label.
-                # STRUCTURAL_EXPLORATION step6: lower long-side slope-conf threshold (0.0004 -> 0.0003).
-                # Step2 (short 0.0008) gave bull +0.0037 via smaller bull shorts. Steps 3/4/5
-                # saturated (bull shorts already zeroed; floor not binding). New lever: make
-                # LONGS easier to accelerate (threshold 0.0003) so trend-aligned long winners
-                # (bull/rally longs) accelerate at LOWER slope -> more longs get full accel ->
-                # bigger winners -> higher PF -> higher Sharpe. Shorts keep step2's 0.0008.
-                # Direction-asymmetric: longs easier, shorts harder. Crash byte-identical (shorts
-                # unchanged); sideways spared (chop ~0 accel via _accel_align).
-                _slope_conf_scale = 0.0003 if current_pos > 0 else 0.0008  # longs easier (0.0003), shorts harder (0.0008)
-                # STRUCTURAL_EXPLORATION step7: COUNTER-TREND-AT-MULTI-DAY short slope-conf
-                # threshold boost (0.0008 -> 0.0012 for ct-at-multi-day shorts only). Step2
-                # gave bull +0.0037 via weak-slope bull shorts getting less accel. Steps 3-6
-                # saturated. New lever: distinguish crash's TREND-ALIGNED shorts (ret_vlong<0,
-                # pos_dir=-1 -> product>0, clean downtrend, KEEP 0.0008) from bull/rally ct-at-
-                # multi-day shorts (ret_vlong>0, pos_dir=-1 -> product<0, counter-trend, RAISE
-                # to 0.0012). ct-at-multi-day shorts are fighting the multi-day trend -> even
-                # higher bar to accelerate -> smaller ct short position -> if bounced, smaller
-                # realized loss. Crash trend shorts byte-identical (product>0 -> 0.0008).
-                # Continuous (tanh, no boundary); direction × multi-day-trend structural property.
-                if current_pos < 0 and ret_vlong * _pos_dir_acc < 0:  # ct-at-multi-day short
-                    _slope_conf_scale = 0.0012
-                _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / _slope_conf_scale))
+                _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
