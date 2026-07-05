@@ -2552,39 +2552,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp3 (architectural, indep): PORTFOLIO-DD-ADAPTIVE LOSS-SIDE max_hold
-                # lowering. NEW cross-component data dep: _max_hold (vol-normalized only)
-                # now ALSO reads portfolio DD x loss-side x sustained_loss x trend_strength.
-                # For LOSING positions during portfolio DD, LOWER _max_hold so time-pressure
-                # fires SOONER -> cut losers ~1 bar earlier -> smaller realized losses ->
-                # higher Sharpe in negative-Sharpe regimes (bull Sh-0.611, crash Sh-0.241,
-                # sideways Sh-0.217). Gated by the SAME sustained_loss x trend_strength gate
-                # as the fd6a9169/194ff425 keeps (spares sideways fresh-dip mean-reverters:
-                # the trend_gate spares chop; sustained_loss spares fresh dips that recover).
-                # DISTINCT from the walled prior Exp2 (_w_slope DD-amp, byte-identical
-                # MAX-absorbed: that changed a soft-term WEIGHT, _sl_pressure dominates in
-                # deep loss) and Exp1/Exp2 this session (slope_thresh / SL band, byte-identical:
-                # those changed the SL/slope-against ACTIVATION, soft-max dominates exit timing
-                # in the moderate-loss ramp region). This changes _max_hold which determines
-                # when _time_pressure ACTIVATES (a DIFFERENT soft term) -> time-pressure fires
-                # at a different bar, NOT absorbed by the SL/slope-against dominance. The
-                # _w_time is heavier-in-chop (1.0 + 0.20*max(0,_pnl_scale)*(1-_trend_strength_w))
-                # so time-pressure IS a meaningful contributor to soft-max in chop/moderate-trend
-                # regimes (sideways/rally); the trend_gate on this gate ensures it fires only
-                # in trending regimes (sparing sideways where time-pressure is anti-overstay
-                # for mean-reverters that recover). Byte-identical at portfolio peak (dd_frac=0
-                # -> _port_dd_atten=1.0 -> lowering 0) and for winners (gated on _pnl_scale<0).
-                # Loss-side only. Continuous tanh, no boundary. Direction-agnostic general
-                # principle (no regime label).
-                _ps_mh = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))
-                if _ps_mh < 0.0:
-                    _pp_mh = self._pnl_path.get(symbol, [])
-                    _sustained_loss_mh = 0.0
-                    if len(_pp_mh) >= 4:
-                        _sustained_loss_mh = sum(1.0 for _p in _pp_mh[-4:] if _p < 0.0) / 4.0
-                    _sustained_loss_trend_gate_mh = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                    _max_hold_dd_gate = _sustained_loss_mh * _sustained_loss_trend_gate_mh
-                    _max_hold *= 1.0 - 0.15 * (1.0 - _port_dd_atten) * _max_hold_dd_gate
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
