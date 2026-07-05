@@ -3346,38 +3346,16 @@ class Strategy:
             # untested lead from prior session-summary (b00ace8f keep note): "The hold-
             # duration profile could be applied to OTHER emission-layer signals (the grid
             # quantization, the deadband) -- step1 applied it only to the mtm_chop trim."
-            # Distinct decision-architecture change: new data dependency on the deadband
-            # WIDTH (currently depends only on churn, NOT on hold-duration). The b00ace8f
-            # keep proved hold-duration-conditioning breaks a structural ceiling on the
-            # mtm_chop trim (uniform magnitude across the position's life was suboptimal;
-            # early-bar reductions need lighter trim, mid/late-life reductions need heavier
-            # trim). The SAME principle applies to the deadband: an early-bar small resize
-            # (bars<=3) is likely scale-in wobble (the position is still establishing -- a
-            # micro-resize here is noise, suppress it with a WIDER deadband), while a mid/
-            # late-life small resize (bars>=6) is genuine dead-capital trimming that SHOULD
-            # execute (a NARROWER deadband lets the trim through). The OLD uniform-width
-            # deadband applied the same snap-to-hold threshold to bar-2 and bar-10 resizes
-            # alike, even though a bar-10 small resize is far more likely to be a real trim.
-            # New cross-component data dep: deadband width depends on bars_held jointly with
-            # churn. Continuous tanh profile (no boundary); ~1.3x wider at bars<=3 (suppress
-            # scale-in wobble), 1.0x at bars~5 (baseline), ~0.7x narrower at bars>=8 (let dead-
-            # capital trims through). Byte-identical when _churn_dz=0 (low-churn regimes
-            # where the deadband is off regardless). Direction-agnostic general principle.
-            if _churn_dz > 0.0:
-                # Branch step4: LOSER-ONLY late-bar narrowing. Step3 (narrow for all late bars)
-                # showed the late-bar narrowing is the active mechanism (bull +1.5, sideways
-                # +0.6, but rally -1.0, mixed -0.9). The discriminator: narrowing lets late-bar
-                # trims through -- GOOD for LOSING positions (dead capital, cut it) but BAD for
-                # WINNING positions (cutting a trend-continuation winner). Gate the narrowing
-                # on pos_pnl < 0 (losers only): narrow for losers (let dead-capital trims
-                # through), keep baseline 1.0x for winners (let winners run, suppress trims).
-                # This should preserve bull/sideways (their late-bar losers ARE dead capital)
-                # while restoring rally/mixed (their late-bar winners stop getting trimmed).
-                if pos_pnl < 0:
-                    _deadband_hold_profile = min(1.0, 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0))
-                else:
-                    _deadband_hold_profile = 1.0
-                _deadband_frac = _deadband_frac * _deadband_hold_profile
+            # BRANCH CONCLUSION (steps 1-4): the deadband width is EXTREMELY load-bearing --
+            # any width modification (widen/narrow, all-bars/early-only/late-only, by-
+            # direction, by-PnL) causes massive regime-flipping changes (bull -0.645->+1.681,
+            # rally +0.747->-0.889) that CANNOT be isolated by direction or PnL gating. The
+            # deadband is at its structural optimum; modifying it trades one regime's gain for
+            # another's collapse. Step5 pivots to the OTHER sanctioned emission-layer signal:
+            # the GRID QUANTIZATION width (line ~3408), applying the SAME validated hold-
+            # duration profile there. The grid quantization rounds the resize target onto a
+            # coarse lattice in high churn -- a DIFFERENT mechanism from the deadband (rounding
+            # vs snap-to-hold) that may be more tractable to hold-duration-conditioning.
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
@@ -3409,7 +3387,17 @@ class Strategy:
             # is stable across the noise ensemble (a perturbed bar barely moves equity).
             # Also finer (0.06) so rally's bidirectional fine resizes are less coarsened.
             if _is_resize and _churn_dz > 0.0:
-                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
+                # Branch step5: HOLD-DURATION-CONDITIONED grid width. Apply the validated
+                # b00ace8f hold-duration profile to the grid LATTICE SPACING (was churn-only).
+                # COARSER grid for early bars (bars<=3: |tanh| large -> profile up to ~1.3 ->
+                # larger _grid -> more aggressive rounding -> suppress scale-in wobble); FINER
+                # grid for late bars (bars>=8: profile ~0.7 -> smaller _grid -> less rounding
+                # -> late-bar trims execute precisely). The OLD uniform grid applied the same
+                # lattice spacing to bar-2 and bar-10 resizes alike. Continuous tanh profile
+                # (no boundary). Byte-identical when _churn_dz=0 (low-churn regimes use the
+                # complementary _calm_gate grid below, untouched).
+                _grid_hold_profile = 1.0 - 0.3 * np.tanh((bars_held - 5.0) / 3.0)
+                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _grid_hold_profile
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
