@@ -2986,43 +2986,8 @@ class Strategy:
                 # source (MAE) the baseline _be_pressure did not read. Targets sideways (the
                 # negative-Sharpe regime whose score == bare Sharpe; cutting deep-MAE stalls
                 # before they bleed to the stop raises sideways Sharpe directly).
-                # branch step2: LOWER the MAE activation knee 0.4*stop -> 0.15*stop. step1
-                # (opener) fired for RALLY pullback longs (deep MAE ~0.4*stop) but was
-                # BYTE-IDENTICAL on sideways (the target) -- sideways positions in low-vol
-                # chop have shallow MAE relative to the 0.4*stop knee, so the gate never
-                # activated. But sideways's bleeders (positions that stall at BE then bleed
-                # to the stop) DO go underwater ~0.15-0.4*stop before recovering to BE -- a
-                # 0.15*stop knee catches them while still sparing the FRESH shallow-MAE
-                # recoveries (<0.15*stop, the mean-reversion finds-its-level case the trend
-                # gate protects). Continuous tanh (no boundary); the knee shift is a scalar
-                # on the same fast-saturating profile. Targets sideways (negative-Sharpe,
-                # 1:1 score lever); rally's deep-MAE longs stay fully activated (already past
-                # the 0.15 knee) -> rally gain preserved.
-                _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
-                # branch step3: gate the MAE-conditioned BE pressure on pos_pnl NOT RISING.
-                # step2 (low MAE knee) caught sideways's RECOVERING positions too (recoveries
-                # go underwater then rise through BE -> cut at BE -> lose the profit). The
-                # structural separator between a RECOVERY (spare) and a DEAD-CAPITAL stall
-                # (cut): the pos_pnl TREND over the recent hold. A recovering position has
-                # pos_pnl RISING (climbing out of the MAE dip toward and past BE); a stalling
-                # position has pos_pnl FLAT or FALLING (recovered to BE then bled, or hovering).
-                # Gate the MAE-conditioned BE pressure OFF when pos_pnl is rising (spare the
-                # recovery), ON when flat/falling (cut the dead-capital stall). Uses the
-                # existing _pnl_path (12-bar pos_pnl history, already maintained at line ~2173)
-                # -- no new state. Compute pos_pnl slope over the recent window (last - first);
-                # normalize by |stop| so the gate is scale-invariant. A rising pos_pnl
-                # (slope > ~0.1*stop over the window) -> recovery gate ~0 -> BE pressure OFF;
-                # flat/falling (slope <= 0) -> recovery gate ~1 -> BE pressure fires. The trend-
-                # gate path (MAX) is UNAFFECTED (trend regimes keep baseline). Continuous tanh
-                # on the slope (no boundary). General principle (no regime label): break-even
-                # pressure should fire on a deep-MAE position that is NOT recovering (the dead-
-                # capital stall), not on one that IS recovering (the mean-reversion bounce).
-                _be_pp_path = self._pnl_path.get(symbol, [])
-                _be_pp_slope = 0.0
-                if len(_be_pp_path) >= 4:
-                    _be_pp_slope = (_be_pp_path[-1] - _be_pp_path[0]) / abs(STOP_LOSS_PCT)
-                _be_recovery_gate = max(0.0, 1.0 - max(0.0, np.tanh(_be_pp_slope / 0.10)))
-                _be_mae_gate = max(_be_trend_gate, _be_mae_depth * _be_recovery_gate)
+                _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.4))))
+                _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
                 _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_mae_gate
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
