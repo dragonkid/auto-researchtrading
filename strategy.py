@@ -2275,37 +2275,6 @@ class Strategy:
                     _pos_dir_vov = 1.0 if current_pos > 0 else -1.0
                     _ct_vov_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_vov / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
                     _entry_full_bars_dyn = _entry_full_bars_dyn + 0.6 * _vov_gate * _ct_vov_gate
-                # Exp3 (architectural, indep, this session): PORTFOLIO-DD-AWARE COUNTER-
-                # TREND-AT-MULTI-DAY scale-in SLOWDOWN. The prior session confirmed crash
-                # deep-MAE losers are STOP-BOUND (exit-side exhausted across 3 source
-                # families: _sl_slope_pressure amplification, _max_hold reduction, _ml
-                # moderate-loss pressure -- all byte-identical inert). The sanctioned
-                # untested lead is SIZE-side: shrink/slow entries at high risk of becoming
-                # deep-MAE losers. The structural predictor at entry: portfolio DD (adverse
-                # correlated regime) x counter-trend-at-multi-day (wrong side of the
-                # persistent trend). A ct entry during portfolio DD is at HIGHEST risk of
-                # becoming a deep-MAE loser (DD = adverse regime hit, ct = wrong side) ->
-                # the stop catches it late (after scaling in to full) -> large realized loss.
-                # Slow the scale-in PACE for ct entries during DD: more bars to reach full
-                # size -> (a) smaller position when the stop catches it (less committed
-                # capital at risk) -> smaller realized losses -> higher Sharpe in the
-                # negative-Sharpe regime (crash -0.156, score == bare Sharpe, 1:1 lever);
-                # (b) more bars for the regime to clarify before full commitment. NEW cross-
-                # component data dep: _entry_full_bars_dyn reads (portfolio-DD state, ct-at-
-                # multi-day) jointly -- the baseline reads (rsi_trend_str, win_accel, vov x
-                # ct_vov); this adds a DD x ct term. Distinct from _adv_freeze (which freezes
-                # scale-in on ADVERSE MOVES post-entry, reactive); this slows the pace
-                # PROACTIVELY at entry based on the DD x ct regime risk. Byte-identical at
-                # portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 -> slowdown 0) AND trend-
-                # aligned (ct gate 0). Continuous tanh, no boundary. Max +0.6 bars slower at
-                # deep DD + full ct. Floored at _accel_floor (1.3-1.5). Uses the SAME top-level
-                # _port_dd_atten (asymmetric-EMA, leverage-coupled 0.008*LEVERAGE_K scale)
-                # and the SAME fast-saturating /0.01 ret_vlong ct scale (near-constant, noise-
-                # free per the validated lesson). New control flow on scale-in pace.
-                _pos_dir_si_pace = 1.0 if current_pos > 0 else -1.0
-                _ct_si_pace_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_si_pace / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
-                _dd_ct_slowdown = 0.6 * (1.0 - _port_dd_atten) * _ct_si_pace_gate
-                _entry_full_bars_dyn = _entry_full_bars_dyn + _dd_ct_slowdown
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
