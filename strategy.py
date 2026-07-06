@@ -1372,30 +1372,11 @@ class Strategy:
                 # losses -> higher rally Sharpe + lower DD. Trend-aligned (ct indicator 0)
                 # -> 1.0 byte-identical. New cross-component data dep: first-bar ct size
                 # depends on portfolio loss-streak x multi-day-ct interaction.
-                # Exp4 (architectural, indep): PROGRESSIVE (non-saturating) streak_ct
-                # factor. The prior saturating form tanh((streak-1)/2) reaches ~1 by
-                # streak>=3, so a 12-loss streak applies the SAME 25pct shrink to every
-                # ct entry from streak 3 onward -- no escalation as the streak extends.
-                # The PROGRESSIVE form tanh((streak-1)/6) continues growing: streak 3
-                # -> 0.27, streak 6 -> 0.78, streak 9 -> 0.95, streak 12 -> 0.99. So
-                # each subsequent ct entry during a long streak gets progressively
-                # shrunk MORE (up to the 0.35 max). Hypothesis: rally's 12-loss streak
-                # is dominated by ct shorts (rally pullback shorts that lose as the
-                # uptrend resumes); progressively shrinking each subsequent ct short
-                # reduces per-trade loss MAGNITUDE -> higher rally Sharpe (smaller
-                # losses, streak COUNT unchanged but Sharpe is scale-sensitive to loss
-                # magnitude). The streak_gate penalty (count-based) stays, but the
-                # Sharpe gain compounds. Distinct from prior Exp4 6b061f30 (deep-
-                # streak ct ADMISSION escalation, catastrophic bull misfire): this is
-                # SIZE shrink (not admission block), so bull recovery longs still
-                # ENTER (just smaller) -- avoids the admission-block misfire that
-                # destroyed bull alpha. The ct-gate (_bull_ctmd_streak) spares trend-
-                # aligned entries (crash trend shorts, bull trend longs at peak).
-                _streak_ct = max(0.0, np.tanh((self._loss_streak - 1) / 6.0))  # progressive: 0 streak<=1, 0.27@3, 0.78@6, 0.95@9, 0.99@12
+                _streak_ct = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))  # 0 streak<=1, ~1 streak>=3
                 _bull_ctmd_streak = max(0.0, np.tanh(-ret_vlong / 0.01))  # bull ct in multi-day downtrend
                 _bear_ctmd_streak = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
-                _streak_ct_shrink_bull = 1.0 - 0.35 * _streak_ct * _bull_ctmd_streak
-                _streak_ct_shrink_bear = 1.0 - 0.35 * _streak_ct * _bear_ctmd_streak
+                _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct * _bull_ctmd_streak
+                _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct * _bear_ctmd_streak
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
