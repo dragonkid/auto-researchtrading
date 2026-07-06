@@ -2681,7 +2681,22 @@ class Strategy:
                 _ta_long_gate = 1.0 if current_pos > 0 else 0.0  # long-only structural gate
                 _ta_dir = 1.0 if current_pos > 0 else -1.0
                 _ta_align = max(0.0, np.tanh(ret_vlong * _ta_dir / 0.01))  # ~0 ct, ~1 trend-aligned
-                _ta_dd_hold_ext = 1.5 * _ta_long_gate * _ta_align * (1.0 - _port_dd_atten)
+                # branch step3: IN-PROFIT gate to spare sideways losers. step1 regressed
+                # sideways -0.0108: sideways longs in brief uptrend stretches that are LOSING
+                # (during sideways DD) got the extend -> held losers longer -> realized losses
+                # that mean-revert away. The pp_pressure attenuation (line ~2569) uses the SAME
+                # in-profit gate (tanh(pos_pnl/|stop|)) to restrict let-winners-run to
+                # DEVELOPING WINNERS only (losers byte-identical since pos_pnl<0 -> gate 0).
+                # Apply the same principle here: only extend the hold for longs that are
+                # CURRENTLY IN PROFIT (a developing winner, not a loser riding the trend down).
+                # sideways LOSING longs (pos_pnl<0 -> profit_gate 0 -> no extend -> byte-
+                # identical); sideways/bull/rally WINNING longs (pos_pnl>0 -> profit_gate 1
+                # -> extend fires). This is the validated fresh-winner-vs-loser separator
+                # used by _ta_winner_gate (line 2569) and _grad_gate (line ~3345). Continuous
+                # tanh on pos_pnl/|stop| (no decision boundary). Byte-identical for shorts
+                # (long gate 0), ct (align 0), losers (profit gate 0).
+                _ta_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
+                _ta_dd_hold_ext = 1.5 * _ta_long_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
