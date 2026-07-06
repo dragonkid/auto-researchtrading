@@ -2732,7 +2732,22 @@ class Strategy:
                 # raw stays 0 -> EMA converges to 0 -> no extension); continuous, no boundary.
                 _prev_he = self._hold_ext_ema.get(symbol, _ta_dd_hold_ext_raw)
                 if _ta_dd_hold_ext_raw >= _prev_he:
-                    _he_alpha = 0.55  # slow rise: low-pass the wobble (stability) -- step3 0.40 lost more crash than it recovered sideways/rally, 0.55 is the better operating point
+                    # step5: SCALE-IN EXEMPTION on the rising edge. The rising-edge smoothing
+                    # lags FRESH winner formation (profit_gate 0->1) -> the hold-extension
+                    # engages one bar late -> sideways/rally fresh winners miss the first bar
+                    # of the extension -> small raw cost (-0.003/-0.002). The AR(1) tracking
+                    # error that the EMA damps is a MULTI-BAR wobble on ESTABLISHED winners
+                    # (the keep's hold-extension population, bars_held > ENTRY_FULL_BARS). So
+                    # gate the rising-edge smoothing to ESTABLISHED winners: during scale-in
+                    # (bars_held <= ENTRY_FULL_BARS) track raw (no rise-lag -> immediate
+                    # engagement); after scale-in apply the 0.55 low-pass (damp the wobble).
+                    # Noise-immune integer gate (bars_held), no boundary; byte-identical for
+                    # the never-active population (raw 0 -> EMA 0). Recovers sideways/rally
+                    # fresh-winner lag while keeping the crash established-winner stability gain.
+                    if bars_held <= ENTRY_FULL_BARS:
+                        _he_alpha = 0.0  # scale-in: track raw (no rise-lag, immediate engagement)
+                    else:
+                        _he_alpha = 0.55  # established winner: low-pass the AR(1) wobble (stability)
                 else:
                     _he_alpha = 0.15  # fast fall: release immediately on winner->loser (raw)
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
