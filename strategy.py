@@ -462,19 +462,6 @@ class Strategy:
         # state + new control flow: _max_hold reads a temporally-smoothed hold-extension
         # magnitude (was the instantaneous product). Reset on full exit.
         self._hold_ext_ema = {}
-        # Exp3 (architectural, indep, this session): per-symbol 3-bar history of the
-        # multi-window _exit_slope for a feed-forward median. _exit_slope (mean of 12/16/22-
-        # bar OLS slopes on HL2) wobbles under AR(1) close noise -> ALL slope-dependent
-        # decisions wobble (_sl_slope_pressure, _hold_adj via _slope_strength, _slope_agrees,
-        # _dr_slope_conf, _ta_te_slope_conf). The multi-window mean reduces window-specific
-        # noise but is instantaneous (1-bar). A 3-bar temporal median-of-3 collapses AR(1)
-        # spikes with ZERO lag for monotone moves (median of 3 rising = middle -> tracks the
-        # rise; only isolated spikes get replaced by neighbors) -> stabilizes slope-dependent
-        # decisions across the board without the stab/raw tension of an EMA. Distinct from
-        # the target median (this is on the slope INPUT, not the emitted target). Reset on
-        # full exit. Sign-preserving snap (only replaces when the median agrees with the
-        # current sign -- isolated spikes that disagree with 2 neighbors get replaced).
-        self._slope_hist = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2503,33 +2490,6 @@ class Strategy:
                     _ll = _fast_slope(np.log(_hl2[-_w:]))
                     _slopes.append(_ll)
                 _exit_slope = float(np.mean(_slopes))
-                # Exp3 (architectural, indep, this session): FEED-FORWARD 3-bar MEDIAN on
-                # _exit_slope (the source of ALL slope-dependent decisions). _exit_slope is
-                # the mean of 12/16/22-bar OLS slopes on HL2 -- it wobbles under AR(1) close
-                # noise (HL2 perturbed) -> _sl_slope_pressure, _hold_adj (_slope_strength),
-                # _slope_agrees, _dr_slope_conf, _ta_te_slope_conf all wobble -> exit-timing
-                # and target-EMA gates wobble -> tracking error. The multi-window mean reduces
-                # window-specific noise but is instantaneous (1-bar). A 3-bar temporal median-
-                # of-3 collapses AR(1) spikes with ZERO lag for monotone moves (median of 3
-                # rising = middle -> tracks the rise) and only rejects isolated spikes ->
-                # stabilizes ALL slope-dependent decisions at the source without the stab/raw
-                # tension of an EMA (mirrors the validated feed-forward median on the emitted
-                # target, BRANCH step5 keep). Sign-preserving: only replace when the median
-                # agrees with the current sign (isolated sign-flip spikes get rejected; a
-                # genuine 3-bar slope reversal passes through). NEW per-symbol _slope_hist
-                # state + new control flow: all downstream slope readers use the median-
-                # smoothed slope. Byte-identical when the slope is monotone (median tracks
-                # the rise/fall); only isolated AR(1) spike bars change. Continuous, no
-                # decision boundary. Distinct from the target median (input vs output layer).
-                _sh = self._slope_hist.get(symbol, [])
-                _sh.append(_exit_slope)
-                if len(_sh) > 3:
-                    _sh = _sh[-3:]
-                self._slope_hist[symbol] = _sh
-                if len(_sh) >= 3:
-                    _slope_med = float(np.median(_sh))
-                    if (_slope_med > 0) == (_exit_slope > 0) or _slope_med == 0.0:
-                        _exit_slope = _slope_med
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
@@ -4128,7 +4088,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._slope_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
