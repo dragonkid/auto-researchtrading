@@ -2975,7 +2975,6 @@ class Strategy:
                 # leverage-coupled 0.008*LEVERAGE_K scale). Smooth (no boundary), direction-
                 # agnostic general principle (no regime label): a losing position during a
                 # portfolio drawdown is at correlated-regime-hit risk -> exit sooner.
-                _exit_dd_gate = 0.0  # default; re-computed below for in-loss positions
                 if _pnl_scale < 0.0:
                     # branch step5: REPLACE ct-gate with SUSTAINED-LOSS gate. The ct-gate
                     # (step1) excluded all trend-aligned losers (the main bull/crash problem).
@@ -3387,32 +3386,6 @@ class Strategy:
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
-                    # Exp3 (architectural, indep): MULTI-DAY-AWARE opp-gate graduated exit
-                    # for IN-LOSS trend-aligned-at-multi-day positions. The opp-gate fires
-                    # for a held short when bull_votes spike + trend_avg>0 (20-bar bounce).
-                    # For a crash short, this bounce is a DEAD-CAT (temporary, the 96-bar
-                    # downtrend resumes); for a rally pullback short, the bounce is a REAL
-                    # reversal (the 96-bar uptrend continues). The current _grad_gate uses
-                    # _profit_gate_og (in-profit only) -> an in-loss short gets BINARY FULL
-                    # EXIT (grad_gate=0 -> _opp_exit_frac=1.0). This cuts crash shorts during
-                    # dead-cat bounces at a LOSS (the dead-cat loss pattern). The separator:
-                    # crash shorts are TREND-ALIGNED AT MULTI-DAY (ret_vlong<0, pos_dir=-1,
-                    # product>0 -> _ret_vlong_term_og high); rally shorts are COUNTER-TREND
-                    # at multi-day (ret_vlong>0, product<0 -> _ret_vlong_term_og=0). Add a
-                    # multi-day-trend-align graduated floor for IN-LOSS positions: a strong
-                    # _ret_vlong_term_og (persistent multi-day trend) + sustained-loss gate
-                    # (the validated _exit_dd_gate: sustained_loss * trend_strength, fires
-                    # for extending losers in trending regimes, spares sideways fresh dips)
-                    # -> provide a PARTIAL exit (not binary full) so the crash short keeps
-                    # partial exposure to the downtrend resumption. Byte-identical when
-                    # _ret_vlong_term_og=0 (rally ct shorts, mixed wrong-side longs) ->
-                    # full exit unchanged. Byte-identical when in-profit (_profit_gate_og>0
-                    # -> existing _grad_gate already graduates -> floor not binding).
-                    # Continuous tanh; direction-agnostic general principle: a position
-                    # aligned with a persistent multi-day trend that temporarily dips should
-                    # not be fully cut by a single-bar opp-spike.
-                    _md_loss_gate = _ret_vlong_term_og * (1.0 - _profit_gate_og) * _exit_dd_gate
-                    _opp_exit_frac = min(_opp_exit_frac, 1.0 - 0.35 * _md_loss_gate)
                     target = current_pos * (1.0 - _opp_exit_frac)
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
