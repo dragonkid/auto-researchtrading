@@ -1176,8 +1176,19 @@ class Strategy:
             # step1 (high-conviction entries, threshold doesn't bite). rally at peak
             # (dd_frac=0) -> no effect. Gate on (1-weak_persist) so the raise fires
             # only in persistent STRONG multi-day trend. Continuous, no boundary.
-            _dd_thresh_weak_gate = 1.0 - _weak_persist
-            _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_weak_gate
+            # Branch step4: weak_persist gate was BYTE-IDENTICAL to step1 (sideways
+            # still -0.733869). sideways's _weak_persist drops to ~0 during its brief
+            # strong-trend stretches (|ret_vlong|>0.02 for 48 bars -> gate opens ->
+            # raise fires -> cuts profitable mean-reverters). The bull/sideways
+            # separator cannot be a TREND-MAGNITUDE gate (both have strong-trend-
+            # during-DD bars). Try a DIRECTIONAL gate: bull's DD comes from pullbacks
+            # DURING a persistent uptrend (ret_vlong>0); sideways oscillates around
+            # 0 (ret_vlong~0, neither persistently up nor down). Gate the raise on
+            # persistent uptrend DIRECTION (ret_vlong>0.02) so it fires only on bull's
+            # pullback-DD pattern, not sideways oscillation. crash (ret_vlong<0)
+            # exempt -> but crash was byte-identical anyway. Continuous tanh /0.01.
+            _dd_thresh_dir_gate = max(0.0, min(1.0, np.tanh(ret_vlong / 0.01)))
+            _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
             _bull_ready = _acc_b >= _entry_thresh_dd
             _bear_ready = _acc_s >= _entry_thresh_dd
 
