@@ -1152,7 +1152,16 @@ class Strategy:
             # Raise the conviction-margin crossing threshold during portfolio DD so
             # marginal entries (barely crossing 0.0) are filtered during adverse
             # correlated-regime-hit periods. Byte-identical at portfolio peak.
-            _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten)
+            # Branch step2: GATE the raise on TREND STRENGTH (rsi_trend_str, the
+            # validated separator used by _be_trend_gate/_w_time). Step1 (ungated)
+            # crashed sideways -0.517: sideways mean-reversion entries ARE marginal-
+            # conviction by structure -> the threshold raise cut the profitable
+            # mean-reverters along with the noise. In chop (rsi_trend_str~0) the raise
+            # must be ~0 (sideways byte-identical); in trends (rsi_trend_str high)
+            # the raise fires (bull marginal entries during DD are noise). Sideways
+            # byte-identical, bull keeps the gain. Continuous tanh, no boundary.
+            _dd_thresh_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+            _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_trend_gate
             _bull_ready = _acc_b >= _entry_thresh_dd
             _bear_ready = _acc_s >= _entry_thresh_dd
 
