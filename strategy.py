@@ -2656,32 +2656,7 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                # Exp1 (architectural, indep): PORTFOLIO-DD-ADAPTIVE counter-trend max_hold
-                # shortening. The validated _ct_hold_sat (FAST-saturating /0.01 ret_vlong ct
-                # indicator, near-constant noise-free) shortens max_hold by 2 bars for ct
-                # positions (rally pullback shorts, crash dead-cat longs). This is DD-BLIND.
-                # During portfolio DD (correlated regime hit, multiple positions losing across
-                # symbols), ct losers are exactly the trades EXTENDING the DD — a ct position
-                # held during a portfolio DD episode is at correlated-regime-hit risk and is
-                # more likely to extend its loss than to recover. ADD an extra DD-modulated
-                # shortening (max 1.5 more bars at deep DD) on ct positions ONLY. New cross-
-                # component data dep: max_hold reads (portfolio-DD state, ct indicator) jointly
-                # — the time-pressure subsystem previously had NO portfolio-DD dependency.
-                # DISTINCT from _exit_dd_gate (sustained-loss-gated exit THRESHOLD lowering for
-                # losers, line ~3004): that changes the full-exit THRESHOLD on the de-risk
-                # ramp; this changes the TIME-PRESSURE onset (earlier time-pressure ramp for ct
-                # during DD). The two compose on different exit-pressure terms (_w_time vs
-                # _exit_thresh). Byte-identical when _port_dd_atten=1.0 (portfolio peak, e.g.
-                # rally/mixed at peak -> no extra shortening) AND when _ct_hold_sat=0 (trend-
-                # aligned bull longs / crash trend shorts / rally trend longs -> byte-identical).
-                # Continuous tanh, no new decision boundary. Direction-agnostic general
-                # principle (no regime label): a counter-trend position during a portfolio
-                # drawdown is at correlated-regime-hit risk -> cut it sooner via time-pressure.
-                # Targets crash (high DD 17.65pct, ct dead-cat longs) and sideways (ct
-                # oscillation entries) — the two negative-Sharpe regimes where score==bare
-                # Sharpe so faster ct-loser exits -> smaller realized losses -> higher Sharpe.
-                _ct_dd_hold_shorten = 1.5 * _ct_hold_sat * (1.0 - _port_dd_atten)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat - _ct_dd_hold_shorten
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
