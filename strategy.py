@@ -2788,32 +2788,6 @@ class Strategy:
                 # Following the regime-asymmetric insight from 5648b3a8: time pressure
                 # removal helped bull/crash but destroyed sideways/rally.
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) * (1.0 - _trend_strength_w)
-                # Exp2 (architectural, indep, this session): LOSS-side COUNTER-TREND-AT-
-                # MULTI-DAY time-pressure weight amp. The baseline _w_time amps time-
-                # pressure for WINNERS in chop (anti-overstay) but gives LOSERS in trends
-                # the BASE weight 1.0 (trend-following: let trend-aligned losers recover).
-                # Crash's LOSING positions are NOT trend-aligned -- they are dead-cat-bounce
-                # LONGS (counter-trend at the multi-day scale: ret_vlong<0, pos_dir=+1,
-                # product<0) and rally pullback SHORTS (ret_vlong>0, pos_dir=-1, product<0).
-                # These ct losers in a trending regime bleed slowly until the stop catches
-                # them (the prior session confirmed crash deep-MAE losers are stop-bound --
-                # NO exit-pressure lever acts before the stop for DEEP-MAE losers; here we
-                # target the SHALLOW-MAE ct losers that are NOT yet stop-bound, by amping
-                # the TIME-PRESSURE WEIGHT so time-pressure fires harder/faster for them ->
-                # cut earlier -> smaller realized losses -> higher crash Sharpe (the bare-
-                # Sharpe regime whose score == Sharpe, a 1:1 lever). NEW cross-component
-                # data dep: _w_time reads (pos_pnl sign, trend-strength, trend-alignment)
-                # jointly -- the baseline reads (pos_pnl sign, trend-strength) only; this
-                # adds the third axis (multi-day trend-alignment) distinguishing ct losers
-                # (dead-cat bounces, amp time-pressure) from trend-aligned losers (crash
-                # trend shorts, keep base -- let them recover). Byte-identical for: winners
-                # (loss gate 0), chop (trend_strength_w ~0), trend-aligned losers (ct gate 0).
-                # Continuous tanh, no boundary. Max amp +0.20 (same magnitude as the profit-
-                # side chop amp). Fast-saturating /0.01 ret_vlong ct scale (near-constant,
-                # noise-free per the validated lesson). Multi-variable structural addition.
-                _w_time_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _w_time_ct_at_md = max(0.0, np.tanh(-ret_vlong * _w_time_pos_dir / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
-                _w_time += 0.20 * max(0.0, -_pnl_scale) * _trend_strength_w * _w_time_ct_at_md
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
