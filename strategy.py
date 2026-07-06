@@ -2920,6 +2920,57 @@ class Strategy:
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
+                # Exp1 (architectural, indep, this session): MODERATE-LOSS BLEED exit
+                # pressure (7th soft source). The 6 existing soft sources each fire on a
+                # sharp signal: _sl_pressure (near stop), _sl_slope_pressure (slope
+                # reversal), _pp_pressure (giveback from peak), _time_pressure (hold
+                # duration), _ve_pressure (vol expansion, profit-side), _vc_pressure
+                # (volume climax, profit-side), _be_pressure (|pos_pnl| near BE). The GAP:
+                # a position held past scale-in that is LOSING MODERATELY (below BE but
+                # not near stop), with SHALLOW MAE (never went deep underwater, so _sl_pressure
+                # not yet active), in a TRENDING regime (rsi_trend_str high, so _be_pressure
+                # trend-gate path fires but _be_pressure requires |pos_pnl| near BE which is
+                # FALSE here). This is the "slow bleed on the wrong side of a grinding trend"
+                # -- crash longs during downtrend legs that drift lower without a sharp
+                # slope reversal, rally pullback shorts that drift higher without a sharp
+                # reversal. The stop eventually catches them but late (large realized loss);
+                # slope-against catches them only on the reversal bar; time-pressure fires
+                # slowly (bar 7-11). A MODERATE-LOSS pressure that ramps with loss depth
+                # (between BE and stop) for shallow-MAE positions in trends catches this
+                # population EARLIER -> smaller realized losses -> higher Sharpe in the
+                # negative-Sharpe regimes (crash -0.156 Sh, the bare-Sharpe regime whose
+                # score == Sharpe; a 1:1 lever). NEW cross-component data dep: exit pressure
+                # reads (pos_pnl level, MAE depth, trend strength, bars_held) jointly -- a
+                # 4-way conjunction absent from all 6 existing soft sources (each reads at
+                # most 2 of these). Distinct from _be_pressure (fires AT BE, |pos_pnl|
+                # small) -- this fires BELOW BE (moderate loss). Distinct from _sl_pressure
+                # (fires near stop) -- this fires well above stop, in the moderate-loss
+                # band. Distinct from _sl_slope_pressure (fires on sharp slope reversal) --
+                # this fires on gradual bleed without requiring slope reversal. Shallow-MAE
+                # gate SPARES deep-MAE losers (stop-bound, confirmed by prior session Exp1/
+                # Exp2: deep-MAE crash losers are stop-bound, no exit-pressure lever acts
+                # before the stop; here we target the SHALLOW-MAE population that is NOT yet
+                # stop-bound -- the lever the prior session's analysis did not have). Trend-
+                # gate SPARES chop (sideways mean-reverters recover; the prior session
+                # repeatedly confirmed chop-side bleeders recover). Loss-only (fires for
+                # losers; winners byte-identical since pos_pnl>0 -> _ml_loss_depth 0).
+                # Byte-identical for: winners (loss_depth 0), chop (trend_gate 0), deep-MAE
+                # (mae_shallow 0), fresh entries (hold_gate 0). Continuous tanh, no
+                # boundary. Magnitude 0.30 (between _be 0.45 and _vc 0.50; small enough to
+                # not dominate _sl_pressure for genuine stop-bound losers). New control
+                # flow: 7th entry in the MAX-fusion tuple.
+                _ml_band_lo = 0.5 * abs(STOP_LOSS_PCT)   # BE band edge (matches _be_pnl_band)
+                _ml_band_hi = abs(STOP_LOSS_PCT) - 0.6 * _band_half  # below stop-band edge (spare stop-bound)
+                # loss depth ramp: 0 at BE band edge, ~1 near stop band
+                _ml_loss_depth = max(0.0, min(1.0, (-pos_pnl - _ml_band_lo) / max(_ml_band_hi - _ml_band_lo, 1e-6)))
+                # shallow-MAE gate: full when MAE never went below ~0.3*stop, fading to 0 by ~0.6*stop
+                # (spare deep-MAE losers -- stop-bound per prior session confirmation)
+                _ml_mae_shallow = max(0.0, 1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.30)))))
+                _ml_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))  # ~0 chop (sideways), ~1 trend (crash/bull/rally)
+                _ml_hold_gate = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS - 1.0) / 4.0))  # ramp past scale-in (same as _be_hold_gate_trend)
+                _ml_pressure = 0.30 * _ml_loss_depth * _ml_mae_shallow * _ml_trend_gate * _ml_hold_gate
+                _w_ml = 1.0  # loss-side only by construction (_ml_loss_depth is 0 for winners)
+
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
                 # crash/sideways (PF 0.7/0.3/0.4) -- many positions survive scale-in then
@@ -3014,6 +3065,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
+                    _w_ml * _ml_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
