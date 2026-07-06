@@ -2911,7 +2911,22 @@ class Strategy:
                 # chop): this is vol-expansion harvest for ct winners during DD.
                 _ve_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ve_ta_gate = max(0.0, 1.0 - np.tanh(ret_vlong * _ve_pos_dir / 0.01))  # ~1 ct, ~0 trend-aligned (noise-free fast-saturating)
-                _ve_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate
+                # branch step3: SLOPE-AGAINST gate. Exp3 (ungated) and step1 (MAE-shallow)
+                # and step2 (mag 0.50) ALL regressed mixed -0.0017 (byte-identical across
+                # magnitude/gate): the mixed regression is STRUCTURAL, not magnitude-dependent.
+                # Root cause: ve DD-boost harvests mixed ct WINNERS during DD (shallow-MAE,
+                # in-profit) -- reducing mixed's winners -> lower Sharpe. These are NOT MAE-BE's
+                # population (deep-MAE stalls); the conflict is indirect (ve reduces winners
+                # while MAE-BE helps stalls). To spare mixed's CONTINUING ct winners (no reversal
+                # yet) while harvesting sideways's REVERSING ct winners (slope-against firing =
+                # the winner is starting to give back), gate ve DD-boost on slope-against
+                # magnitude. A ct winner whose slope has turned against is starting to reverse
+                # -> harvest on vol-expansion is correct (lock before the reversal deepens);
+                # a ct winner whose slope still confirms is continuing -> leave it alone (no
+                # harvest -> mixed's continuing winners spared). Uses the _slope_against
+                # already computed for _sl_slope_pressure. Continuous tanh, no boundary.
+                _ve_slope_rev_gate = max(0.0, np.tanh(_slope_against / 0.0006))  # ~0 slope-confirms, ~1 slope-against
+                _ve_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate * _ve_slope_rev_gate
                 _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
