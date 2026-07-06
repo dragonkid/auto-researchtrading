@@ -2911,7 +2911,7 @@ class Strategy:
                 # chop): this is vol-expansion harvest for ct winners during DD.
                 _ve_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ve_ta_gate = max(0.0, 1.0 - np.tanh(ret_vlong * _ve_pos_dir / 0.01))  # ~1 ct, ~0 trend-aligned (noise-free fast-saturating)
-                _ve_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate
+                _ve_dd_boost = 1.0 + 0.50 * (1.0 - _port_dd_atten) * _ve_ta_gate  # branch step2: mag 1.00->0.50 (reduce mixed regression)
                 _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
