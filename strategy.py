@@ -2898,6 +2898,19 @@ class Strategy:
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
+                # branch step2: PORTFOLIO-DD-ADAPTIVE vc_pressure magnitude boost
+                # (sibling of the ve DD-boost opener). Same mechanism: during portfolio
+                # DD, a volume-climax (exhaustion spike) is more likely a genuine
+                # regime-shift exhaustion (correlated selloff capitulation / bounce-top
+                # exhaustion) than noise -> harvest in-profit winners faster on volume-
+                # climaxes during DD -> lock realized gains -> cap DD / reduce giveback.
+                # Profit-side only (losers byte-identical). Byte-identical at portfolio
+                # peak (dd_frac=0 -> boost 1.0). The ve+vc DD-boost conjunction: both
+                # fire on in-profit winners during DD regime-shift events (ve = vol-of-
+                # price expansion, vc = volume climax) -> two distinct exhaustion/
+                # regime-shift signatures compose to harvest more aggressively during DD.
+                _vc_dd_boost = 1.0 + 0.30 * (1.0 - _port_dd_atten)
+                _vc_pressure = _vc_pressure * _vc_dd_boost
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
