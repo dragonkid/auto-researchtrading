@@ -2958,7 +2958,37 @@ class Strategy:
                 # separator pattern as _w_time (which is heavier-in-chop for time-pressure,
                 # here inverted: break-even fires in trend not chop).
                 _be_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_trend_gate
+                # Exp1 (architectural, indep, this session): MAE-CONDITIONED break-even
+                # pressure for CHOP regimes. The trend gate above floors _be_pressure at ~0
+                # in sideways (rsi_trend_str~0 -> gate~0) because the ungated version cratered
+                # sideways -0.731 (killed mean-reversion recoveries: positions legitimately
+                # hover near breakeven then RECOVER in chop). But that throws away ALL
+                # break-even protection in sideways, where positions stagnate near BE and
+                # bleed to the stop. NEW cross-component data dep: _be_pressure now reads
+                # the position's MAE (self._mae, the minimum pos_pnl over the hold) jointly
+                # with pos_pnl -- a property of the position's LIFE-CYCLE, not a regime label.
+                # Structural separator between the two stagnation cases the trend gate
+                # conflates: (a) SHALLOW-MAE stagnation (pos never went significantly under-
+                # water, |mae| << stop) = a fresh position finding its level = the mean-
+                # reversion recovery the trend gate protects -> keep _be_pressure OFF; (b)
+                # DEEP-MAE stagnation (pos went underwater to >= ~0.4*stop then recovered
+                # to BE) = a position that already demonstrated it can go underwater and is
+                # now stalling at BE -> structurally fragile, likely to re-test the MAE and
+                # bleed to the stop -> let _be_pressure fire. The MAE is a position-level
+                # structural property (how far underwater it has been), NOT a market-regime
+                # classifier -- it generalizes to any chop where a position has a deep-MAE
+                # history. Continuous tanh on (-mae)/(|stop|*0.4) (no boundary; fast-saturating
+                # so a position with mae<=-0.4*stop gets full activation, shallow-MAE gets ~0).
+                # Composes with _be_trend_gate via MAX: trend regimes keep the baseline trend-
+                # gated path (byte-identical there since trend gate already saturates to 1.0);
+                # chop regimes get the MAE-conditioned path (fires only for deep-MAE). New
+                # control flow: a second activation gate on _be_pressure reading a NEW data
+                # source (MAE) the baseline _be_pressure did not read. Targets sideways (the
+                # negative-Sharpe regime whose score == bare Sharpe; cutting deep-MAE stalls
+                # before they bleed to the stop raises sideways Sharpe directly).
+                _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.4))))
+                _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
+                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_mae_gate
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
