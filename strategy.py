@@ -3558,7 +3558,27 @@ class Strategy:
                 # reversal-prone winners (slope weakens before 2021 corrections) while keeping
                 # smoothing on rally/crash persistent-slope winners. Continuous tanh, no boundary.
                 _ta_te_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_te / 0.0004))
-                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit * _ta_te_slope_conf
+                # Branch step3: PORTFOLIO-DD gate. Step2 (slope-conf) barely moved bull:
+                # bull's grinding uptrend has slope persistently positive -> the gate keeps
+                # smoothing ON for ALL bull winners (not just doomed ones) -> cumulative lag
+                # across many winners drags APY -5.6pct (vs +2.59 baseline). The slope-conf
+                # gate only removes smoothing on reversal bars, but the lag accumulates on
+                # the many persistent-slope winner bars. Root cause: the keep's tracking-error
+                # source (bull stab 0.787<0.80) occurs ONLY during portfolio DD, when
+                # _ta_dd_hold_ext = 1.5 * _ta_long_gate * _ta_align * _ta_profit_gate *
+                # (1-_port_dd_atten) is ACTIVE (the extended hold fires). Smoothing the
+                # target OUTSIDE DD adds exit-lag with no stability benefit (the keep isn't
+                # extending outside DD -> no tracking error to fix). Gate _ta_te_alpha on
+                # the SAME (1-_port_dd_atten) DD state: smoothing fires ONLY during
+                # portfolio DD (when the keep is actively extending the hold) -> byte-
+                # identical to baseline outside DD (no bull winner lag during the normal
+                # uptrend) -> only smooths the DD-extended winners (the actual tracking-error
+                # population). Continuous (1-_port_dd_atten) in [0,1], no boundary. The keep
+                # fires at deep DD (1-_port_dd_atten->1) -> full smoothing; at portfolio peak
+                # (1-_port_dd_atten=0) -> no smoothing -> baseline. Uses the SAME top-level
+                # _port_dd_atten (asymmetric-EMA, leverage-coupled) as _ta_dd_hold_ext.
+                _ta_te_dd = max(0.0, 1.0 - _port_dd_atten)
+                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit * _ta_te_slope_conf * _ta_te_dd
                 # Compose: ct-side _te_alpha and _ta_te_alpha fire on disjoint populations
                 # (ct vs trend-aligned). Take the max so the active population's smoothing
                 # applies; when both are 0 (sideways / weak-trend / losing), no smoothing
