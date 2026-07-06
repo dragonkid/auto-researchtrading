@@ -3695,7 +3695,24 @@ class Strategy:
                 # Excludes crash shorts (the catastrophic regression source) while keeping bull
                 # longs (the target). NOT a regime label -- direction-asymmetric structural prop.
                 _ta_mf_long = 1.0 if current_pos > 0 else 0.0  # long-only structural gate (mirror _ta_long_gate)
-                _ta_mf_str = _ta_te_str * _ta_te_dd * _ta_te_slope_conf * _ta_te_profit * _ta_mf_long * _ta_te_pp_exempt  # all 6 gates: trend-align x DD x slope-conf x profit x long-only x pp-exempt (mirror _ta_te_alpha's population + long-only)
+                # branch step5: replace pp-exempt with UP-PERSIST gate. step4 (pp-exempt)
+                # fixed crash (-0.157, byte-identical baseline) but bull stability CRASHED
+                # (0.509 vs step1's 0.989) -- confirms the bull residual IS in pp-harvest and
+                # the median MUST fire there to fix it. But firing during pp-harvest lags
+                # crash bounce long exits (catastrophic -1.08 in step1/2/3). The structural
+                # separator between bull longs (pp-harvest median HELPS) and crash bounce longs
+                # (pp-harvest median HURTS): MULTI-DAY TREND PERSISTENCE. Bull = persistent
+                # uptrend (_down_persist low ~0.3, ret_vlong rarely<0, pullbacks RECOVER);
+                # crash = persistent downtrend (_down_persist high ~0.9, ret_vlong frequently<0,
+                # the bounce IS the reversal). Use the SAME _up_persist_gate the codebase uses
+                # for pp_pressure attenuation (line ~2629): full activation when _down_persist
+                # <0.40 (persistent uptrend = bull), fading to 0 by 0.60 (crash ~0.9 -> gate 0).
+                # This is the validated duration-count separator (fe6acd4d keep principle) --
+                # a STRUCTURAL property (trend duration), NOT a regime label. Excludes crash
+                # (persistent downtrend) while keeping bull (persistent uptrend). KEEP pp-harvest
+                # ACTIVE (no pp-exempt) so the median fires during pp-harvest where the bull
+                # benefit lives.
+                _ta_mf_str = _ta_te_str * _ta_te_dd * _ta_te_slope_conf * _ta_te_profit * _ta_mf_long * _up_persist_gate  # trend-align x DD x slope-conf x profit x long-only x up-persist (6 gates; up-persist replaces pp-exempt)
                 _mf_active = max(_ct_mf_str, _ta_mf_str)
                 if _mf_active > 0.0 and _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
