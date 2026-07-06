@@ -2494,6 +2494,39 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp1 (architectural, indep): MAE-DEPTH AMPLIFICATION of slope-against
+                # pressure for established extending losers. Pursues the documented
+                # untested lead: crash (-0.156, the remaining negative-Sharpe regime
+                # whose score == bare Sharpe) via an MAE-conditioned gate on an exit
+                # source that FIRES IN TRENDS (_sl_slope_pressure), distinct from the
+                # MAE-BE gate (65aa885e keep, trend-gated -> cannot reach crash).
+                # NEW cross-component data dep: _sl_slope_pressure now reads self._mae
+                # (position life-cycle min pos_pnl) jointly with pos_pnl-loss. Structural
+                # property (how far underwater the position has been), NOT a regime label.
+                # Mechanism: a position that went deeply underwater (MAE >= ~0.30*stop)
+                # then faces slope-against is one that ALREADY DEMONSTRATED adversity and
+                # is now extending against us -> amplify the slope-against exit so the
+                # full-exit triggers sooner (before the stop band). Distinguishes an
+                # extending loser (deep-MAE + losing + slope-against) from a fresh dip
+                # (shallow-MAE; the baseline slope pressure is calibrated for this).
+                # DISTINCT from dead-end a90d0e77 (7th MAE source in MAX fusion, inert):
+                # this amplifies an EXISTING binding source rather than adding a
+                # redundant one absorbed by _sl_pressure. DISTINCT from 3e8777ca
+                # (_exit_thresh lowering at fresh entries, inert because soft pressures
+                # lag): this operates on ESTABLISHED positions where slope pressure has
+                # had time to develop. DISTINCT from the removed trend-aligned slope
+                # attenuation (line ~2497): that ATTENUATED slope pressure for trend-
+                # aligned; this AMPLIFIES for deep-MAE losers (orthogonal direction).
+                # Gates: (1) deep-MAE tanh on (-mae)/(|stop|*0.30), saturates by ~0.6*stop;
+                # (2) currently losing (pos_pnl<0 -> amplifies extending losers, NOT
+                # winners giving back profits via _pp_pressure); (3) slope-against active
+                # (pressure>0 -> amplifies an existing signal). Max +25% amplification.
+                # Byte-identical for shallow-MAE (gate ~0), winners (loss gate 0), and
+                # no-slope-against positions (pressure 0). Continuous, no boundary.
+                _mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.30))))
+                _loss_gate = max(0.0, min(1.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))  # 1 losing, 0 winning
+                _mae_amp = 1.0 + 0.25 * _mae_depth * _loss_gate
+                _sl_slope_pressure = max(0.0, min(1.0, _sl_slope_pressure * _mae_amp))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
