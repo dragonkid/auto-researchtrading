@@ -3681,7 +3681,7 @@ class Strategy:
                 # population (no DD -> _ta_te_dd 0 -> no extend; shorts/ct/losers per the keep
                 # gates). Continuous, no decision boundary. Structural gate (trend-align x DD
                 # x high-churn), NOT a regime label.
-                _ta_mf_str = _ta_te_str * _ta_te_dd  # trend-aligned AND DD-extended (mirrors _ta_te_alpha population)
+                _ta_mf_str = _ta_te_str * _ta_te_dd * _ta_te_slope_conf * _ta_te_profit  # trend-align x DD x slope-conf x profit (4 gates; NO pp-exempt -- the median's value is firing DURING pp-harvest when _ta_te_alpha turns OFF, which is where the bull residual lives; slope-conf protects crash, profit protects sideways losers)
                 _mf_active = max(_ct_mf_str, _ta_mf_str)
                 if _mf_active > 0.0 and _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
