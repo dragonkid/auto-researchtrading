@@ -2844,6 +2844,26 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Exp2 (architectural, indep): PORTFOLIO-DD-ADAPTIVE vol-expansion
+                # pressure boost. NEW cross-component data dep on the ve_pressure
+                # source: magnitude now reads portfolio-DD state (previously vol-only).
+                # The _ve_pressure source (vol-of-price expansion, 6/18-bar) has NO
+                # portfolio-DD dependency -- every other exit pathway has one. Mechanism:
+                # during a portfolio drawdown, a sharp vol-expansion (6-bar vol >> 18-bar)
+                # is more likely a genuine adverse REGIME SHIFT (correlated selloff
+                # deepening) than a transient noise spike -> harvest in-profit winners
+                # faster on vol-expansions during DD -> lock realized gains before the
+                # regime shift deepens -> cap the DD from riding winners through sharp
+                # vol expansions during drawdowns. Byte-identical at portfolio peak
+                # (dd_frac=0 -> boost 1.0). Profit-side only (no sideways mean-reverter
+                # wall: losers byte-identical since _w_ve=0 for pos_pnl<0). Distinct from
+                # the maxed giveback-tightening (acts on _pp_pressure giveback TOLERANCE,
+                # not the ve regime-shift source). Distinct from the keep's max_hold
+                # extension (the keep fires on GRADUAL portfolio-DD fraction; ve fires on
+                # SHARP vol-expansion events -- a different signal that can compose).
+                # max +30% ve magnitude at deep DD. Continuous tanh, no boundary.
+                _ve_dd_boost = 1.0 + 0.30 * (1.0 - _port_dd_atten)
+                _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
