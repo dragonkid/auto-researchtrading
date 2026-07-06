@@ -3541,7 +3541,24 @@ class Strategy:
                 # (the knee is close, so a small smoothing nudge should clear it).
                 _ta_te_str = max(0.0, np.tanh(_pos_dir_te * ret_vlong / 0.01))  # ~0 ct, ~1 trend-aligned (mirror of _ct_te_str)
                 _ta_te_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit (winner-only)
-                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit
+                # Branch step2: SLOPE-CONFIRMATION gate (the validated pattern that protected
+                # bull from the win-accelerator Exp4). Step1 (profit-gate alone) catastrophically
+                # regressed bull (-0.281): the smoothing lagged bull's winners on winner->reversal
+                # transitions (bull PF 0.7 -- winners small, losers big; holding a winner through
+                # its reversal turns a small win into a bigger loss). The profit-gate fires on
+                # ANY winner, but bull's winners REVERSE (the trend then reverses), while rally/
+                # crash trend-aligned winners PERSIST (the slope keeps confirming). Gate the
+                # smoothing OFF when the near-term slope stops confirming the position: use the
+                # validated multi-window _exit_slope (mean of 12/16/22-bar OLS, smoother than
+                # single 16-bar -> only SUSTAINED slope weakening triggers, not momentary dips;
+                # the SAME signal + scale /0.0004 as _dr_slope_conf line 3336). When slope still
+                # confirms (ongoing trend), smoothing holds the winner level stable through
+                # pullback noise; when slope weakens (reversal impending), smoothing turns OFF
+                # -> target tracks raw -> exit fires on the reversal at full speed. Spares bull's
+                # reversal-prone winners (slope weakens before 2021 corrections) while keeping
+                # smoothing on rally/crash persistent-slope winners. Continuous tanh, no boundary.
+                _ta_te_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_te / 0.0004))
+                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit * _ta_te_slope_conf
                 # Compose: ct-side _te_alpha and _ta_te_alpha fire on disjoint populations
                 # (ct vs trend-aligned). Take the max so the active population's smoothing
                 # applies; when both are 0 (sideways / weak-trend / losing), no smoothing
