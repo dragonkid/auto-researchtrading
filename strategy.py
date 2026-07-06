@@ -2861,10 +2861,22 @@ class Strategy:
                 # not the ve regime-shift source). Distinct from the keep's max_hold
                 # extension (the keep fires on GRADUAL portfolio-DD fraction; ve fires on
                 # SHARP vol-expansion events -- a different signal that can compose).
-                # max +80% ve magnitude at deep DD (branch step4: raised 0.50->0.80 to
-                # test whether mixed keeps scaling and whether the boost touches bull/
-                # rally at high magnitude). Continuous tanh, no boundary.
-                _ve_dd_boost = 1.0 + 0.80 * (1.0 - _port_dd_atten)
+                # branch step5: GATE the ve DD-boost on NON-trend-aligned positions.
+                # step4 showed ve DD-boost at high magnitude OVER-HARVESTS bull/mixed
+                # trend-aligned winners (the keep's max_hold extension protects them at
+                # low magnitude but is overwhelmed at 0.80). The sideways gain (the real
+                # signal) comes from trend-NEUTRAL positions (sideways oscillation longs
+                # are not trend-aligned). Gate the boost on (1 - trend_align) so it fires
+                # for trend-neutral/ct positions (sideways) and ~0 for trend-aligned (bull
+                # longs, mixed rally longs, crash shorts). This spares the keep-protected
+                # trend-aligned winners while allowing a higher magnitude for sideways.
+                # Uses the SAME fast-saturating /0.01 ret_vlong scale as _ct_hold_sat
+                # (near-constant noise-free). _ve_ta_gate = max(0, 1-tanh(ret_vlong*
+                # pos_dir/0.01)) -> ~0 trend-aligned, ~1 ct/trend-neutral. Byte-identical
+                # for trend-aligned (gate 0) and at portfolio peak (dd_frac=0).
+                _ve_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _ve_ta_gate = max(0.0, 1.0 - np.tanh(ret_vlong * _ve_pos_dir / 0.01))
+                _ve_dd_boost = 1.0 + 0.50 * (1.0 - _port_dd_atten) * _ve_ta_gate
                 _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
