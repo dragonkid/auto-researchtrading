@@ -2945,7 +2945,16 @@ class Strategy:
                 # _time_pressure (bar count alone, not PnL-gated).
                 _be_pnl_band = 0.5 * abs(STOP_LOSS_PCT)  # |pos_pnl| band around breakeven
                 _be_near_zero = max(0.0, 1.0 - abs(pos_pnl) / max(_be_pnl_band, 1e-6))  # 1 at BE, 0 outside band
-                _be_hold_gate = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS - 1.0) / 4.0))  # 0 first ~4 bars post-scale-in, saturates ~1 at +5 bars
+                # branch step12: FASTER hold-gate ramp for the MAE-conditioned path. The
+                # baseline ramp (4 bars post-scale-in to saturate) is tuned for the trend-
+                # gated path. For the MAE-conditioned CHOP path, sideways's short-lived dead-
+                # capital stalls may exit before the 4-bar ramp saturates -> the MAE gate
+                # never reaches full strength on the stalls it should cut. Use a FASTER ramp
+                # (2 bars) on the MAE path so the pressure fires sooner on deep-MAE stalls.
+                # The trend-gate path keeps the baseline 4-bar ramp (crash/bull byte-identical).
+                # Continuous, no boundary (just a steeper tanh-equivalent linear ramp).
+                _be_hold_gate_trend = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS - 1.0) / 4.0))
+                _be_hold_gate_mae = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS - 1.0) / 2.0))
                 # BRANCH step1: GATE the break-even pressure to TRENDING regimes only.
                 # Exp3 (ungated) cratered sideways -0.731 (WR 50pct->37pct) because in chop
                 # positions legitimately hover near breakeven then RECOVER -- the break-even
@@ -2988,7 +2997,8 @@ class Strategy:
                 # before they bleed to the stop raises sideways Sharpe directly).
                 _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
-                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_mae_gate
+                # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
+                _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
