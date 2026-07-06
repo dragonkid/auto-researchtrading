@@ -2987,20 +2987,13 @@ class Strategy:
                 # negative-Sharpe regime whose score == bare Sharpe; cutting deep-MAE stalls
                 # before they bleed to the stop raises sideways Sharpe directly).
                 _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.4))))
-                # branch step5: AMPLIFY the MAE-gated BE pressure magnitude (chop-path only).
-                # step1 (0.4*stop knee, 0.45 magnitude) fired on rally deep-MAE stalls -> rally
-                # +0.0018 (Sh +0.018, the real signal). The trend-gate path (_be_trend_gate
-                # saturates to 1.0 in trends) is byte-identical at magnitude 0.45; only the
-                # MAE-gated CHOP path (where _be_trend_gate~0 and _be_mae_depth carries the
-                # gate) gets a higher magnitude. Raise MAE-path magnitude 0.45 -> 0.65 so
-                # rally's deep-MAE stalls get cut HARDER -> more dead-capital trim -> higher
-                # rally Sharpe. The two paths are disjoint (trend: trend_gate~1 -> mae-path
-                # term~0; chop: trend_gate~0 -> trend-path term~0); MAX picks the active path.
-                # Continuous, no boundary. Targets rally (responsive positive-Sharpe regime);
-                # crash/bull byte-identical (trend-gate path = 0.45 baseline); sideways byte-
-                # identical (mae never reaches 0.4*stop knee -> mae_depth~0).
+                # branch step6: AMPLIFY MAE-gated BE magnitude 0.45->0.55 (chop-path only).
+                # step5 (0.65) over-cut rally (-0.0018); step1 (0.45) gave rally +0.0018. Test
+                # 0.55 between them. Trend-path stays 0.45 (crash/bull byte-identical); the two
+                # paths are disjoint (trend_gate~1 in trends zeros mae-path; ~0 in chop zeros
+                # trend-path), MAX picks the active path.
                 _be_pres_trend = 0.45 * _be_trend_gate
-                _be_pres_mae = 0.65 * _be_mae_depth * (1.0 - _be_trend_gate)
+                _be_pres_mae = 0.55 * _be_mae_depth * (1.0 - _be_trend_gate)
                 _be_pressure = _be_near_zero * _be_hold_gate * max(_be_pres_trend, _be_pres_mae)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
