@@ -248,6 +248,26 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # crossing level (0.0 == the old _strong_min admission boundary).
 ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
+# Architectural (Exp1 this session): PORTFOLIO-DD-ADAPTIVE entry readiness threshold.
+# The conviction-margin EMA (_acc_b/_acc_s) crosses a fixed threshold (0.0 == the
+# strong_min boundary) to admit entries. This threshold is currently DD-BLIND: during
+# a portfolio drawdown (correlated regime hit, multiple positions losing across
+# symbols), the bar's conviction margin is drawn from a noisier, more false-signal-
+# prone distribution (the DD itself is evidence the regime is adverse). Raising the
+# readiness threshold during DD filters MARGINAL entries (the ones barely crossing
+# 0.0) -> fewer losing trades during DD -> smaller realized losses -> higher Sharpe
+# in the negative-Sharpe regimes (bull/crash/sideways, the binding constraints; all
+# score == bare Sharpe so any Sharpe gain is a direct composite gain). DISTINCT from
+# the existing _port_dd_atten SIZE shrink (that scales position MAGNITUDE on the
+# admitted trade; this cuts TRADE COUNT at the admission gate via the sample_factor /
+# trade-selection axis). The admission gate currently has NO portfolio-DD dependency
+# (only per-symbol _loss_streak and cross-symbol _port_weak_admit_tighten). New
+# cross-component data dep: entry readiness threshold depends on portfolio-DD state.
+# Byte-identical at portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 -> threshold raise
+# 0). Uses the validated top-level _port_dd_atten (asymmetric-EMA, leverage-coupled
+# 0.008*LEVERAGE_K scale). Continuous tanh, no boundary; shrink-only (threshold only
+# rises, never falls below 0.0). Direction-agnostic (no regime label).
+PORT_DD_ENTRY_THRESH_MAX = 0.15   # max fractional raise of ENTRY_ACCUM_THRESH at deep DD
 
 # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator parameters. The
 # prior-session headroom-boost branch (7 failed attempts) gated a mixed entry-
@@ -1128,8 +1148,13 @@ class Strategy:
             _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
             _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
-            _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
-            _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
+            # Exp1 (architectural): PORTFOLIO-DD-adaptive entry readiness threshold.
+            # Raise the conviction-margin crossing threshold during portfolio DD so
+            # marginal entries (barely crossing 0.0) are filtered during adverse
+            # correlated-regime-hit periods. Byte-identical at portfolio peak.
+            _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten)
+            _bull_ready = _acc_b >= _entry_thresh_dd
+            _bear_ready = _acc_s >= _entry_thresh_dd
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
