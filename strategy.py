@@ -2844,40 +2844,6 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
-                # Exp2 (architectural, indep): PORTFOLIO-DD-ADAPTIVE vol-expansion
-                # pressure boost. NEW cross-component data dep on the ve_pressure
-                # source: magnitude now reads portfolio-DD state (previously vol-only).
-                # The _ve_pressure source (vol-of-price expansion, 6/18-bar) has NO
-                # portfolio-DD dependency -- every other exit pathway has one. Mechanism:
-                # during a portfolio drawdown, a sharp vol-expansion (6-bar vol >> 18-bar)
-                # is more likely a genuine adverse REGIME SHIFT (correlated selloff
-                # deepening) than a transient noise spike -> harvest in-profit winners
-                # faster on vol-expansions during DD -> lock realized gains before the
-                # regime shift deepens -> cap the DD from riding winners through sharp
-                # vol expansions during drawdowns. Byte-identical at portfolio peak
-                # (dd_frac=0 -> boost 1.0). Profit-side only (no sideways mean-reverter
-                # wall: losers byte-identical since _w_ve=0 for pos_pnl<0). Distinct from
-                # the maxed giveback-tightening (acts on _pp_pressure giveback TOLERANCE,
-                # not the ve regime-shift source). Distinct from the keep's max_hold
-                # extension (the keep fires on GRADUAL portfolio-DD fraction; ve fires on
-                # SHARP vol-expansion events -- a different signal that can compose).
-                # branch step5: GATE the ve DD-boost on NON-trend-aligned positions.
-                # step4 showed ve DD-boost at high magnitude OVER-HARVESTS bull/mixed
-                # trend-aligned winners (the keep's max_hold extension protects them at
-                # low magnitude but is overwhelmed at 0.80). The sideways gain (the real
-                # signal) comes from trend-NEUTRAL positions (sideways oscillation longs
-                # are not trend-aligned). Gate the boost on (1 - trend_align) so it fires
-                # for trend-neutral/ct positions (sideways) and ~0 for trend-aligned (bull
-                # longs, mixed rally longs, crash shorts). This spares the keep-protected
-                # trend-aligned winners while allowing a higher magnitude for sideways.
-                # Uses the SAME fast-saturating /0.01 ret_vlong scale as _ct_hold_sat
-                # (near-constant noise-free). _ve_ta_gate = max(0, 1-tanh(ret_vlong*
-                # pos_dir/0.01)) -> ~0 trend-aligned, ~1 ct/trend-neutral. Byte-identical
-                # for trend-aligned (gate 0) and at portfolio peak (dd_frac=0).
-                _ve_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _ve_ta_gate = max(0.0, 1.0 - np.tanh(ret_vlong * _ve_pos_dir / 0.01))
-                _ve_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate
-                _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
