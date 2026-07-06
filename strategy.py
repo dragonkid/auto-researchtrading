@@ -3695,7 +3695,7 @@ class Strategy:
                 # Excludes crash shorts (the catastrophic regression source) while keeping bull
                 # longs (the target). NOT a regime label -- direction-asymmetric structural prop.
                 _ta_mf_long = 1.0 if current_pos > 0 else 0.0  # long-only structural gate (mirror _ta_long_gate)
-                _ta_mf_str = _ta_te_str * _ta_te_dd * _ta_te_slope_conf * _ta_te_profit * _ta_mf_long  # trend-align x DD x slope-conf x profit x long-only (5 gates)
+                _ta_mf_str = _ta_te_str * _ta_te_dd * _ta_te_slope_conf * _ta_te_profit * _ta_mf_long * _ta_te_pp_exempt  # all 6 gates: trend-align x DD x slope-conf x profit x long-only x pp-exempt (mirror _ta_te_alpha's population + long-only)
                 _mf_active = max(_ct_mf_str, _ta_mf_str)
                 if _mf_active > 0.0 and _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
