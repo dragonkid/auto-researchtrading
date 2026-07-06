@@ -2876,7 +2876,7 @@ class Strategy:
                 # for trend-aligned (gate 0) and at portfolio peak (dd_frac=0).
                 _ve_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ve_ta_gate = max(0.0, 1.0 - np.tanh(ret_vlong * _ve_pos_dir / 0.01))
-                _ve_dd_boost = 1.0 + 1.10 * (1.0 - _port_dd_atten) * _ve_ta_gate
+                _ve_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate
                 _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
@@ -2912,16 +2912,6 @@ class Strategy:
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                # branch step10: PORTFOLIO-DD-ADAPTIVE vc_pressure boost WITH the same
-                # trend-align gate as the ve DD-boost (step5-9). Step2 (ungated vc DD-
-                # boost) regressed sideways (volume-climax fires on sideways chop noise).
-                # With the trend-align gate, vc fires only for NON-trend-aligned positions
-                # (sideways trend-neutral, mixed ct) -> spares trend-aligned winners. The
-                # vc signal (volume climax) is a DIFFERENT exhaustion signature from ve
-                # (vol-of-price expansion); gated vc might add incremental gain on non-
-                # trend-aligned positions during DD without the step2 regression.
-                _vc_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate
-                _vc_pressure = _vc_pressure * _vc_dd_boost
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
