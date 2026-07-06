@@ -264,11 +264,6 @@ ENTRY_ACCUM_THRESH = 0.0
 PERSIST_WEAK_THRESH = 0.02
 PERSIST_WINDOW = 48
 PERSIST_BOOST_MAG = 0.14
-# Exp2: sustained-calm duration-count threshold for the sideways pp_pressure
-# attenuation separator. vol_ratio below this counts as a "calm" bar; the
-# fraction of calm bars over PERSIST_WINDOW distinguishes sustained-calm
-# (sideways ~1.0) from transient-calm-within-high-vol (crash bounces ~0.3).
-CALM_PERSIST_THRESH = 0.9
 
 # Exp1 (architectural, indep): PORTFOLIO-LEVEL DEEP-BEAR POSITION-SIZE CAP.
 # Sanctioned UNTESTED lead from prior session-summary: "a future session might
@@ -491,17 +486,6 @@ class Strategy:
         # Mirrors the fe6acd4d keep's |ret_vlong| duration-count principle applied to the
         # SIGN (separates crash's persistent bear from bull's transient pullback dips).
         self._down_vlong_hist = {}
-        # Exp2 (architectural, indep): per-symbol rolling history of the CALM-bar boolean
-        # (vol_ratio < CALM_PERSIST_THRESH). Used to compute a DURATION-count sustained-calm
-        # separator: fraction of last PERSIST_WINDOW bars where vol_ratio was low. Mirrors
-        # the validated _down_persist / _weak_persist duration-count principle (fe6acd4d
-        # keep pattern) applied to the VOL REGIME. Separates sideways (SUSTAINED calm ->
-        # _calm_persist~1) from crash (TRANSIENT calm within high-vol bear -> most bars
-        # high-vol -> _calm_persist~0.3) and bull (TRANSIENT calm during pullbacks -> ~0.3).
-        # The instantaneous vol_ratio (Exp1's _calm_gate) leaked into crash's transient
-        # calm bars during bounces; the DURATION count excludes transient calm. Used to gate
-        # the sideways pp_pressure attenuation pathway on a SUSTAINED-calm separator.
-        self._calm_hist = {}
         # Exp3 (architectural, indep): per-symbol 3-bar held-target LEVEL history for the
         # feed-forward median filter (applied post-_target_ema, before the emission grid).
         # A median-of-3 collapses isolated AR(1) spikes in the emitted target without the
@@ -924,21 +908,6 @@ class Strategy:
                 _dvh = _dvh[-PERSIST_WINDOW:]
             self._down_vlong_hist[symbol] = _dvh
             _down_persist = (float(sum(_dvh)) / len(_dvh)) if _dvh else 0.0  # [0,1]
-            # Exp2 (architectural, indep): SUSTAINED-CALM duration count for the sideways
-            # pp_pressure attenuation separator. vol_ratio is computed at line ~829. Track
-            # the fraction of last PERSIST_WINDOW bars where vol_ratio < CALM_PERSIST_THRESH.
-            # Mirrors the validated _down_persist / _weak_persist duration-count principle
-            # (fe6acd4d keep) applied to the VOL REGIME: sideways (sustained calm ->
-            # _calm_persist~1) vs crash (transient calm within high-vol bear -> ~0.3) vs
-            # bull (transient calm during pullbacks -> ~0.3). The duration count excludes
-            # crash's transient calm bars that the instantaneous vol_ratio gate (Exp1)
-            # leaked into. New per-symbol state parallel to _down_vlong_hist.
-            _cvh = self._calm_hist.get(symbol, [])
-            _cvh.append(1 if vol_ratio < CALM_PERSIST_THRESH else 0)
-            if len(_cvh) > PERSIST_WINDOW:
-                _cvh = _cvh[-PERSIST_WINDOW:]
-            self._calm_hist[symbol] = _cvh
-            _calm_persist = (float(sum(_cvh)) / len(_cvh)) if _cvh else 0.0  # [0,1]
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
@@ -2616,30 +2585,6 @@ class Strategy:
                 # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
                 # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
                 _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
-                # Exp2 (architectural, indep): SECOND pp_pressure attenuation pathway for
-                # the SUSTAINED-CALM (sideways) in-profit long-winner population, using a
-                # DURATION-COUNT calm separator. Exp1 (discarded) used the INSTANTANEOUS
-                # vol_ratio (_calm_gate) which leaked into crash's transient calm bars
-                # during bounces -> crash -1.512 catastrophic. The fix: replace the
-                # instantaneous vol_ratio with a DURATION count of calm bars (_calm_persist
-                # = fraction of last PERSIST_WINDOW bars where vol_ratio < CALM_PERSIST_THRESH,
-                # computed at line ~926). This mirrors the VALIDATED duration-count
-                # separator principle (fe6acd4d keep, _down_persist / _weak_persist):
-                # sideways is SUSTAINED calm (_calm_persist~1) while crash bounces are
-                # TRANSIENT calm within a high-vol bear (_calm_persist~0.3, most bars are
-                # high-vol). Crash is excluded by the duration gate (low _calm_persist ->
-                # gate ~0); bull is excluded by _weak_trend_gate (bull has high trend_strength
-                # -> weak_trend 0, and bull already covered by the bull pathway). Same
-                # giveback/slope/long-only/in-profit/past-scale-in safety gates. Max 0.50
-                # attenuation (sideways mean-reverters genuinely need giveback protection
-                # since oscillation troughs can be the start of a range break). New control-
-                # flow pathway with new per-symbol state (_calm_hist) and new data dep
-                # (duration-count vol-regime separator). Direction-agnostic (no regime label).
-                _calm_dur_gate = max(0.0, min(1.0, (_calm_persist - 0.60) / 0.20))  # ~0 _calm_persist<=0.60, ~1 >=0.80
-                _weak_trend_gate = 1.0 - _trend_strength_w  # 1 in chop, 0 in trend
-                _sideways_regime_gate = _calm_dur_gate * _weak_trend_gate
-                _sideways_winner_gate = _gb_mag_gate * _slope_against_gate * _long_only_gate * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * (1.0 if bars_held > ENTRY_FULL_BARS else 0.0) * _sideways_regime_gate
-                _pp_pressure = _pp_pressure * (1.0 - 0.50 * _sideways_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
