@@ -1187,7 +1187,14 @@ class Strategy:
             # persistent uptrend DIRECTION (ret_vlong>0.02) so it fires only on bull's
             # pullback-DD pattern, not sideways oscillation. crash (ret_vlong<0)
             # exempt -> but crash was byte-identical anyway. Continuous tanh /0.01.
-            _dd_thresh_dir_gate = max(0.0, min(1.0, np.tanh(ret_vlong / 0.01)))
+            # Branch step5: /0.01 scale saturates for sideways's small positive
+            # ret_vlong swings too (byte-identical to step1 again). sideways's 96-bar
+            # ret_vlong oscillates around 0 but spends meaningful time positive during
+            # upswing portions. TIGHTEN the gate: require ret_vlong > 0.04 (persistent
+            # STRONG uptrend -- bull's regime; sideways rarely sustains ret_vlong>0.04).
+            # Use a one-sided ramp (0 below 0.04, saturating to 1 at 0.08) so the
+            # gate only opens for genuine bull-strength uptrend.
+            _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
             _bull_ready = _acc_b >= _entry_thresh_dd
             _bear_ready = _acc_s >= _entry_thresh_dd
