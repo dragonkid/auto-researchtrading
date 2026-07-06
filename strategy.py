@@ -3503,6 +3503,50 @@ class Strategy:
                 # byte-identical-ish.
                 _te_churn_boost = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
                 _te_alpha = min(0.99, _te_alpha * (1.0 + 0.60 * _te_churn_boost))  # branch step9: 0.40->0.60 (pre-EMA median makes input spike-free -> EMA can smooth harder)
+                # Exp1 (architectural, indep, this session): TREND-ALIGNED-WINNER target-EMA.
+                # The keep 47cbe827 extended max_hold for long-only trend-aligned in-profit
+                # positions (the _ta_dd_hold_ext path). That hold-extension added bar-to-bar
+                # position-value tracking error under AR(1) noise -> bull stability dropped
+                # 0.803->0.787 (below the 0.80 knee -> stab_factor 0.958 -> bull final score
+                # discounted despite positive raw). The prior session-summary explicitly flagged
+                # this as the untested lead: "smooth the max_hold extension to recover bull
+                # stability (the prior session _target_ema on ct positions is the validated
+                # stability lever pattern)."
+                #
+                # This applies the SAME _target_ema primitive (the proven rally-stab lever) to
+                # the MIRROR population: trend-aligned WINNERS (the keep's exact affected
+                # population). The ct-side _te_alpha smooths COUNTER-TREND positions (gate
+                # _ct_te_str = tanh(-pos_dir*ret_vlong/0.01)); this smooths TREND-ALIGNED
+                # positions (gate _ta_te_str = tanh(+pos_dir*ret_vlong/0.01)). The two gates
+                # are mutually exclusive by sign (one is ~0 when the other is ~1) -> the two
+                # smoothing paths fire on disjoint populations and compose without interference.
+                #
+                # WINNER-ONLY (profit-graduated, the OPPOSITE of the ct-side loss-gate): bull's
+                # deficit is on WINNING longs (the keep extends winners -> the extended hold
+                # wobbles under AR(1) -> tracking error). Smooth ONLY winners (pos_pnl>0) so
+                # the EMA holds the winning level stable through pullback noise; losers
+                # (pos_pnl<0) track the raw shrinking target fast (no exit lag -- avoids the
+                # ct-side raw cost that walled uniform smoothing). This is the validated
+                # fresh-winner-vs-loser separator (same tanh(pos_pnl/|stop|) gate as
+                # _ta_winner_gate line 2569 and _ta_profit_gate line 2698). Continuous tanh,
+                # no decision boundary. Byte-identical for ct positions (_ta_te_str=0),
+                # trend-aligned losers (profit gate 0), and shorts not in profit.
+                #
+                # MODEST alpha (0.30 max, vs the ct-side 0.99): bull's deficit is SMALL (0.787
+                # vs 0.80 knee, needs ~+0.013 stability) and trend-aligned winners are the
+                # dominant bull/rally population -> a large alpha would lag winner->loser
+                # transitions and cost raw (the stab/raw tension that walled the ct-side at
+                # high alpha before the loss-gate). The profit-gate already eliminates the
+                # loser-lag path; 0.30 is enough to dampen the AR(1) position-value wobble
+                # (the knee is close, so a small smoothing nudge should clear it).
+                _ta_te_str = max(0.0, np.tanh(_pos_dir_te * ret_vlong / 0.01))  # ~0 ct, ~1 trend-aligned (mirror of _ct_te_str)
+                _ta_te_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit (winner-only)
+                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit
+                # Compose: ct-side _te_alpha and _ta_te_alpha fire on disjoint populations
+                # (ct vs trend-aligned). Take the max so the active population's smoothing
+                # applies; when both are 0 (sideways / weak-trend / losing), no smoothing
+                # (target tracks raw -- preserves sideways byte-identical).
+                _te_alpha = max(_te_alpha, _ta_te_alpha)
                 # Exp3 / BRANCH step6: FEED-FORWARD 3-bar MEDIAN on the RAW target BEFORE
                 # the _target_ema (median-then-EMA, replaces the opener's post-EMA median).
                 # The _target_ema is a backward-looking LOW-PASS that raises rally stability
