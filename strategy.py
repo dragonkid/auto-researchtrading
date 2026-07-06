@@ -3658,7 +3658,32 @@ class Strategy:
                 # aligned (ct gate 0) byte-identical by construction. Sign-preserving snap.
                 _ct_mf_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day (noise-free fast-saturating)
                 _mf_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting (noise-immune integer gate)
-                if _ct_mf_str > 0.0 and _mf_churn > 0.0:
+                # Exp2 (architectural, indep, this session): EXTEND the feed-forward median
+                # filter to TREND-ALIGNED DD-EXTENDED high-churn positions. The prior session
+                # documented (untested lead #1) that bull's residual tracking error (stability
+                # 0.779<0.80 knee after the _hold_ext_ema keep; the _ta_dd_hold_ext and
+                # _hold_adj wobbles were disproven as the bull source by the 0c5ac8c7 keep and
+                # Exp1 respectively) lives in "the grid/quantization cascade during pp-harvest
+                # phase when the target_EMA pp-exempt turns smoothing OFF" -- i.e. the emitted
+                # target reverts to raw grid-quantized levels which wobble under AR(1) -> bull
+                # tracking error. The sanctioned lag-free tool (feed-forward median-of-3, zero
+                # lag for monotone moves, only rejects isolated AR(1) spikes) was previously
+                # gated ct-only. Extend it to the trend-aligned DD-extended population (the
+                # keep's _ta_dd_hold_ext fires for long-only trend-aligned in-profit during DD;
+                # _ta_te_dd = 1-_port_dd_atten is the SAME DD-state signal the _ta_te_alpha
+                # target-EMA uses, so this fires on the exact population the keep extends).
+                # NEW data dep: the median filter now reads (trend-align, DD-state, churn)
+                # jointly, not just (ct, churn). The median is sign-preserving and lag-free ->
+                # no stab/raw tension (unlike the _ta_te_alpha EMA which lags and was gated off
+                # in pp-harvest precisely to avoid lagging the harvest exit). Median collapses
+                # the AR(1) spike-driven grid wobble WITHOUT lagging the harvest -> targets the
+                # documented bull residual source directly. Byte-identical for the never-active
+                # population (no DD -> _ta_te_dd 0 -> no extend; shorts/ct/losers per the keep
+                # gates). Continuous, no decision boundary. Structural gate (trend-align x DD
+                # x high-churn), NOT a regime label.
+                _ta_mf_str = _ta_te_str * _ta_te_dd  # trend-aligned AND DD-extended (mirrors _ta_te_alpha population)
+                _mf_active = max(_ct_mf_str, _ta_mf_str)
+                if _mf_active > 0.0 and _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
                     _th.append(target)
                     if len(_th) > 3:
