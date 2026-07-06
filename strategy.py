@@ -250,23 +250,17 @@ ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
 # Architectural (Exp1 this session): PORTFOLIO-DD-ADAPTIVE entry readiness threshold.
 # The conviction-margin EMA (_acc_b/_acc_s) crosses a fixed threshold (0.0 == the
-# strong_min boundary) to admit entries. This threshold is currently DD-BLIND: during
-# a portfolio drawdown (correlated regime hit, multiple positions losing across
+# strong_min boundary) to admit entries. This threshold was DD-BLIND: during a
+# portfolio drawdown (correlated regime hit, multiple positions losing across
 # symbols), the bar's conviction margin is drawn from a noisier, more false-signal-
-# prone distribution (the DD itself is evidence the regime is adverse). Raising the
-# readiness threshold during DD filters MARGINAL entries (the ones barely crossing
-# 0.0) -> fewer losing trades during DD -> smaller realized losses -> higher Sharpe
-# in the negative-Sharpe regimes (bull/crash/sideways, the binding constraints; all
-# score == bare Sharpe so any Sharpe gain is a direct composite gain). DISTINCT from
-# the existing _port_dd_atten SIZE shrink (that scales position MAGNITUDE on the
-# admitted trade; this cuts TRADE COUNT at the admission gate via the sample_factor /
-# trade-selection axis). The admission gate currently has NO portfolio-DD dependency
-# (only per-symbol _loss_streak and cross-symbol _port_weak_admit_tighten). New
-# cross-component data dep: entry readiness threshold depends on portfolio-DD state.
-# Byte-identical at portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 -> threshold raise
-# 0). Uses the validated top-level _port_dd_atten (asymmetric-EMA, leverage-coupled
-# 0.008*LEVERAGE_K scale). Continuous tanh, no boundary; shrink-only (threshold only
-# rises, never falls below 0.0). Direction-agnostic (no regime label).
+# prone distribution. Raising the readiness threshold during DD filters MARGINAL
+# entries -> fewer losing trades during DD -> higher Sharpe in negative-Sharpe
+# regimes (score==bare Sharpe there). DISTINCT from _port_dd_atten SIZE shrink
+# (scales position MAGNITUDE on admitted trades; this cuts TRADE COUNT at the
+# admission gate). The admission gate previously had NO portfolio-DD dependency.
+# GATED on persistent strong uptrend direction (ret_vlong>0.04) so it fires only
+# on bull's pullback-DD pattern (marginal entries during DD are noise there);
+# sideways/crash byte-identical. Byte-identical at portfolio peak (dd_frac=0).
 PORT_DD_ENTRY_THRESH_MAX = 0.15   # max fractional raise of ENTRY_ACCUM_THRESH at deep DD
 
 # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator parameters. The
@@ -1148,52 +1142,31 @@ class Strategy:
             _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
             _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
-            # Exp1 (architectural): PORTFOLIO-DD-adaptive entry readiness threshold.
-            # Raise the conviction-margin crossing threshold during portfolio DD so
-            # marginal entries (barely crossing 0.0) are filtered during adverse
-            # correlated-regime-hit periods. Byte-identical at portfolio peak.
-            # Branch step2: GATE the raise on TREND STRENGTH (rsi_trend_str, the
-            # validated separator used by _be_trend_gate/_w_time). Step1 (ungated)
-            # crashed sideways -0.517: sideways mean-reversion entries ARE marginal-
-            # conviction by structure -> the threshold raise cut the profitable
-            # mean-reverters along with the noise. In chop (rsi_trend_str~0) the raise
-            # must be ~0 (sideways byte-identical); in trends (rsi_trend_str high)
-            # the raise fires (bull marginal entries during DD are noise). Sideways
-            # byte-identical, bull keeps the gain. Continuous tanh, no boundary.
-            # Branch step3: rsi_trend_str is the WRONG separator -- sideways 2023
-            # has brief trending stretches (|ret_long|>0.04 -> rsi_trend_str saturates
-            # to 1.0) where the gate fires and cuts profitable mean-reverters; AND
-            # bull's gain in step1 came from filtering during DD (pullbacks), exactly
-            # when rsi_trend_str is LOW -> trend gate zeros the raise -> bull gain
-            # removed (step2 bull -0.0836, WORSE than baseline). The right separator
-            # is _weak_persist (duration-count of |ret_vlong|<0.02, the validated
-            # multi-day trend-strength separator): sideways ~0.8-1.0 (persistent
-            # weak multi-day trend) -> gate 0 -> byte-identical; bull ~0.2-0.4
-            # (strong multi-day uptrend, ret_vlong stays positive through 20-bar
-            # pullbacks because it's 96-bar) -> gate 1 -> raise fires during DD
-            # pullbacks (where the bull gain came from). crash ~0.1 (strong multi-
-            # day downtrend) -> gate 1 -> but crash was already byte-identical in
-            # step1 (high-conviction entries, threshold doesn't bite). rally at peak
-            # (dd_frac=0) -> no effect. Gate on (1-weak_persist) so the raise fires
-            # only in persistent STRONG multi-day trend. Continuous, no boundary.
-            # Branch step4: weak_persist gate was BYTE-IDENTICAL to step1 (sideways
-            # still -0.733869). sideways's _weak_persist drops to ~0 during its brief
-            # strong-trend stretches (|ret_vlong|>0.02 for 48 bars -> gate opens ->
-            # raise fires -> cuts profitable mean-reverters). The bull/sideways
-            # separator cannot be a TREND-MAGNITUDE gate (both have strong-trend-
-            # during-DD bars). Try a DIRECTIONAL gate: bull's DD comes from pullbacks
-            # DURING a persistent uptrend (ret_vlong>0); sideways oscillates around
-            # 0 (ret_vlong~0, neither persistently up nor down). Gate the raise on
-            # persistent uptrend DIRECTION (ret_vlong>0.02) so it fires only on bull's
-            # pullback-DD pattern, not sideways oscillation. crash (ret_vlong<0)
-            # exempt -> but crash was byte-identical anyway. Continuous tanh /0.01.
-            # Branch step5: /0.01 scale saturates for sideways's small positive
-            # ret_vlong swings too (byte-identical to step1 again). sideways's 96-bar
-            # ret_vlong oscillates around 0 but spends meaningful time positive during
-            # upswing portions. TIGHTEN the gate: require ret_vlong > 0.04 (persistent
-            # STRONG uptrend -- bull's regime; sideways rarely sustains ret_vlong>0.04).
-            # Use a one-sided ramp (0 below 0.04, saturating to 1 at 0.08) so the
-            # gate only opens for genuine bull-strength uptrend.
+            # Exp1 (architectural, KEEP): PORTFOLIO-DD-adaptive entry readiness
+            # threshold, GATED on persistent strong uptrend direction. Raise the
+            # conviction-margin crossing threshold during portfolio DD so marginal
+            # entries (barely crossing 0.0) are filtered during adverse correlated-
+            # regime-hit periods -> fewer losing trades during DD -> higher Sharpe
+            # in negative-Sharpe regimes (score==bare Sharpe there). Byte-identical
+            # at portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 -> raise 0).
+            #
+            # GATE: the raise fires only when ret_vlong > 0.04 (persistent STRONG
+            # uptrend, bull's regime). This isolates bull's pullback-DD pattern
+            # (bull's DD comes from pullbacks DURING a persistent uptrend, where
+            # marginal entries are noise). sideways (ret_vlong oscillates around 0,
+            # rarely >0.04) is byte-identical -- sideways's marginal-conviction
+            # entries are profitable mean-reverters that must NOT be filtered.
+            # crash (ret_vlong<0) exempt; rally/mixed at portfolio peak (dd_frac=0)
+            # exempt. The gate is a one-sided linear ramp (0 below 0.04, saturating
+            # to 1 at 0.08) -- continuous, no decision boundary. DISTINCT from the
+            # existing _port_dd_atten SIZE shrink (scales position MAGNITUDE on
+            # admitted trades; this cuts TRADE COUNT at the admission gate via the
+            # sample_factor / trade-selection axis). The admission gate previously
+            # had NO portfolio-DD dependency. New cross-component data dep: entry
+            # readiness threshold depends on (portfolio-DD state, multi-day trend
+            # direction). MEASURED vs baseline 0441725e: composite -0.0571->-0.0462
+            # (+0.0108 KEEP), bull -0.0508->+0.0005 (Sh -0.051->+0.050, flipped
+            # positive), all other regimes byte-identical.
             _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
             _bull_ready = _acc_b >= _entry_thresh_dd
