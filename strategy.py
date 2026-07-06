@@ -2656,32 +2656,7 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                # Exp2 (architectural, indep): PORTFOLIO-DD-ADAPTIVE max_hold EXTENSION for
-                # trend-aligned positions. Symmetric counterpart to Exp1's ct shortening.
-                # During portfolio DD, trend-aligned positions (bull longs, crash trend
-                # shorts, rally longs) face pullback noise that is more likely to RECOVER
-                # (the trend is intact at the multi-day scale). Extending max_hold for these
-                # positions during DD gives them more room to ride through DD-pullback noise
-                # before time_pressure fires -> fewer noise-driven time exits -> higher Sharpe
-                # in the trend-aligned positive regimes (rally, mixed) and the trend-aligned
-                # losers that recover (bull pullback longs). NEW cross-component data dep:
-                # max_hold reads (portfolio-DD state, trend-align indicator) jointly — the
-                # time-pressure subsystem previously had NO portfolio-DD dependency on the
-                # trend-aligned side (only Exp1's ct side, which was discarded). DISTINCT
-                # from the walled held-position de-risk (row-1015: that cut HELD positions at
-                # a LOSS during DD-pullbacks, missing rally's upward reversion -> -0.0025):
-                # this extends the TIME-PRESSURE onset (delays the time exit), never cuts a
-                # held position directly, and the pp_pressure giveback + slope-against + stop
-                # still fire normally on real reversals. Byte-identical when _port_dd_atten=1.0
-                # (portfolio peak) AND when trend-align gate=0 (ct positions, which keep the
-                # baseline max_hold from line above). Continuous tanh, no new decision
-                # boundary. Direction-agnostic general principle (no regime label): a trend-
-                # aligned position during a portfolio drawdown is more likely noise-pullback
-                # than real reversal -> give it more time to recover.
-                _ta_hold_dir = 1.0 if current_pos > 0 else -1.0
-                _ta_hold_gate = max(0.0, np.tanh(ret_vlong * _ta_hold_dir / 0.01))  # ~0 ct, ~1 trend-aligned (fast-saturating noise-free)
-                _ta_dd_hold_ext = 1.5 * _ta_hold_gate * (1.0 - _port_dd_atten)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
