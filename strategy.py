@@ -2861,10 +2861,10 @@ class Strategy:
                 # not the ve regime-shift source). Distinct from the keep's max_hold
                 # extension (the keep fires on GRADUAL portfolio-DD fraction; ve fires on
                 # SHARP vol-expansion events -- a different signal that can compose).
-                # max +50% ve magnitude at deep DD (branch step3: raised 0.30->0.50 to
-                # test whether the sideways gain scales with magnitude). Continuous tanh,
-                # no boundary.
-                _ve_dd_boost = 1.0 + 0.50 * (1.0 - _port_dd_atten)
+                # max +80% ve magnitude at deep DD (branch step4: raised 0.50->0.80 to
+                # test whether mixed keeps scaling and whether the boost touches bull/
+                # rally at high magnitude). Continuous tanh, no boundary.
+                _ve_dd_boost = 1.0 + 0.80 * (1.0 - _port_dd_atten)
                 _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
