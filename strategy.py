@@ -462,6 +462,24 @@ class Strategy:
         # state + new control flow: _max_hold reads a temporally-smoothed hold-extension
         # magnitude (was the instantaneous product). Reset on full exit.
         self._hold_ext_ema = {}
+        # Exp1 (architectural, indep, this session): per-symbol asymmetric EMA of the
+        # _hold_adj MAGNITUDE (the OTHER noisy _max_hold DECISION INPUT). The 0c5ac8c7
+        # keep smoothed _ta_dd_hold_ext (the DD-extend term) and recovered crash stability
+        # (Sharpe -0.174->-0.157) but bull stability STAYED at 0.779 (below the 0.80 knee,
+        # stab_factor 0.930) -- the prior session explicitly documented (untested lead #1)
+        # that the residual bull tracking error lives NOT in _ta_dd_hold_ext but in the
+        # _hold_adj _slope_strength wobble: _exit_slope is a multi-window mean of OLS slopes
+        # on HL2, which wobbles under AR(1) close noise -> _slope_strength=min(1,|slope|/0.0006)
+        # flips around its /0.0006 knee -> _hold_adj jumps between +/-MOMENTUM_HOLD_BONUS ->
+        # _max_hold jumps -> _time_pressure jumps -> emitted target jumps. This EMAs the
+        # _hold_adj magnitude at the source using the SAME validated asymmetric one-pole
+        # pattern (slow rise alpha 0.55 low-pass on the rising edge -> dampens AR(1) wobble,
+        # the stability benefit; fast fall alpha 0.15 near-instant release on slope->against
+        # transition -> no loser-hold-lag, the stab/raw tension resolution that mirrors the
+        # ct-side _target_ema loss-gate, ta-side pp-harvest exemption, and the 0c5ac8c7
+        # hold-decision fast-fall). NEW per-symbol _hold_adj_ema state + new control flow:
+        # _max_hold reads a temporally-smoothed _hold_adj magnitude (was instantaneous).
+        self._hold_adj_ema = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2651,7 +2669,35 @@ class Strategy:
                 # rally would otherwise create noise-driven early time exits.
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
-                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
+                _hold_adj_raw = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
+                # Exp1 (architectural, indep, this session): SMOOTH the _hold_adj DECISION
+                # INPUT at the source (the OTHER noisy _max_hold input, complementary to
+                # the _hold_ext_ema on _ta_dd_hold_ext). _exit_slope (multi-window OLS mean
+                # on HL2) wobbles under AR(1) close noise -> _slope_strength flips around
+                # its /0.0006 knee -> _hold_adj jumps between +/-MOMENTUM_HOLD_BONUS ->
+                # _max_hold jumps -> _time_pressure jumps -> emitted target jumps. The
+                # prior session documented (untested lead #1) that this _hold_adj wobble
+                # is the residual bull tracking-error source (bull stability 0.779 < 0.80
+                # knee after the _hold_ext_ema keep; the _ta_dd_hold_ext wobble was NOT the
+                # dominant bull source). Apply the SAME validated asymmetric one-pole EMA
+                # as _hold_ext_ema: slow rise (alpha 0.55) low-passes the rising edge (dampens
+                # the AR(1) wobble -> stability, the targeted mechanism), fast fall (alpha
+                # 0.15) releases immediately on slope->against transition (winner->loser /
+                # trend->reversal -> no loser-hold-lag, the stab/raw-tension resolution that
+                # mirrors _hold_ext_ema, the ct-side _target_ema loss-gate, and the ta-side
+                # pp-harvest exemption). Byte-identical for the never-active population:
+                # when _hold_adj_raw sits at a stable sign/magnitude (deep trend, slope far
+                # from the /0.0006 knee), the EMA converges to raw -> no lag; the asymmetric
+                # fast-fall ensures reversals are not lagged. Continuous, no decision boundary.
+                # NEW cross-component data dep: _max_hold reads a temporally-smoothed
+                # momentum-hold magnitude (was the instantaneous slope_strength product).
+                _prev_ha = self._hold_adj_ema.get(symbol, _hold_adj_raw)
+                if _hold_adj_raw >= _prev_ha:
+                    _ha_alpha = 0.55  # slow rise: low-pass the AR(1) wobble (stability)
+                else:
+                    _ha_alpha = 0.15  # fast fall: release immediately on slope->against (reversal)
+                _hold_adj = (1.0 - _ha_alpha) * _hold_adj_raw + _ha_alpha * _prev_ha
+                self._hold_adj_ema[symbol] = _hold_adj
                 # Exp5 (this session): FAST-SATURATING counter-trend max_hold shortening.
                 # Re-attempt of Exp3 (which raised rally raw +0.0064 by cutting ct losers
                 # faster via the noise-immune bar-counter, but cost stability -0.0027). The
@@ -4032,7 +4078,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._hold_adj_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
