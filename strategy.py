@@ -1123,10 +1123,11 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
-            # Exp4 (this session): the portfolio cross-symbol UNREALIZED-MAE admission
-            # tightener is applied DIRECTIONALLY below (to _bull_strong_min / _bear_strong_min
-            # with a trend-alignment exemption), NOT to the base _strong_min. See branch
-            # step1 comment below for the direction-specific application.
+            # Exp4 (this session): apply portfolio cross-symbol UNREALIZED-MAE admission
+            # tightener (computed at top level). Tightens admission when multiple OPEN
+            # positions are deep-MAE (active adverse regime). Byte-identical when no open
+            # positions are deep-MAE (fraction 0 -> tighten 1.0). See top-level comment.
+            _strong_min = _strong_min * _port_open_mae_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
@@ -1159,35 +1160,6 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
-            # BRANCH step1 (Exp4): DIRECTIONAL TREND-ALIGNMENT-EXEMPT application of the
-            # portfolio cross-symbol UNREALIZED-MAE admission tightener. The opener applied
-            # _port_open_mae_admit_tighten to the base _strong_min (direction-agnostic) and
-            # slightly regressed crash -0.000133: the tightener fires during crash's deep-MAE
-            # episodes (multiple crash positions underwater) and filters marginal entries,
-            # BUT crash needs to RE-ENTER trend-aligned shorts after losses (the cebe5a7c
-            # wall: crash needs re-entry after losses). The opener's direction-agnostic tighten
-            # filtered trend-aligned crash shorts that should re-enter. FIX: apply the tighten
-            # DIRECTIONALLY with a trend-alignment EXEMPTION -- a bull entry that is trend-
-            # aligned (ret_vlong>0, multi-day uptrend) is exempt (the entry is WITH the trend,
-            # likely a continuation not a dead-cat bounce); a bear entry that is trend-aligned
-            # (ret_vlong<0, multi-day downtrend) is exempt (crash trend shorts). Counter-trend
-            # entries (bull while ret_vlong<0 = dead-cat bounce; bear while ret_vlong>0 = rally
-            # pullback short) get the FULL tighten. This preserves the bull stability gain
-            # (bull's filtered entries during DD are NOT all trend-aligned -- bull's marginal DD
-            # entries include counter-trend pullback longs and chop entries, which are the
-            # noise-sensitive ones the tightener should filter) while sparing crash's trend
-            # shorts. NEW cross-component data dep: admission tightener depends on (portfolio
-            # unrealized-MAE aggregate, entry direction, multi-day trend-alignment) jointly.
-            # The trend-alignment gate uses the SAME fast-saturating /0.01 ret_vlong scale
-            # (near-constant, noise-free per the validated lesson). _mae_tighten_bull exempts
-            # trend-aligned bull (ret_vlong>0 -> exempt gate ~1 -> tighten ~1.0 = no tighten);
-            # applies full tighten to ct bull (ret_vlong<0 -> exempt gate 0 -> full tighten).
-            # Continuous tanh, no boundary. Byte-identical when _port_open_mae_admit_tighten=1.0
-            # (no deep-MAE open positions -> tighten 1.0 regardless of direction).
-            _mae_tighten_bull = 1.0 + (_port_open_mae_admit_tighten - 1.0) * (1.0 - max(0.0, np.tanh(ret_vlong / 0.01)))
-            _mae_tighten_bear = 1.0 + (_port_open_mae_admit_tighten - 1.0) * (1.0 - max(0.0, np.tanh(-ret_vlong / 0.01)))
-            _bull_strong_min = _bull_strong_min * _mae_tighten_bull
-            _bear_strong_min = _bear_strong_min * _mae_tighten_bear
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
@@ -2208,6 +2180,26 @@ class Strategy:
                 # bear-side consensus boost depends on _down_persist (was weak_persist).
                 _consensus_boost_bull = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
                 _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
+                # BRANCH step2 (Exp4): PORTFOLIO UNREALIZED-MAE first-bar SIZE shrink.
+                # The opener (admission tightener on _strong_min) gave bull stability
+                # +0.000053 (crossed 0.80 knee) but net -0.000025 sub-noise (crash -0.000133
+                # offset bull gain). The admission tightener filters marginal ENTRY COUNT;
+                # this SIZE shrink scales the first-bar SIZE of ADMITTED entries -- a
+                # different lever (smaller position when the open book is in adverse regime).
+                # Rationale: when multiple open positions are deep-MAE (portfolio-wide
+                # adverse regime), new entries are at higher risk of also becoming deep-MAE
+                # losers -> commit SMALLER first-bar size -> smaller realized loss if the
+                # stop catches it -> higher Sharpe in negative-Sharpe regimes (crash -0.156,
+                # sideways -0.067, 1:1 levers). DISTINCT from the opener's admission tighten:
+                # that filters COUNT (binary admit/Reject); this scales MAGNITUDE (continuous
+                # shrink on admitted trades). Composes with both: an admitted-then-shrunk
+                # entry has smaller position than baseline. Byte-identical when no open
+                # positions are deep-MAE (frac 0 -> shrink 1.0). Continuous tanh, no
+                # boundary. Max shrink 0.20 (-> 0.80x first-bar size at deep portfolio MAE).
+                # First-bar-only (respects the proven winning axis: first-bar-only size
+                # changes help; sustained-through-pullback sizing hurts). New cross-component
+                # data dep: first-bar entry size depends on portfolio unrealized-MAE aggregate.
+                _port_open_mae_size_shrink = 1.0 - 0.20 * max(0.0, min(1.0, np.tanh((_port_open_mae_frac - 0.5) / 0.3)))
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
@@ -2227,11 +2219,11 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _port_open_mae_size_shrink
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _port_open_mae_size_shrink
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
