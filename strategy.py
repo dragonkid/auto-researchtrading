@@ -2911,7 +2911,23 @@ class Strategy:
                 # chop): this is vol-expansion harvest for ct winners during DD.
                 _ve_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ve_ta_gate = max(0.0, 1.0 - np.tanh(ret_vlong * _ve_pos_dir / 0.01))  # ~1 ct, ~0 trend-aligned (noise-free fast-saturating)
-                _ve_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate
+                # branch step1: MAE-DEPTH DISAMBIGUATION gate. Exp3 (ve DD-boost ungated on
+                # MAE) gave sideways +0.0021 but mixed -0.0017: the ve DD-boost over-harvests
+                # mixed ct winners during DD, CONFLICTING with the MAE-BE keep (65aa885e)
+                # which already harvests mixed deep-MAE stalls. The two mechanisms fire on
+                # OVERLAPPING populations (mixed ct during DD). Disambiguate via MAE DEPTH:
+                # ve DD-boost fires only for SHALLOW-MAE ct positions (the position has
+                # NOT gone deeply underwater = a fresh ct winner, NOT a deep-MAE stall):
+                # _ve_mae_shallow = 1 - tanh(-mae/(|stop|*0.30)) (1 when MAE ~0, 0 when MAE
+                # >= ~0.6*stop). This spares the deep-MAE stalls MAE-BE handles (gate -> 0)
+                # while keeping the ve DD-boost for fresh shallow-MAE ct winners (sideways
+                # ct re-entries in low-vol chop have shallow MAE -> gate ~1 -> boost fires).
+                # Targets mixed recovery (deep-MAE stalls spared) while keeping sideways
+                # (shallow-MAE ct). Continuous tanh, no boundary. Distinct from the
+                # _be_mae_depth knee (0.25*stop): this is the COMPLEMENT (shallow-MAE = NOT
+                # deep-MAE), so ve fires where BE doesn't and vice versa.
+                _ve_mae_shallow = max(0.0, 1.0 - np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.30))))
+                _ve_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate * _ve_mae_shallow
                 _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
