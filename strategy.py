@@ -2987,8 +2987,16 @@ class Strategy:
                 # negative-Sharpe regime whose score == bare Sharpe; cutting deep-MAE stalls
                 # before they bleed to the stop raises sideways Sharpe directly).
                 _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
+                # branch step10: split MAE-path magnitude (0.50) from trend-path (0.45).
+                # step7 (knee 0.25, uniform 0.45 mag) gave +0.002657 (best). Try a slight MAE-
+                # path magnitude bump 0.45->0.50 (between step1 0.45 and the over-cutting 0.55).
+                # At the 0.25 knee the population differs from step6's 0.40-knee test (which was
+                # non-monotonic at 0.55). Trend-path stays 0.45 (crash/bull byte-identical);
+                # paths disjoint via (1 - _be_trend_gate) on the mae term.
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
-                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_mae_gate
+                _be_pres_trend = 0.45 * _be_trend_gate
+                _be_pres_mae = 0.50 * _be_mae_depth * (1.0 - _be_trend_gate)
+                _be_pressure = _be_near_zero * _be_hold_gate * max(_be_pres_trend, _be_pres_mae)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
