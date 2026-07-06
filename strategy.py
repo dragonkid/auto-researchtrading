@@ -3578,7 +3578,24 @@ class Strategy:
                 # (1-_port_dd_atten=0) -> no smoothing -> baseline. Uses the SAME top-level
                 # _port_dd_atten (asymmetric-EMA, leverage-coupled) as _ta_dd_hold_ext.
                 _ta_te_dd = max(0.0, 1.0 - _port_dd_atten)
-                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit * _ta_te_slope_conf * _ta_te_dd
+                # Branch step5: PP-HARVEST EXEMPTION. Step3 (DD gate, best composite -0.076)
+                # still lagged bull: bull's trend-aligned winners exit via pp_pressure giveback
+                # harvest (deep peak -> giveback -> harvest). Smoothing the target during the
+                # giveback phase LAGS the harvest exit -> winner gives back more -> bigger
+                # realized loss. The structural separator between bull (smoothing hurts) and
+                # crash/sideways/rally (smoothing helps): bull winners exit via pp_pressure
+                # (gradual giveback harvest); crash shorts exit via slope-against (sharp
+                # reversal) which dominates the smoothed target regardless. Gate _ta_te_alpha
+                # OFF when pp_pressure is elevated (giveback harvest in progress): smoothing
+                # fires ONLY on winners at their peak (pp_pressure ~0, riding the hold-extension)
+                # -> holds the level stable through pullback noise (the keep's tracking-error
+                # population); when giveback begins (pp_pressure rises), smoothing turns OFF
+                # -> target tracks raw -> harvest fires at full speed. Per-bar structural property
+                # (which exit source is binding), NOT a regime label. Continuous ramp over
+                # [0, 0.3] pp_pressure (tanh, no boundary) -> smoothing fades out as the harvest
+                # engages. Uses the existing _pp_pressure (post-attenuation, line ~2628).
+                _ta_te_pp_exempt = max(0.0, 1.0 - max(0.0, _pp_pressure / 0.30))
+                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit * _ta_te_slope_conf * _ta_te_dd * _ta_te_pp_exempt
                 # Compose: ct-side _te_alpha and _ta_te_alpha fire on disjoint populations
                 # (ct vs trend-aligned). Take the max so the active population's smoothing
                 # applies; when both are 0 (sideways / weak-trend / losing), no smoothing
