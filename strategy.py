@@ -2884,6 +2884,35 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Exp3 (architectural, indep): PORTFOLIO-DD-ADAPTIVE ve_pressure BOOST for
+                # COUNTER-TREND in-profit positions. Re-applies the validated ve DD-boost
+                # mechanism (prior session branch, +0.000625 sub-threshold at baseline
+                # 47cbe827; reverted as sub-threshold). The current baseline (65aa885e) is
+                # +0.061 higher and includes the MAE-BE keep (65aa885e, orthogonal: cuts
+                # deep-MAE stalls in chop) -- this tests whether ve DD-boost COMPOSES with
+                # the MAE-BE keep to cross +0.003 (the prior ceiling).
+                # NEW cross-component data dep: ve_pressure reads portfolio-DD state jointly
+                # with multi-day trend-align (ret_vlong*pos_dir). Mechanism: during a
+                # portfolio drawdown, a sharp vol-expansion (6-bar vol >> 18-bar) is a
+                # genuine adverse regime shift (correlated selloff deepening) -> boost
+                # ve_pressure to harvest in-profit COUNTER-TREND winners faster (sideways
+                # ct re-entries during DD, mixed wrong-side longs) -> lock realized gains
+                # before the regime shift deepens -> cap DD + raise Sharpe in the negative-
+                # Sharpe regime (sideways PF 1.3 but Sh -0.067 -- high churn/fees; cutting
+                # the DD-period ct winners on vol-expansion reduces churn AND locks gains).
+                # GATED on counter-trend (ret_vlong*pos_dir<0 -> gate 1; trend-aligned -> 0):
+                # spares bull/rally trend longs (the _ta_winner_gate / _ta_dd_hold_ext
+                # population, byte-identical), targets ct (the ve DD-boost's validated
+                # population from prior session step5-8: trend-align gate was essential to
+                # protect bull/rally at mag>=0.80). Byte-identical at portfolio peak
+                # (dd_frac=0 -> _port_dd_atten=1.0 -> boost 0). Mag 1.00 = prior step8
+                # validated ceiling (1.20 was byte-identical saturated, 0.80 was slightly
+                # less). Distinct from MAE-BE (break-even pressure for deep-MAE stalls in
+                # chop): this is vol-expansion harvest for ct winners during DD.
+                _ve_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _ve_ta_gate = max(0.0, 1.0 - np.tanh(ret_vlong * _ve_pos_dir / 0.01))  # ~1 ct, ~0 trend-aligned (noise-free fast-saturating)
+                _ve_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate
+                _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
