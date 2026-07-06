@@ -3578,7 +3578,25 @@ class Strategy:
                 # (1-_port_dd_atten=0) -> no smoothing -> baseline. Uses the SAME top-level
                 # _port_dd_atten (asymmetric-EMA, leverage-coupled) as _ta_dd_hold_ext.
                 _ta_te_dd = max(0.0, 1.0 - _port_dd_atten)
-                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit * _ta_te_slope_conf * _ta_te_dd
+                # Branch step4: DEEP-PEAK EXEMPTION. Step3 (DD gate) still lagged bull: bull's
+                # grinding uptrend produces winners that reach DEEP peaks (peak_pnl >> stop)
+                # and are then harvested by tp/pp_pressure (giveback harvest). Smoothing the
+                # target on a deep-peak winner LAGS the harvest -> the giveback exit fires
+                # later -> the winner gives back more -> bigger realized loss or smaller win.
+                # The structural separator between bull (lag destroys raw) and crash/sideways/
+                # rally (smoothing helps) is the PEAK DEPTH: bull's trend-aligned winners reach
+                # tp-harvest territory (peak > 1.6*_pp_min, the SAME threshold the tp-harvest
+                # path uses at line 3068); crash/sideways trend-aligned winners have shallower
+                # peaks (exit via slope/stop before reaching harvest territory). Exempt deep-
+                # peak winners from smoothing: when peak_pnl > 1.6*_pp_min, _ta_te_alpha -> 0
+                # (let the harvest fire at full speed); below 1.6*_pp_min, smoothing holds
+                # (shallow-peak winner just riding, the keep's hold-extension tracking-error
+                # population). Continuous ramp over [1.3, 1.9]*_pp_min (tanh, no boundary) so
+                # smoothing fades out as the peak enters harvest territory. Structural property
+                # (peak magnitude, NOT a regime label) -- uses the existing _pp_min + peak_pnl.
+                _ta_te_peak_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
+                _ta_te_peak_exempt = max(0.0, 1.0 - max(0.0, (_ta_te_peak_ratio - 1.3) / 0.6))  # 1 below 1.3, 0 above 1.9
+                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit * _ta_te_slope_conf * _ta_te_dd * _ta_te_peak_exempt
                 # Compose: ct-side _te_alpha and _ta_te_alpha fire on disjoint populations
                 # (ct vs trend-aligned). Take the max so the active population's smoothing
                 # applies; when both are 0 (sideways / weak-trend / losing), no smoothing
