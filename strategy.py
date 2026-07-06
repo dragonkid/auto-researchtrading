@@ -3681,7 +3681,21 @@ class Strategy:
                 # population (no DD -> _ta_te_dd 0 -> no extend; shorts/ct/losers per the keep
                 # gates). Continuous, no decision boundary. Structural gate (trend-align x DD
                 # x high-churn), NOT a regime label.
-                _ta_mf_str = _ta_te_str * _ta_te_dd * _ta_te_slope_conf * _ta_te_profit  # trend-align x DD x slope-conf x profit (4 gates; NO pp-exempt -- the median's value is firing DURING pp-harvest when _ta_te_alpha turns OFF, which is where the bull residual lives; slope-conf protects crash, profit protects sideways losers)
+                # branch step3: add LONG-ONLY gate (mirror _ta_dd_hold_ext's _ta_long_gate).
+                # step2 (slope-conf+profit) recovered mixed/sideways stability but crash STILL
+                # catastrophic (-1.08): crash trend-aligned SHORTS are in-profit during the
+                # downtrend (pass _ta_te_profit) and slope-confirms (pass _ta_te_slope_conf)
+                # and are DD-extended (pass _ta_te_dd) -> they pass all 4 gates -> the median
+                # lags their exit on dead-cat bounces (crash moves fast, 1 bar of lag on the
+                # bounce = catastrophic). The structural separator: LONG vs SHORT risk
+                # asymmetry -- longs in an uptrend during DD face pullbacks that RECOVER (bull
+                # pullback longs); shorts in a downtrend during DD face dead-cat bounces that
+                # are SHARPER (asymmetric upside risk). Same long-only structural property the
+                # 0c5ac8c7 keep's _ta_dd_hold_ext uses (_ta_long_gate = 1 if current_pos>0).
+                # Excludes crash shorts (the catastrophic regression source) while keeping bull
+                # longs (the target). NOT a regime label -- direction-asymmetric structural prop.
+                _ta_mf_long = 1.0 if current_pos > 0 else 0.0  # long-only structural gate (mirror _ta_long_gate)
+                _ta_mf_str = _ta_te_str * _ta_te_dd * _ta_te_slope_conf * _ta_te_profit * _ta_mf_long  # trend-align x DD x slope-conf x profit x long-only (5 gates)
                 _mf_active = max(_ct_mf_str, _ta_mf_str)
                 if _mf_active > 0.0 and _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
