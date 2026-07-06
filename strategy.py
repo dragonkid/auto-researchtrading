@@ -1123,11 +1123,10 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
-            # Exp4 (this session): apply portfolio cross-symbol UNREALIZED-MAE admission
-            # tightener (computed at top level). Tightens admission when multiple OPEN
-            # positions are deep-MAE (active adverse regime). Byte-identical when no open
-            # positions are deep-MAE (fraction 0 -> tighten 1.0). See top-level comment.
-            _strong_min = _strong_min * _port_open_mae_admit_tighten
+            # Exp4 (this session): the portfolio cross-symbol UNREALIZED-MAE admission
+            # tightener is applied DIRECTIONALLY below (to _bull_strong_min / _bear_strong_min
+            # with a trend-alignment exemption), NOT to the base _strong_min. See branch
+            # step1 comment below for the direction-specific application.
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
@@ -1160,6 +1159,35 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # BRANCH step1 (Exp4): DIRECTIONAL TREND-ALIGNMENT-EXEMPT application of the
+            # portfolio cross-symbol UNREALIZED-MAE admission tightener. The opener applied
+            # _port_open_mae_admit_tighten to the base _strong_min (direction-agnostic) and
+            # slightly regressed crash -0.000133: the tightener fires during crash's deep-MAE
+            # episodes (multiple crash positions underwater) and filters marginal entries,
+            # BUT crash needs to RE-ENTER trend-aligned shorts after losses (the cebe5a7c
+            # wall: crash needs re-entry after losses). The opener's direction-agnostic tighten
+            # filtered trend-aligned crash shorts that should re-enter. FIX: apply the tighten
+            # DIRECTIONALLY with a trend-alignment EXEMPTION -- a bull entry that is trend-
+            # aligned (ret_vlong>0, multi-day uptrend) is exempt (the entry is WITH the trend,
+            # likely a continuation not a dead-cat bounce); a bear entry that is trend-aligned
+            # (ret_vlong<0, multi-day downtrend) is exempt (crash trend shorts). Counter-trend
+            # entries (bull while ret_vlong<0 = dead-cat bounce; bear while ret_vlong>0 = rally
+            # pullback short) get the FULL tighten. This preserves the bull stability gain
+            # (bull's filtered entries during DD are NOT all trend-aligned -- bull's marginal DD
+            # entries include counter-trend pullback longs and chop entries, which are the
+            # noise-sensitive ones the tightener should filter) while sparing crash's trend
+            # shorts. NEW cross-component data dep: admission tightener depends on (portfolio
+            # unrealized-MAE aggregate, entry direction, multi-day trend-alignment) jointly.
+            # The trend-alignment gate uses the SAME fast-saturating /0.01 ret_vlong scale
+            # (near-constant, noise-free per the validated lesson). _mae_tighten_bull exempts
+            # trend-aligned bull (ret_vlong>0 -> exempt gate ~1 -> tighten ~1.0 = no tighten);
+            # applies full tighten to ct bull (ret_vlong<0 -> exempt gate 0 -> full tighten).
+            # Continuous tanh, no boundary. Byte-identical when _port_open_mae_admit_tighten=1.0
+            # (no deep-MAE open positions -> tighten 1.0 regardless of direction).
+            _mae_tighten_bull = 1.0 + (_port_open_mae_admit_tighten - 1.0) * (1.0 - max(0.0, np.tanh(ret_vlong / 0.01)))
+            _mae_tighten_bear = 1.0 + (_port_open_mae_admit_tighten - 1.0) * (1.0 - max(0.0, np.tanh(-ret_vlong / 0.01)))
+            _bull_strong_min = _bull_strong_min * _mae_tighten_bull
+            _bear_strong_min = _bear_strong_min * _mae_tighten_bear
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
