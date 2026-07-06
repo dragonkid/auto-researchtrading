@@ -2732,7 +2732,7 @@ class Strategy:
                 # raw stays 0 -> EMA converges to 0 -> no extension); continuous, no boundary.
                 _prev_he = self._hold_ext_ema.get(symbol, _ta_dd_hold_ext_raw)
                 if _ta_dd_hold_ext_raw >= _prev_he:
-                    _he_alpha = 0.55  # slow rise: low-pass the wobble (stability)
+                    _he_alpha = 0.40  # slow rise: low-pass the wobble (stability) -- step3 lowered from 0.55 to recover sideways/rally winner-formation lag
                 else:
                     _he_alpha = 0.15  # fast fall: release immediately on winner->loser (raw)
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
