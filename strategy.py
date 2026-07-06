@@ -2986,7 +2986,19 @@ class Strategy:
                 # source (MAE) the baseline _be_pressure did not read. Targets sideways (the
                 # negative-Sharpe regime whose score == bare Sharpe; cutting deep-MAE stalls
                 # before they bleed to the stop raises sideways Sharpe directly).
-                _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.4))))
+                # branch step2: LOWER the MAE activation knee 0.4*stop -> 0.15*stop. step1
+                # (opener) fired for RALLY pullback longs (deep MAE ~0.4*stop) but was
+                # BYTE-IDENTICAL on sideways (the target) -- sideways positions in low-vol
+                # chop have shallow MAE relative to the 0.4*stop knee, so the gate never
+                # activated. But sideways's bleeders (positions that stall at BE then bleed
+                # to the stop) DO go underwater ~0.15-0.4*stop before recovering to BE -- a
+                # 0.15*stop knee catches them while still sparing the FRESH shallow-MAE
+                # recoveries (<0.15*stop, the mean-reversion finds-its-level case the trend
+                # gate protects). Continuous tanh (no boundary); the knee shift is a scalar
+                # on the same fast-saturating profile. Targets sideways (negative-Sharpe,
+                # 1:1 score lever); rally's deep-MAE longs stay fully activated (already past
+                # the 0.15 knee) -> rally gain preserved.
+                _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
                 _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_mae_gate
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
