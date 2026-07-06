@@ -1160,8 +1160,24 @@ class Strategy:
             # must be ~0 (sideways byte-identical); in trends (rsi_trend_str high)
             # the raise fires (bull marginal entries during DD are noise). Sideways
             # byte-identical, bull keeps the gain. Continuous tanh, no boundary.
-            _dd_thresh_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-            _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_trend_gate
+            # Branch step3: rsi_trend_str is the WRONG separator -- sideways 2023
+            # has brief trending stretches (|ret_long|>0.04 -> rsi_trend_str saturates
+            # to 1.0) where the gate fires and cuts profitable mean-reverters; AND
+            # bull's gain in step1 came from filtering during DD (pullbacks), exactly
+            # when rsi_trend_str is LOW -> trend gate zeros the raise -> bull gain
+            # removed (step2 bull -0.0836, WORSE than baseline). The right separator
+            # is _weak_persist (duration-count of |ret_vlong|<0.02, the validated
+            # multi-day trend-strength separator): sideways ~0.8-1.0 (persistent
+            # weak multi-day trend) -> gate 0 -> byte-identical; bull ~0.2-0.4
+            # (strong multi-day uptrend, ret_vlong stays positive through 20-bar
+            # pullbacks because it's 96-bar) -> gate 1 -> raise fires during DD
+            # pullbacks (where the bull gain came from). crash ~0.1 (strong multi-
+            # day downtrend) -> gate 1 -> but crash was already byte-identical in
+            # step1 (high-conviction entries, threshold doesn't bite). rally at peak
+            # (dd_frac=0) -> no effect. Gate on (1-weak_persist) so the raise fires
+            # only in persistent STRONG multi-day trend. Continuous, no boundary.
+            _dd_thresh_weak_gate = 1.0 - _weak_persist
+            _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_weak_gate
             _bull_ready = _acc_b >= _entry_thresh_dd
             _bear_ready = _acc_s >= _entry_thresh_dd
 
