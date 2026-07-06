@@ -449,6 +449,19 @@ class Strategy:
         # target (final level). Smooths bar-to-bar position-value wobble for
         # counter-trend held positions only; reset on full exit.
         self._target_ema = {}
+        # BRANCH (Exp1 opener, this session): per-symbol EMA of the _ta_dd_hold_ext
+        # MAGNITUDE (the hold-extension DECISION INPUT that feeds _max_hold ->
+        # _time_pressure). The keep 47cbe827 extended max_hold for long-only trend-
+        # aligned in-profit longs during portfolio DD; that added bar-to-bar tracking
+        # error at the source (_ta_dd_hold_ext wobbles under AR(1) noise as
+        # profit_gate/pos_pnl wobbles -> _max_hold jumps -> _time_pressure jumps ->
+        # emitted target jumps). The prior session smoothed the EMITTED target
+        # downstream (3bd20444 keep) which only partially compensated (bull stability
+        # dipped 0.787->0.780). This EMAs the _ta_dd_hold_ext MAGNITUDE itself at the
+        # source so _max_hold is temporally stable under AR(1) noise. NEW per-symbol
+        # state + new control flow: _max_hold reads a temporally-smoothed hold-extension
+        # magnitude (was the instantaneous product). Reset on full exit.
+        self._hold_ext_ema = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2696,7 +2709,34 @@ class Strategy:
                 # tanh on pos_pnl/|stop| (no decision boundary). Byte-identical for shorts
                 # (long gate 0), ct (align 0), losers (profit gate 0).
                 _ta_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
-                _ta_dd_hold_ext = 1.5 * _ta_long_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
+                _ta_dd_hold_ext_raw = 1.5 * _ta_long_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
+                # BRANCH (Exp1 opener, architectural): SMOOTH the hold-extension DECISION
+                # INPUT at the source. The keep 47cbe827 added bar-to-bar tracking error at
+                # the source: _ta_dd_hold_ext wobbles under AR(1) noise (profit_gate flips
+                # around breakeven -> _max_hold jumps -> _time_pressure jumps -> emitted
+                # target jumps). The prior session's 3bd20444 keep smoothed the EMITTED
+                # target downstream which only partially compensated (bull stability dipped
+                # 0.787->0.780). This EMAs the _ta_dd_hold_ext MAGNITUDE itself so _max_hold
+                # is temporally stable under AR(1) noise -> the hold-DECISION tracking error
+                # is damped at the source. NEW cross-component data dep: _max_hold reads a
+                # temporally-smoothed hold-extension magnitude (was the instantaneous product).
+                # ASYMMETRIC one-pole low-pass (the stab/raw tension resolution, mirroring the
+                # ct-side _target_ema loss-gate and the ta-side pp-harvest exemption patterns):
+                # SLOW to RISE (alpha 0.55 low-pass on the rising edge -> dampens the AR(1)
+                # wobble that is the tracking-error source, the stability benefit) but FAST to
+                # FALL (alpha 0.15 near-instant release -> when profit_gate->0 as a winner
+                # turns loser, the hold-extension releases immediately -> losers NOT held
+                # longer -> no raw cost on the winner->loser transition). The prior session's
+                # symmetric EMA walled here: lag on winner->loser hurt sideways/rally raw.
+                # Byte-identical for the never-active population (shorts/ct/losers/outside-DD:
+                # raw stays 0 -> EMA converges to 0 -> no extension); continuous, no boundary.
+                _prev_he = self._hold_ext_ema.get(symbol, _ta_dd_hold_ext_raw)
+                if _ta_dd_hold_ext_raw >= _prev_he:
+                    _he_alpha = 0.55  # slow rise: low-pass the wobble (stability)
+                else:
+                    _he_alpha = 0.15  # fast fall: release immediately on winner->loser (raw)
+                _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
+                self._hold_ext_ema[symbol] = _ta_dd_hold_ext
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
@@ -3992,7 +4032,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
