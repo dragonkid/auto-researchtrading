@@ -2460,6 +2460,42 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp1 (architectural, indep): PORTFOLIO-DD-ADAPTIVE stop-loss TIGHTENING
+                # for COUNTER-TREND positions. NEW cross-component data dep on the stop
+                # subsystem: _stop_abs (the hard risk floor distance) now reads (portfolio-
+                # DD state, multi-day trend-align) jointly -- previously ATR-only. The stop
+                # subsystem is the ONE exit pathway that had NO portfolio-DD dependency
+                # (entry threshold, sizing, giveback, tp-harvest, max_hold, exit_thresh all
+                # do). Mechanism: during a portfolio drawdown (correlated adverse regime
+                # hit), a COUNTER-TREND position (fighting the macro multi-day trend while
+                # the whole portfolio is bleeding) is the lowest-quality, least-likely-to-
+                # recover position -> tighten its stop so it realizes the loss ~1 bar
+                # sooner -> smaller realized loss -> less DD contribution from these
+                # positions. Trend-aligned positions during DD should KEEP the normal stop:
+                # the keep (47cbe827) proved trend-aligned in-profit longs RECOVER during
+                # DD pullbacks (extended max_hold) -- tightening their stop would
+                # contradict that. Gate on counter-trend-at-multi-day using the SAME
+                # fast-saturating /0.01 ret_vlong scale as _ct_hold_sat (near-constant,
+                # noise-free per the validated safe-family lesson: 96-bar OLS slope, each
+                # input bar carries ~1/96 of a bar's AR(1) noise -> the boolean is noise-
+                # robust). Counter-trend gate: max(0, tanh(-(ret_vlong*pos_dir)/0.01)) -> ~0
+                # trend-aligned (bull longs, crash shorts), ~1 counter-trend (bull shorts,
+                # crash bounce longs). Byte-identical when _port_dd_atten=1.0 (portfolio
+                # peak -> tighten 0) AND when trend-aligned (gate 0). max 12% tighten at
+                # deep DD + full counter-trend. Continuous tanh (no boundary); direction-
+                # agnostic general principle (no regime label): a counter-trend position
+                # during a portfolio drawdown faces correlated adverse risk -> tighter stop.
+                # DISTINCT from Exp4 exit-threshold DD-lowering (acts on _exit_thresh for
+                # sustained losers; this acts on _stop_abs for counter-trend regardless of
+                # sustained-loss). DISTINCT from the ATR-bursty dead end (prior session:
+                # max-agg ATR SIZE cap crashed crash -- that scaled SIZE by ATR, an
+                # intrabar magnitude bursty signal; this scales the STOP by a SUSTAINED
+                # signal: 96-bar ret_vlong x portfolio-DD, both slow/averaged -> not
+                # bursty -> does not fire asymmetrically on crash down-legs).
+                _pos_dir_stop = 1.0 if current_pos > 0 else -1.0
+                _ct_stop_gate = max(0.0, np.tanh(-(ret_vlong * _pos_dir_stop) / 0.01))  # ~0 trend-aligned, ~1 ct
+                _stop_tighten = 0.12 * (1.0 - _port_dd_atten) * _ct_stop_gate
+                _stop_abs = _stop_abs * (1.0 - _stop_tighten)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
