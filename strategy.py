@@ -2681,23 +2681,7 @@ class Strategy:
                 _ta_long_gate = 1.0 if current_pos > 0 else 0.0  # long-only structural gate
                 _ta_dir = 1.0 if current_pos > 0 else -1.0
                 _ta_align = max(0.0, np.tanh(ret_vlong * _ta_dir / 0.01))  # ~0 ct, ~1 trend-aligned
-                # branch step2: PERSISTENT-uptrend gate to spare sideways. Step1 (opener)
-                # regressed sideways -0.0108: sideways has brief uptrend stretches where
-                # longs become trend-aligned -> DD-extend fires -> holds sideways longs longer
-                # during sideways DD -> realizes losses that mean-revert away. The validated
-                # crash/sideways separator is _down_persist (fraction of last 48 bars where
-                # ret_vlong<0): bull/rally ~0.3 (persistent uptrend, brief pullback dips ->
-                # down_persist low); sideways ~0.5+ (oscillation, ret_vlong flips sign often
-                # -> down_persist moderate-high). Gate the extend on down_persist<0.40 (the
-                # SAME validated persistent-uptrend separator used by _up_persist_gate at line
-                # ~2616 for pp_pressure attenuation) so sideways (down_persist~0.5+) is byte-
-                # identical while bull/rally (down_persist~0.3) keep the extend. Continuous
-                # ramp (no boundary): full extend below 0.40, fading to 0 by 0.60. This is
-                # the SAME separator pattern that successfully isolated bull in the pp_pressure
-                # attenuation branch (Exp3 keep, line ~2616). Byte-identical for shorts (long
-                # gate 0) and ct (align 0).
-                _ta_up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-                _ta_dd_hold_ext = 1.5 * _ta_long_gate * _ta_align * _ta_up_persist_gate * (1.0 - _port_dd_atten)
+                _ta_dd_hold_ext = 1.5 * _ta_long_gate * _ta_align * (1.0 - _port_dd_atten)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
