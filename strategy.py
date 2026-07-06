@@ -1171,27 +1171,6 @@ class Strategy:
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
             _bull_ready = _acc_b >= _entry_thresh_dd
             _bear_ready = _acc_s >= _entry_thresh_dd
-            # Exp1 (architectural, indep): SYMMETRIC COUNTERPART — portfolio-DD-adaptive
-            # entry readiness threshold GATED ON PERSISTENT STRONG DOWNTREND (ret_vlong<-0.04),
-            # applied to BEAR readiness only. Direct mirror of the KEEP mechanism (which
-            # gates the raise on ret_vlong>0.04, applied symmetrically to both _bull_ready
-            # and _bear_ready). The keep's symmetric threshold raise is byte-identical for
-            # crash because crash's ret_vlong<0 -> _dd_thresh_dir_gate=0 -> no raise. This
-            # splits the threshold into per-side direction-gated raises: bull threshold
-            # raised during DD when ret_vlong>0.04 (KEEP, byte-identical), bear threshold
-            # raised during DD when ret_vlong<-0.04 (NEW). Hypothesis: crash's marginal
-            # bear entries during DD downtrend-extensions are noise (same principle as
-            # bull's pullback-DD marginal entries being noise) -> filtering them during DD
-            # cuts losing trades -> higher crash Sharpe. Byte-identical for bull/sideways/
-            # rally/mixed (ret_vlong>0.04 gate still controls bull; sideways/rally/mixed
-            # rarely sustain ret_vlong<-0.04 -> bear raise stays 0; bull longs unaffected
-            # by the bear-side gate). One-sided linear ramp (0 below -0.04, saturating to
-            # 1 at -0.08) — continuous, no decision boundary. The prior session summary
-            # speculated this would be "likely inert (crash entries high-conviction)" but
-            # never measured it directly; measurement beats speculation.
-            _dd_thresh_bear_gate = max(0.0, min(1.0, (-ret_vlong - 0.04) / 0.04))
-            _entry_thresh_dd_bear = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_bear_gate
-            _bear_ready = _acc_s >= _entry_thresh_dd_bear
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
