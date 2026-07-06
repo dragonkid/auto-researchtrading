@@ -2656,7 +2656,33 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
+                # Exp3 (architectural, indep): PORTFOLIO-DD-ADAPTIVE max_hold EXTENSION for
+                # LONG-ONLY trend-aligned positions. Exp2 (discarded) extended max_hold for
+                # ALL trend-aligned positions during DD and catastrophically regressed crash
+                # (-1.336, the trend-align gate ret_vlong*pos_dir>0 INCLUDES crash trend
+                # shorts -> they rode dead-cat bounces). The structural fix: position
+                # direction is a structural property (long/short risk asymmetry, NOT a regime
+                # label -- same _long_only_gate pattern used at line ~2602 for pp_pressure
+                # attenuation). LONGS in an uptrend during DD face pullback noise that
+                # RECOVERS (bull pullback longs, rally grind longs); SHORTS in a downtrend
+                # during DD face asymmetric upside risk (crash dead-cat bounces are sharper
+                # than bull pullbacks). Gate the DD-extend on LONG-ONLY (current_pos>0) so
+                # crash trend shorts are byte-identical (gate 0) while bull/rally trend longs
+                # get the extended hold. NEW cross-component data dep: max_hold reads
+                # (portfolio-DD state, trend-align, position direction) jointly. DISTINCT
+                # from walled held-position de-risk (row-1015: cut HELD positions at a LOSS
+                # during DD-pullbacks; this delays time-pressure onset only, pp/slope/stop
+                # still fire on real reversals). Byte-identical when _port_dd_atten=1.0
+                # (portfolio peak) AND when long-only gate=0 (shorts + ct positions). The
+                # trend-align gate uses the SAME fast-saturating /0.01 ret_vlong scale as
+                # _ct_hold_sat (near-constant noise-free per the validated lesson). Continuous
+                # tanh, no new decision boundary. Direction-asymmetric structural property
+                # (long/short risk asymmetry), NOT a regime label.
+                _ta_long_gate = 1.0 if current_pos > 0 else 0.0  # long-only structural gate
+                _ta_dir = 1.0 if current_pos > 0 else -1.0
+                _ta_align = max(0.0, np.tanh(ret_vlong * _ta_dir / 0.01))  # ~0 ct, ~1 trend-aligned
+                _ta_dd_hold_ext = 1.5 * _ta_long_gate * _ta_align * (1.0 - _port_dd_atten)
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
