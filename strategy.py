@@ -2986,15 +2986,9 @@ class Strategy:
                 # source (MAE) the baseline _be_pressure did not read. Targets sideways (the
                 # negative-Sharpe regime whose score == bare Sharpe; cutting deep-MAE stalls
                 # before they bleed to the stop raises sideways Sharpe directly).
-                _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.4))))
-                # branch step6: AMPLIFY MAE-gated BE magnitude 0.45->0.55 (chop-path only).
-                # step5 (0.65) over-cut rally (-0.0018); step1 (0.45) gave rally +0.0018. Test
-                # 0.55 between them. Trend-path stays 0.45 (crash/bull byte-identical); the two
-                # paths are disjoint (trend_gate~1 in trends zeros mae-path; ~0 in chop zeros
-                # trend-path), MAX picks the active path.
-                _be_pres_trend = 0.45 * _be_trend_gate
-                _be_pres_mae = 0.55 * _be_mae_depth * (1.0 - _be_trend_gate)
-                _be_pressure = _be_near_zero * _be_hold_gate * max(_be_pres_trend, _be_pres_mae)
+                _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
+                _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
+                _be_pressure = 0.45 * _be_near_zero * _be_hold_gate * _be_mae_gate
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
