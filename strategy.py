@@ -740,6 +740,45 @@ class Strategy:
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
 
+        # Exp4 (architectural, indep, this session): PORTFOLIO CROSS-SYMBOL UNREALIZED-MAE
+        # admission tightener. NEW portfolio-level data dep distinct from every existing
+        # portfolio signal: _port_dd_atten reads UNREALIZED equity drawdown (lagged EMA of
+        # equity); _loss_streak reads REALIZED consecutive trade losses (closed trades);
+        # _port_deep_bear_* read price-based ret_vlong magnitude (predictive trend, not
+        # unrealized position outcome). NONE aggregates the UNREALIZED MAE of currently-OPEN
+        # positions across symbols -- a real-time signal that the CURRENTLY-HELD book is in
+        # an adverse regime (multiple open positions underwater). Rationale: when open
+        # positions are deep-MAE (portfolio-wide adverse regime, multiple positions bleeding
+        # simultaneously), NEW entries are at higher risk of ALSO becoming deep-MAE losers
+        # (the adverse regime hit is active, correlated across symbols) -> tighten admission
+        # to filter marginal-conviction entries during these periods -> fewer losing trades
+        # during active adverse regimes -> higher Sharpe in negative-Sharpe regimes (crash
+        # -0.156, sideways -0.067, both score==bare Sharpe, 1:1 levers). DISTINCT from
+        # _port_dd_atten: that fires AFTER equity has drawn down (reactive, lagged EMA);
+        # this fires on UNREALIZED position MAE which can LEAD the equity drawdown (positions
+        # go underwater before the equity EMA catches it). DISTINCT from _loss_streak: that
+        # counts REALIZED closed-trade losses (backward-looking); this reads UNREALIZED open-
+        # position MAE (forward-looking current state). Byte-identical when no open positions
+        # are in deep MAE (fraction 0 -> tighten 1.0). Continuous tanh, no boundary. Composes
+        # multiplicatively with the existing _strong_min tighten stack (weak_persist_avg,
+        # deep_bear_mag). Uses the existing per-symbol self._mae dict (the MAE low-water mark
+        # updated each bar at line ~2460). New portfolio-level cross-symbol data dep at
+        # admission. Targets crash (the regime where multiple correlated positions go
+        # underwater simultaneously during deep bear legs); direction-agnostic general
+        # principle (no regime label): an open book with widespread deep-MAE positions
+        # signals an active adverse regime -> filter marginal new entries.
+        _port_open_mae_deep_count = 0
+        _port_open_count = 0
+        for _osym in ACTIVE_SYMBOLS:
+            _omae = self._mae.get(_osym, None)
+            if _omae is not None and portfolio.positions.get(_osym, 0.0) != 0.0:
+                _port_open_count += 1
+                # deep-MAE = position underwater beyond ~0.5*stop (the moderate-loss band edge)
+                if _omae < 0.5 * STOP_LOSS_PCT:
+                    _port_open_mae_deep_count += 1
+        _port_open_mae_frac = (_port_open_mae_deep_count / _port_open_count) if _port_open_count > 0 else 0.0
+        _port_open_mae_admit_tighten = 1.0 + 0.15 * max(0.0, min(1.0, np.tanh((_port_open_mae_frac - 0.5) / 0.3)))
+
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
         # (96-bar trend) feeding alt sizing; this uses BTC VOLUME (6/18-bar mean ratio), a
@@ -1084,6 +1123,11 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp4 (this session): apply portfolio cross-symbol UNREALIZED-MAE admission
+            # tightener (computed at top level). Tightens admission when multiple OPEN
+            # positions are deep-MAE (active adverse regime). Byte-identical when no open
+            # positions are deep-MAE (fraction 0 -> tighten 1.0). See top-level comment.
+            _strong_min = _strong_min * _port_open_mae_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
