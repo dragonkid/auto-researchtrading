@@ -2738,6 +2738,55 @@ class Strategy:
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
                 self._hold_ext_ema[symbol] = _ta_dd_hold_ext
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
+                # Exp2 (architectural, indep): MAE-DEPTH REDUCTION of max_hold for SUSTAINED
+                # deep-MAE losing positions. Pursues the crash lever from a DIFFERENT axis
+                # than Exp1: Exp1 amplified _sl_slope_pressure (absorbed by _sl_pressure in
+                # MAX fusion -> byte-identical inert). This operates on the hold DURATION
+                # (when time-pressure FIRES), NOT on pressure magnitude -> CANNOT be absorbed
+                # by the MAX fusion (it changes the EXIT BAR, not the pressure value).
+                # NEW cross-component data dep: _max_hold now reads self._mae jointly with
+                # sustained-loss x trend x current-loss. Structural property (how far under-
+                # water the position has been + how long it has been losing), NOT a regime
+                # label. Mechanism: a position that went deeply underwater (MAE >= ~0.40*stop)
+                # AND has been losing for >=4 bars (sustained, not a fresh dip) AND is in a
+                # trending regime has demonstrated it is an extending loser -> shorten the
+                # hold window so time-pressure fires sooner (up to 2 bars earlier) -> cut
+                # the loser before it rides the stop down -> smaller realized losses ->
+                # higher Sharpe in the negative-Sharpe regime (crash PF 0.9, the 34pct
+                # losers are bigger than the 66pct winners).
+                # GATES (each protects a population that should NOT be cut):
+                # (1) deep-MAE tanh on (-mae)/(|stop|*0.40), saturates by ~0.8*stop -- only
+                #     clearly-deep-MAE positions (mistimed entries that went underwater);
+                #     spares shallow-MAE (fresh entries finding level).
+                # (2) sustained-loss (4-bar pos_pnl fraction negative) -- mirrors the
+                #     validated fd6a9169 keep's sustained_loss signal. Distinguishes an
+                #     extending loser (4/4 bars negative) from a fresh dip (1-2 bars negative
+                #     that may recover -- the 3e8777ca dead-end found crash trend-aligned
+                #     shorts dip negative on bar 1 during MAE adverse excursions then
+                #     RECOVER profitable; the sustained gate spares these).
+                # (3) trend-strength (rsi_trend_str/0.20) -- mirrors fd6a9169. Spares sideways
+                #     mean-reverters (chop oscillates, sustained-loss bars common but they
+                #     RECOVER); fires in trending regimes (crash/mixed where extending losers
+                #     are the problem).
+                # (4) currently losing (pos_pnl<0) -- the reduction only applies to losers,
+                #     winners byte-identical (the _ta_dd_hold_ext EXTENSION is profit-gated,
+                #     so winners get the extension not the reduction).
+                # Max -2 bar reduction (modest; the 4-bar time-pressure ramp means -2 bars
+                # advances onset by half the ramp). Byte-identical for shallow-MAE (gate 0),
+                # fresh dips (sustained<4), chop (trend gate 0), winners (loss gate 0).
+                # Continuous, no boundary. Distinct from the _ct_hold_sat shortening (that
+                # targets counter-trend; this targets deep-MAE losers regardless of trend-
+                # align/ct -- a structural life-cycle property, not a trend-direction one).
+                _mae_hold_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.40))))
+                _pp_h = self._pnl_path.get(symbol, [])
+                _sustained_loss_h = 0.0
+                if len(_pp_h) >= 4:
+                    _sustained_loss_h = sum(1.0 for _p in _pp_h[-4:] if _p < 0.0) / 4.0
+                _sustained_loss_h = max(0.0, min(1.0, (_sustained_loss_h - 0.75) / 0.25))  # 0 until 3/4 bars neg, 1 at 4/4
+                _trend_gate_h = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                _loss_gate_h = max(0.0, min(1.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
+                _mae_hold_short = 2.0 * _mae_hold_depth * _sustained_loss_h * _trend_gate_h * _loss_gate_h
+                _max_hold = _max_hold - _mae_hold_short
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
