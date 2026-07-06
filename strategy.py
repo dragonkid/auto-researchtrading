@@ -2926,7 +2926,7 @@ class Strategy:
                 # (shallow-MAE ct). Continuous tanh, no boundary. Distinct from the
                 # _be_mae_depth knee (0.25*stop): this is the COMPLEMENT (shallow-MAE = NOT
                 # deep-MAE), so ve fires where BE doesn't and vice versa.
-                _ve_mae_shallow = max(0.0, 1.0 - np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.30))))
+                _ve_mae_shallow = max(0.0, 1.0 - np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.30)))
                 _ve_dd_boost = 1.0 + 1.00 * (1.0 - _port_dd_atten) * _ve_ta_gate * _ve_mae_shallow
                 _ve_pressure = _ve_pressure * _ve_dd_boost
                 # Profit-side weight: only fire when in profit (lock gains on
