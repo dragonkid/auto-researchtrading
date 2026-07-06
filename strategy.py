@@ -2737,17 +2737,8 @@ class Strategy:
                 # the boost on low vol_ratio so it fires in the calm grind (mixed/rally)
                 # and ~off in the sharp high-vol regime (bull). Continuous tanh, no boundary.
                 _vlong_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # ~0 vol_ratio>=1.2, ~1 vol_ratio<=0.8
-                # Exp3 (architectural simplification, indep): PROBE removal of the _vlong_boost_vb
-                # multi-day-confirmation boost on the opp-bias trend-align (branch step3/step4
-                # addition). The boost was added to sustain mixed's rally-phase longs via opp-bias
-                # attenuation, vol-gated to low-vol grind. Since then, multiple OTHER mixed-
-                # targeting mechanisms (_persist_boost amplifier, _consensus_boost, pp_pressure
-                # attenuation) have been added/tuned -- the boost may now be redundant (absorbed).
-                # Test removal: revert _trend_align_vb to the baseline _ret_long_term_vb only. If
-                # mixed holds or improves, the boost is dead code; if mixed regresses, it's still
-                # load-bearing. Byte-identical for trend-aligned positions where _ret_long_term_vb
-                # is already ~1 (capped by min(1.0) -> boost was absorbed there anyway).
-                _trend_align_vb = min(1.0, _ret_long_term_vb)
+                _vlong_boost_vb = 0.30 * _vlong_vol_gate * _ret_vlong_term_vb  # small additive boost when multi-day confirms AND low-vol grind
+                _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb)
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
                 # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
                 # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
