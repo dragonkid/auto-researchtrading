@@ -17,8 +17,38 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 ## What you CANNOT do
 
 - Modify `prepare.py`, `backtest.py`, `regime_test.py`, `noise_test.py`, or anything in `benchmarks/`.
-- Install new packages. Only numpy, pandas, scipy, and standard library.
+- Install new packages. Only numpy, pandas, scipy, numba, and standard library.
 - Look at holdout data (2025-01 onwards).
+
+## Performance optimization (numba JIT)
+
+The backtest is CPU-bound on `strategy.py`'s `on_bar()`: 60% of runtime is numpy calls (`np.std`, `np.diff`, `np.mean`) on small arrays (8-96 elements), where numpy's per-call dispatch overhead dominates over actual computation. 845K `np.std` calls per backtest (≈80 per `on_bar` × 3 symbols).
+
+`numba` is available as a dependency. Use `@numba.njit` (nopython-mode JIT) to compile hot numerical functions for significant speedup:
+
+```python
+from numba import njit
+
+@njit(cache=True)
+def _fast_std(arr):
+    """Faster than np.std for small arrays — eliminates numpy dispatch overhead."""
+    n = len(arr)
+    if n < 2:
+        return 0.0
+    s = 0.0
+    for i in range(n):
+        s += arr[i]
+    mean = s / n
+    var = 0.0
+    for i in range(n):
+        d = arr[i] - mean
+        var += d * d
+    return (var / n) ** 0.5
+```
+
+Apply to functions called many times per bar (`ema`, `_fast_slope`, vol calculations). Use `cache=True` so compilation persists across runs. Numba compiles on first call (~2s per function) but with 500+ backtests per regime_test, this is amortized.
+
+**Numba constraints**: `@njit` functions must be type-stable (no mixed int/float returns, no Python objects). Dict/string operations are not supported in nopython mode. Only apply to pure numerical functions. If a function can't be njit'd, leave it as-is — the overhead is in the numpy calls, not the Python logic.
 
 ### Phase priority rule
 Focus on maximizing composite_score (= mean regime scores - 0.3*std). Stability test is ENABLED — applies to regimes with positive score.
