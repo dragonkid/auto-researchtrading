@@ -262,26 +262,6 @@ ENTRY_ACCUM_THRESH = 0.0
 # on bull's pullback-DD pattern (marginal entries during DD are noise there);
 # sideways/crash byte-identical. Byte-identical at portfolio peak (dd_frac=0).
 PORT_DD_ENTRY_THRESH_MAX = 0.15   # max fractional raise of ENTRY_ACCUM_THRESH at deep DD
-# Exp2 (architectural, indep): WEAK-TREND-AVG entry readiness threshold raise. Extends
-# the KEEP's EMA-threshold-raise principle (which uses portfolio DD + ret_vlong>0.04,
-# a BULL-specific signal) to a SIDEWAYS-specific portfolio signal: the cross-symbol
-# AVERAGE weak_persist (already computed as _port_weak_persist_avg, used by the
-# _strong_min tightener). Sideways has LOW portfolio DD (4.46pct -> _port_dd_atten~1.0
-# -> the KEEP's DD-gated raise is byte-identical for sideways) but HIGH portfolio
-# weak_persist (all three symbols oscillating together -> avg ~0.7+). The KEEP proved
-# the EMA crossing threshold CAN be raised to filter marginal-conviction entries
-# during a regime-specific adverse pattern (bull DD pullbacks). This raises the SAME
-# threshold during sustained portfolio chop (sideways's adverse pattern = churn noise).
-# Hypothesis: sideways's marginal-conviction entries (where _acc_b/_acc_s barely
-# crosses 0.0) during sustained chop are noise (not edge) -> filtering them cuts the
-# over-trading (154 trades, the highest of any regime) -> fewer noise trades -> higher
-# sideways Sharpe. DISTINCT from _port_weak_admit_tighten on _strong_min: that tightens
-# the STRONG-SUM gate (filters low voter-conviction entries); this tightens the EMA
-# crossing gate (filters low smoothed-MARGIN entries). A marginal entry can pass one
-# gate and fail the other -> complementary, not redundant. Byte-identical when
-# _port_weak_persist_avg < ONSET (bull/rally/crash where avg weak_persist < 0.55).
-# Continuous tanh ramp (no boundary); direction-agnostic general principle.
-PORT_WEAK_THRESH_MAX = 0.10   # max fractional raise of ENTRY_ACCUM_THRESH at sustained portfolio chop
 
 # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator parameters. The
 # prior-session headroom-boost branch (7 failed attempts) gated a mixed entry-
@@ -1189,15 +1169,6 @@ class Strategy:
             # positive), all other regimes byte-identical.
             _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
-            # Exp2 (architectural, indep): WEAK-TREND-AVG EMA threshold raise. Extends
-            # the KEEP's EMA-threshold-raise to a non-DD portfolio signal: the cross-symbol
-            # avg weak_persist (sideways's adverse pattern = sustained chop, not DD).
-            # Raises the EMA crossing threshold during sustained portfolio chop to filter
-            # sideways's marginal-conviction churn-noise entries. Byte-identical when
-            # _port_weak_persist_avg < ONSET (bull/rally/crash). Distinct from _strong_min's
-            # _port_weak_admit_tighten (complementary admission gates).
-            _weak_thresh_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - PORT_WEAK_PERSIST_AVG_ONSET) / PORT_WEAK_PERSIST_AVG_SCALE)))
-            _entry_thresh_dd = _entry_thresh_dd + PORT_WEAK_THRESH_MAX * _weak_thresh_gate
             _bull_ready = _acc_b >= _entry_thresh_dd
             _bear_ready = _acc_s >= _entry_thresh_dd
 
