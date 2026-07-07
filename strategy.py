@@ -2810,7 +2810,12 @@ class Strategy:
                 # MUST only fire for true high-vol vol_ratio>1.0, NOT moderate-vol 0.8-1.0).
                 # The _vol_hold_ext onset (vol_ratio-1.0)/0.5 is already 1.0 -> preserved.
                 # Byte-identical for vol_ratio<=1.0 (gate 0).
-                _max_hold *= 1.0 + 0.50 * _vol_hold_ext
+                # branch step4: push level 0.50 -> 0.55 (prior session UNTESTED finer optimum,
+                # documented: "0.55/0.60 might extend the crash gain before the 0.65 regression").
+                # With Exp3 width-narrowing + convex shape compounding, a small level bump may
+                # push crash+bull enough to cross the +0.003 keep threshold (step3 +0.002587,
+                # need +0.0004 more). Monitor crash for the 0.65 over-hold regression cliff.
+                _max_hold *= 1.0 + 0.55 * _vol_hold_ext
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
