@@ -411,7 +411,7 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 # range position (stale). Shrink-only (max 0.18), first-bar-only. Continuous tanh on the
 # counter-move magnitude (no boundary). Direction-agnostic (no regime label): a trend-
 # aligned entry chasing a sharp counter-move is lower quality.
-COUNTER_VEL_SHRINK_MAX = 0.18  # max shrink at deep counter-move velocity
+COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.015      # 3-bar return magnitude at which shrink saturates (~1.5pct)
 
 
