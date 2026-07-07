@@ -423,12 +423,6 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
-        # Exp4: per-symbol bar_count at which peak_pnl was last set (peak recency).
-        # Used by the peak-recency giveback-tolerance modulation: a STALE peak (set many
-        # bars ago, position rolling over post-peak) tightens giveback so pp_pressure
-        # harvests the aging winner before it fully round-trips; a FRESH peak (just hit a
-        # new high) keeps full tolerance (let the new high develop).
-        self._peak_bar = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
@@ -2506,7 +2500,6 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
-                    self._peak_bar[symbol] = self.bar_count
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
@@ -2587,36 +2580,6 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp4 (architectural, indep): PEAK-RECIENCY giveback-tolerance modulation.
-                # NEW cross-component data dep on the giveback-tolerance subsystem: the
-                # effective giveback tolerance (reads portfolio-DD via _pp_tighten) now ALSO
-                # reads how STALE the peak is (bars since peak_pnl was last set, via the new
-                # _peak_bar state). A FRESH peak (pos_pnl just made a new high a few bars
-                # ago) is a LIVE uptrend leg -> keep the FULL giveback tolerance (let the
-                # new high develop, don't harvest prematurely). A STALE peak (the high was
-                # set many bars ago and pos_pnl has been giving back since) is an AGING
-                # winner rolling over -> TIGHTEN the giveback so pp_pressure harvests the
-                # remaining gain before the position fully round-trips to a loss (the
-                # sideways/crash pattern: small peak formed, then a slow bleed back through
-                # BE to the stop while the full giveback tolerance delays the exit). The
-                # stale-peak population is exactly the round-tripping winner that the
-                # MAE-giveback (Exp2, discarded) TRIED to target via MAE but missed because
-                # round-tripping winners have peak_pnl>0 and mae~-peak (symmetric V, the
-                # MAE is shallow-ish) -- peak RECENCY catches the SAME population via a
-                # DIFFERENT signal (time-since-peak, not adverse-depth). Distinct from the
-                # catastrophic peak-stall 7th source (that ADDED a soft source firing on
-                # bars-since-peak; this MODIFIES the existing giveback tolerance, no new
-                # source). Onset ~6 bars since peak (past a typical pullback-recovery
-                # window), saturating ~12 bars; max additional tightening 0.15 (smaller
-                # than the 0.50 portfolio-DD tightening -- a per-position life-cycle
-                # signal). Profit-side only (only fires when peak_pnl>0 -> a winner that
-                # can give back; pure losers peak_pnl~0 -> _pp_activation 0 -> inert).
-                # Byte-identical when peak is fresh (<6 bars) OR position is a pure loser.
-                # Smooth (no boundary), direction-agnostic. Targets sideways/crash
-                # round-tripping winners; spares live-trend fresh-peak winners (bull/rally).
-                _peak_age = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
-                _pp_recency_tighten = max(0.0, min(1.0, np.tanh((_peak_age - 6.0) / 4.0)))
-                _pp_tighten = _pp_tighten * (1.0 - 0.15 * _pp_recency_tighten)
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
@@ -4238,7 +4201,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._peak_bar, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -4250,7 +4213,6 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._peak_bar[symbol] = self.bar_count  # Exp4: init peak-recency clock at entry
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
