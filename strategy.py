@@ -425,10 +425,6 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
-        # Exp3: per-symbol last-exit SIDE (+1 long / -1 short / 0 none). Used by the
-        # same-direction-loss cooldown extension: a fresh entry on the SAME side as a
-        # recent LOSING exit (a failing mean-revert re-entry) faces a longer cooldown.
-        self._last_exit_side = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -2182,35 +2178,6 @@ class Strategy:
                 # bear-side consensus boost depends on _down_persist (was weak_persist).
                 _consensus_boost_bull = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
                 _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
-                # Exp3 (architectural, indep): SAME-DIRECTION-LOSS entry shrink. NEW cross-
-                # trade data dep: first-bar entry size reads (last exit side, current entry
-                # side, last exit PnL) jointly. The existing _outcome_size_mult shrinks
-                # after ANY loss (symmetric, line ~1225); this is the DIRECTION-AWARE
-                # complement: a fresh entry on the SAME side as a recent LOSING exit (e.g.
-                # a bull long that stopped out, then another bull long re-entry) is a
-                # repeated failing mean-revert -- the same-side signal just failed, re-
-                # entering same-side is lower-quality than an opposite-side reversal entry.
-                # Shrink same-side-after-loss re-entries (max 0.20) to cut the magnitude of
-                # these clustered losing re-entries while sparing opposite-side entries
-                # (a loss on bull -> bear entry is a reversal, not a repeat -- full size).
-                # Targets sideways (PF 1.3, WR 66.9pct -- the 33pct losers are clustered
-                # same-side mean-revert failures that re-enter and stop again) and crash
-                # dead-cat-bounce longs (bull longs that fail in a downtrend, re-enter, fail
-                # again). Distinct from the discarded portfolio loss-streak entry block
-                # (that was a cross-symbol HARD cooldown -- catastrophic; this is a per-
-                # symbol same-side SIZE shrink, the proven safe shrink-not-block family)
-                # and from the churn-gated reversal cooldown (that blocked DIRECTION FLIPS;
-                # this shrinks SAME-DIRECTION repeats -- opposite direction). Uses the
-                # existing _last_exit_pnl (loss magnitude, fast-saturating tanh /|stop|)
-                # and the NEW _last_exit_side state. Byte-identical when last exit was a
-                # win (loss gate 0), no prior exit (side 0), or the new entry is OPPOSITE
-                # side to the last loss (the reversal case). Shrink-only (safe family),
-                # first-bar-only. Direction-agnostic general principle: a same-side re-
-                # entry after a same-side loss is a lower-quality repeat trade.
-                _last_loss_side = self._last_exit_side.get(symbol, 0) if self._last_exit_pnl.get(symbol, 0.0) < 0.0 else 0
-                _last_loss_mag = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
-                _same_side_loss_shrink_bull = 1.0 - 0.20 * _last_loss_mag * (1.0 if _last_loss_side > 0 else 0.0)
-                _same_side_loss_shrink_bear = 1.0 - 0.20 * _last_loss_mag * (1.0 if _last_loss_side < 0 else 0.0)
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
@@ -2230,12 +2197,12 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _same_side_loss_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _same_side_loss_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
@@ -4228,10 +4195,6 @@ class Strategy:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         _exit_pnl_signed = -_ep if current_pos < 0 else _ep
                         self._last_exit_pnl[symbol] = _exit_pnl_signed
-                        # Exp3: record the side of the exit (+1 long / -1 short) for the
-                        # same-direction-loss cooldown: a fresh entry on the SAME side as a
-                        # recent LOSING exit faces a longer cooldown / smaller first-bar size.
-                        self._last_exit_side[symbol] = 1 if current_pos > 0 else -1
                         # Exp3: update portfolio consecutive-loss streak (mirrors
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
