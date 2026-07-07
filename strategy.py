@@ -395,13 +395,6 @@ PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
 PORT_VOL_SPIKE_ONSET = 1.30   # vol_ratio above which cap engages (calm<1.0, chop>1.2; 1.3 = elevated)
 PORT_VOL_SPIKE_SCALE = 0.30
 PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
-# Exp1 (architectural, indep, this session): PORTFOLIO CROSS-SYMBOL RETURN-DISPERSION
-# admission tightener parameters. Normalized dispersion = std(20-bar returns across
-# BTC/ETH/SOL) / mean(|20-bar return|). ONSET 0.50 = symbols differ by half the mean
-# return; SATURATES by ~1.0 (symbols fully disagree in sign/direction).
-PORT_DISP_ONSET = 0.50
-PORT_DISP_SCALE = 0.30
-PORT_DISP_MAX_TIGHTEN = 0.18  # max admission threshold raise at full saturation (-> 1.18x harder to enter)
 
 
 class Strategy:
@@ -653,41 +646,6 @@ class Strategy:
         else:
             _consensus_strength = 0.0
             _consensus_dir = 0.0
-
-        # Exp1 (architectural, indep, this session): PORTFOLIO CROSS-SYMBOL RETURN-
-        # DISPERSION admission tightener. NEW portfolio-level data dep: the cross-
-        # sectional standard deviation of the three symbols' 20-bar net returns,
-        # normalized by the mean absolute 20-bar return. Structurally distinct from
-        # _consensus (sign-agreement count: cannot separate BTC+5%/ETH-3%/SOL-2% from
-        # BTC+5%/ETH+5%/SOL+5% -- both have |sum|=3, but the former is high-dispersion
-        # idiosyncratic, the latter zero-dispersion broad-move) and from _btc_trend
-        # (single-symbol). HIGH normalized dispersion = symbols are moving DIFFERENTLY
-        # = a rotation/idiosyncratic regime where directional signals disagree -> the
-        # 8-voter strong-sum is drawn from a noisier distribution -> tighten admission
-        # to filter marginal entries. LOW dispersion = all legs moving together = a
-        # broad, high-conviction market move -> don't tighten (preserve trend entries).
-        # General principle (no regime label): cross-symbol disagreement = lower entry
-        # quality. Fires in mixed_2025's rotation down-legs (one symbol trending down
-        # while others oscillate -> high dispersion) and sideways chop; byte-identical
-        # when fewer than 2 symbols present or all 20-bar returns nearly equal (broad
-        # bull/rally/crash trend legs where all three move together -> dispersion~0).
-        # Continuous tanh ramp (no boundary); shrink-only (>=1.0, never relaxes).
-        # Composes multiplicatively with the existing portfolio admission tighteners
-        # (_port_weak_admit_tighten avg-weak, _port_deep_bear_admit_tighten max-bear)
-        # on INDEPENDENT signal axes (dispersion vs weak-trend vs deep-bear).
-        _disp_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > LONG_WINDOW]
-        _port_disp_tighten = 1.0
-        if len(_disp_syms) >= 2:
-            _disp_rets = []
-            for _dsym in _disp_syms:
-                _dc = bar_data[_dsym].history["close"].values
-                _disp_rets.append(float((_dc[-1] - _dc[-LONG_WINDOW]) / _dc[-LONG_WINDOW]))
-            _disp_arr = np.array(_disp_rets)
-            _disp_mean = float(np.mean(_disp_arr))
-            _disp_std = float(np.std(_disp_arr))
-            _disp_scale = max(abs(_disp_mean), 0.01)  # normalize by mean |return|; floor 1pct
-            _disp_norm = _disp_std / _disp_scale  # 0 = all equal, >1 = more dispersed than mean
-            _port_disp_tighten = 1.0 + PORT_DISP_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_disp_norm - PORT_DISP_ONSET) / PORT_DISP_SCALE)))
 
         # Exp1 (architectural, indep): PORTFOLIO CROSS-SYMBOL DEEP-BEAR down_persist.
         # Compute each symbol's _down_persist (fraction of last PERSIST_WINDOW bars where
@@ -1126,13 +1084,6 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
-            # Exp1 (this session): apply portfolio cross-symbol return-DISPERSION admission
-            # tightener (computed at top level). Tightens admission when symbols' 20-bar
-            # returns diverge (idiosyncratic/rotation regime = lower entry quality). Byte-
-            # identical when _port_disp_tighten=1.0 (broad trend legs where all symbols
-            # move together -> dispersion~0). Composes on an independent axis from weak/
-            # deep-bear (dispersion vs weak-trend vs deep-bear magnitude).
-            _strong_min = _strong_min * _port_disp_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
