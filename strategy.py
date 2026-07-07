@@ -3414,7 +3414,38 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp2 (architectural, indep): LOW-VOL gate on the convex de-risk
+                        # cushion. The cushion (k>1 -> hold near full size through mid-range
+                        # exit-pressure noise) was gated trend-ALIGNMENT only (ret_long*pos_dir)
+                        # because a UNIFORM cushion held rally's COUNTER-TREND shorts (the
+                        # losing rally trades) longer through giveback (prior step1 -0.025).
+                        # But trend-alignment EXCLUDES sideways mean-reverters: sideways
+                        # entries are against the short-term move (ct at the 20-bar scale) so
+                        # _dr_align~0 -> linear ramp -> mid-range slope/pp oscillation passes
+                        # 1:1 to position-value -> equity wobble -> low sideways Sharpe (-0.067,
+                        # the bare-Sharpe 1:1 composite lever). Sideways is LOW-VOL (vol_ratio
+                        # ~0.6-0.8): its exit-pressure oscillation is small-magnitude noise
+                        # (slope/pp flip within a tight range) that a convex cushion absorbs
+                        # WITHOUT the lag cost (k>1 holds near-full through mid-range, de-risks
+                        # sharply only at high pressure -> the decisive cut preserved). Gate
+                        # the cushion on LOW vol_ratio as an ALTERNATIVE path to trend-alignment:
+                        # sideways winners (low vol, mean-reverting) earn the cushion via the
+                        # low-vol gate even though _dr_align~0. Crash (high vol >1.2) excluded
+                        # (gate 0 -> linear fast cut preserved for stop-bound losers). Rally
+                        # (medium vol ~1.0) excluded (gate ~0 -> ct-short regression source
+                        # neutralized). Bull (medium-high vol) mostly excluded. The prior
+                        # uniform-cushion rally regression was from rally's MEDIUM vol passing
+                        # the gate; the /0.20 fast-saturating scale here puts vol_ratio~1.0
+                        # in the flat near-0 tail (gate ~0.06) while sideways 0.6-0.8 saturates
+                        # near 1.0. Gated to PROFIT (_pnl_scale>0, mirrors the trend-align path)
+                        # so losers keep the linear fast cut. NEW cross-component data dep:
+                        # the de-risk cushion now reads vol_ratio jointly with (trend-align,
+                        # profit, slope-conf) -- an OR of two structural paths to earning the
+                        # cushion (trend-aligned OR low-vol-chop), both profit-gated. Continuous
+                        # tanh, no boundary. Direction-agnostic (no regime label).
+                        _dr_lowvol_gate = max(0.0, min(1.0, np.tanh((0.9 - vol_ratio) / 0.20)))
+                        _dr_cushion_gate = max(_dr_align, _dr_lowvol_gate)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_cushion_gate * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned OR low-vol-chop + profit + slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
