@@ -2881,16 +2881,7 @@ class Strategy:
                 # byte-identical. rally (ret_vlong solidly positive) -> still ~1 -> preserved.
                 _tp_trend_confirm = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # ~1 rally-confirmed (strong), ~0 sideways/mixed-weak-bounce
                 _tp_chop_loss_gate = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))) * _tp_trend_confirm
-                # branch step7: increase narrowing magnitude 0.375 -> 0.45. At step4 the rally
-                # gain (+0.0054) exceeds the mixed cost (-0.0022) by 2.45:1 (rally higher Sharpe
-                # -> log(1+Sh) concave but dd_gate similar; net the trend-confirmed-pullback-
-                # loser narrowing favors rally over mixed). Scaling the magnitude up increases
-                # BOTH proportionally, but the NET (rally - mixed) scales too -> +0.0032 net ->
-                # ~+0.0038 at 1.2x -> may push the step4 compound (+0.002664) past +0.003. rally
-                # +mixed are both positive-Sharpe (amplified region); crash/bull/sideways byte-
-                # identical (gate 0). Monitor for rally over-cut (too-aggressive narrowing cuts
-                # rally winners that would have recovered the trend).
-                _tp_ramp_w = _tp_ramp_w * (1.0 - 0.45 * _tp_chop_loss_gate)
+                _tp_ramp_w = _tp_ramp_w * (1.0 - 0.375 * _tp_chop_loss_gate)
                 # branch step3: CONVEX tp ramp SHAPE (progress^k, k=2.5 vol-gated to high-vol).
                 # Prior session: convex shape (low early-half pressure -> trend winners ride the
                 # high-vol per-bar real move; high late-half -> cut on schedule) moved crash
