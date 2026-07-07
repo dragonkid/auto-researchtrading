@@ -2812,7 +2812,7 @@ class Strategy:
                 # time-pressure bar regardless of where the level sat; WITH the convex shape
                 # (low early-half pressure), the level extension now matters because the
                 # ramp is gradual enough that the extra hold duration is productive.
-                _max_hold *= 1.0 + 0.18 * _vol_hold_ext
+                _max_hold *= 1.0 + 0.24 * _vol_hold_ext
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
