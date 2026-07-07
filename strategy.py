@@ -2799,7 +2799,18 @@ class Strategy:
                 # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
-                _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # branch step3: LEVEL amplification 0.12 -> 0.50 (compound with Exp3 width-
+                # narrowing + convex shape). Prior session found level-alone INERT (the
+                # LINEAR ramp cut winners fast on the first time-pressure bar regardless of
+                # where the level sat) BUT level+shape COMPLEMENTARY (with a convex SHAPE the
+                # level extension is productive -- extra hold duration now matters since the
+                # ramp is gradual enough to ride). level 0.50 was the prior-session optimum
+                # (0.65 regressed crash over-hold). level-onset 1.0 is LOAD-BEARING (0.8
+                # catastrophically regressed bull per prior session -- the level extension
+                # MUST only fire for true high-vol vol_ratio>1.0, NOT moderate-vol 0.8-1.0).
+                # The _vol_hold_ext onset (vol_ratio-1.0)/0.5 is already 1.0 -> preserved.
+                # Byte-identical for vol_ratio<=1.0 (gate 0).
+                _max_hold *= 1.0 + 0.50 * _vol_hold_ext
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
@@ -2866,7 +2877,22 @@ class Strategy:
                 _tp_trend_confirm = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # ~1 rally-confirmed (strong), ~0 sideways/mixed-weak-bounce
                 _tp_chop_loss_gate = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))) * _tp_trend_confirm
                 _tp_ramp_w = _tp_ramp_w * (1.0 - 0.375 * _tp_chop_loss_gate)
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
+                # branch step3: CONVEX tp ramp SHAPE (progress^k, k=2.5 vol-gated to high-vol).
+                # Prior session: convex shape (low early-half pressure -> trend winners ride the
+                # high-vol per-bar real move; high late-half -> cut on schedule) moved crash
+                # +0.0025 Sh (linear in k), bull +0.0001 at k=2.0 (the bull sweet spot; k=3.0
+                # over-held bull pullback longs). k=2.5 was the prior-session optimum (k=2.8
+                # regressed bull). Composes with the level amplification above (level+shape
+                # complementary per prior session) AND the Exp3 width-narrowing (orthogonal axis:
+                # shape changes curvature WITHIN the window, width changes window size, level
+                # changes WHERE the window starts). SHAPE-GATE onset 0.8 (load-bearing per prior
+                # session: lower engages bull moderate-vol -> over-held). Calm (vol_ratio<0.8)
+                # -> k=1.0 LINEAR -> byte-identical (sideways byte-identical). The progress^k
+                # is applied to the clamped [0,1] linear progress; k>1 lowers early-half
+                # pressure (concave -> convex curvature holds near-0 then ramps late).
+                _tp_lin_progress = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
+                _tp_shape_k = 1.0 + 1.5 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm (byte-identical), 2.5 high-vol
+                _time_pressure = _tp_lin_progress ** _tp_shape_k
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
