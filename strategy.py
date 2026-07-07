@@ -2853,32 +2853,7 @@ class Strategy:
                 # depends on vol_ratio (curvature, not just width/level). Continuous (smooth
                 # power, no new decision boundary). Direction-agnostic, no regime label.
                 _tp_shape_k = 1.0 + 1.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm -> 2.0 high-vol (step2: 1.5->2.0 amplify crash gain)
-                # branch step4: PIECEWISE convex-then-linear ramp shape. Step2 (pure convex
-                # progress^k, k=2.0) gave crash +0.0025 but step3 (k=3.0) over-held BULL
-                # pullback longs (early-half pressure near-zero -> longs sit in low-pressure
-                # zone across vol spikes -> held too long -> Sharpe -0.022). Root cause: a
-                # pure power curve flattens the LATE half too (pressure at progress=0.75 is
-                # 0.75^2=0.5625 vs linear 0.75 -> the late-half cut is also delayed, over-
-                # holding winners past the point where the trend move is captured). The
-                # winner-ride benefit is in the EARLY half (low pressure while the trend
-                # move plays out); the late half should CUT on schedule (restore linear
-                # graduation toward full pressure at window end). Piecewise shape: convex
-                # (progress^k) for progress<0.5 (early-half low pressure, ride winners),
-                # then LINEAR from the convex midpoint (0.5^k) to 1.0 at progress=1.0
-                # (late-half cuts on schedule). This keeps the step2 crash winner-ride
-                # (early-half convex) while restoring the late-half cutting schedule (fixes
-                # step3 over-hold). At k=1.0 (calm), 0.5^1.0=0.5 -> the linear segment starts
-                # at 0.5 and reaches 1.0 -> IDENTICAL to pure linear (byte-identical for
-                # sideways/rally/mixed, vol_ratio<0.8 -> k=1.0). Continuous at the 0.5 join
-                # (both pieces meet at 0.5^k). New control flow: ramp shape is piecewise
-                # (convex early, linear late), distinct from pure-convex (step2) and the
-                # width/onset axes. Tests whether the late-half cut restoration lifts bull
-                # back while keeping the crash early-half ride.
-                if _tp_progress <= 0.5:
-                    _time_pressure = _tp_progress ** _tp_shape_k
-                else:
-                    _tp_mid = 0.5 ** _tp_shape_k
-                    _time_pressure = _tp_mid + (_tp_progress - 0.5) * (1.0 - _tp_mid) / 0.5
+                _time_pressure = _tp_progress ** _tp_shape_k
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
