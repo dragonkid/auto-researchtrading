@@ -2571,7 +2571,36 @@ class Strategy:
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
-                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
+                # Exp2 (architectural, indep): VOL-NORMALIZED pp_pressure giveback RAMP
+                # WIDTH (high-vol extension). _pp_band is the width of the giveback-ratio
+                # ramp (_pp_pressure ramps 0->1 across [_pp_lower, _pp_lower+_pp_band]).
+                # The prior form (0.10 + 0.20*min(1.0, vol_ratio)) SATURATES at vol_ratio=1.0,
+                # so high-vol regimes (crash vol_ratio~1.0-1.3) sit in the FLAT TAIL past
+                # saturation — vol_ratio=1.0 and 1.3 get the IDENTICAL 0.30 band. This is
+                # the EXACT wall the vol-normalized time-pressure ramp WIDTH keep (296762d8)
+                # fixed: that keep extended the ramp past the vol_ratio=1.0 saturation so
+                # crash's elevated vol (1.0-1.3) gets a wider ramp. Apply the SAME validated
+                # pattern here: keep the prior form byte-identical for vol_ratio<=1.0
+                # (preserves calm/normal-vol behavior — sideways/rally grind, the linear
+                # ramp the baseline calibrated), and ADD a tanh EXTENSION past vol_ratio=1.0
+                # that widens the giveback ramp further in high-vol so high-vol trend
+                # WINNERS (crash shorts, the high-vol trend regime whose shorts ride the
+                # downtrend) de-risk more gradually through the larger per-bar real move
+                # before full pp_pressure fires -> more trend capture -> higher Sharpe in
+                # negative-Sharpe regimes (score == bare Sharpe there, 1:1). The extension
+                # is floored at 0 for vol_ratio<=1.0 (byte-identical to baseline there —
+                # sideways/rally/mixed stay the same) and rises to ~0.10 at vol_ratio=1.3
+                # (+33pct of the prior 0.30 band). Continuous tanh, no boundary. Distinct
+                # from the tp_ramp_width keep (time-pressure subsystem): this is the
+                # pp_pressure giveback subsystem. Distinct from giveback TIGHTENING
+                # (PORT_DD_GIVEBACK_TIGHTEN, the giveback TOLERANCE, maxed at 0.50): this
+                # changes the ramp WIDTH (how gradually pp_pressure ramps), not the
+                # tolerance level. NOTE: _pp_lower = _pp_giveback_eff*(1-_pp_band) so a
+                # wider band also lowers the activation floor; the two effects compose
+                # (ramp starts slightly earlier but ramps more gradually), mirroring the
+                # tp_ramp_width keep where the wider ramp shifted the activation region.
+                _pp_band_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.3))  # 0 vol_ratio<=1.0, ~0.32 @1.1, ~0.62 @1.3
+                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio) + 0.10 * _pp_band_ext
                 # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
                 # down from its peak, shrink the effective giveback tolerance so pp_pressure
                 # harvests winners faster (locks gains) -> caps DD from riding winners through
