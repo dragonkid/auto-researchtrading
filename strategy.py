@@ -2815,7 +2815,9 @@ class Strategy:
                 # With Exp3 width-narrowing + convex shape compounding, a small level bump may
                 # push crash+bull enough to cross the +0.003 keep threshold (step3 +0.002587,
                 # need +0.0004 more). Monitor crash for the 0.65 over-hold regression cliff.
-                _max_hold *= 1.0 + 0.55 * _vol_hold_ext
+                # branch step5: push level 0.55 -> 0.60 (probe the 0.55-0.65 window; step4 0.55
+                # gained +0.000077 decelerating, 0.60 may gain a bit more before the 0.65 cliff).
+                _max_hold *= 1.0 + 0.60 * _vol_hold_ext
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
