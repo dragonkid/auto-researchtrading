@@ -2825,6 +2825,39 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
+                # Exp3 (architectural, indep, this session): TREND-CONFIRMED chop-loser tp
+                # ramp narrowing -- isolates the Exp2 rally +0.0054 signal while protecting
+                # mixed/sideways. Exp2 (chop-loser narrowing, gated on rsi_trend_str x pos_pnl)
+                # helped rally +0.0054 (chop pullback losers cut faster) BUT hurt mixed -0.0057
+                # (sustained chop losers cut that would mean-revert) and sideways -0.0266 (cut
+                # mean-reverters). The SEPARATOR that distinguishes rally's TRANSIENT pullbacks
+                # (cut the loser, trend resumes -> dead capital) from mixed's SUSTAINED chop
+                # (spare, mean-reverts) is MULTI-DAY TREND CONFIRMATION: rally longs sit in a
+                # confirmed uptrend (ret_vlong solidly positive, trend-aligned with position);
+                # mixed wrong-side longs are counter-trend-at-multi-day (ret_vlong<0); sideways
+                # has ret_vlong~0 (no confirmation). NEW CROSS-COMPONENT DATA DEP: tp ramp
+                # width now depends on (pos_pnl sign, rsi_trend_str, ret_vlong x pos_dir) jointly
+                # -- a 3-way position-level x short-trend x multi-day-trend interaction. The
+                # narrowing fires ONLY when ALL THREE agree: losing (pos_pnl<0) AND in local chop
+                # /pullback (low rsi_trend_str) AND multi-day-trend-confirmed (ret_vlong x
+                # pos_dir > 0 strongly). This is the rally-pullback-loser population. Gated by
+                # the SAME multi-day trend-align factor the _ts_supp tp-harvest uses (line ~3257,
+                # tanh(ret_vlong*pos_dir/0.04)) -- a validated, near-constant, noise-robust
+                # signal. Byte-identical for: (a) trend regimes (rsi_trend_str high -> chop-gate
+                # 0 -> bull/crash byte-identical, high-vol widening keep preserved); (b) winners
+                # (pos_pnl>0 -> loss-gate 0); (c) sideways (ret_vlong~0 -> trend-confirm 0 ->
+                # byte-identical, the Exp2 sideways regression AVOIDED); (d) mixed ct longs
+                # (ret_vlong<0, pos_dir=+1 -> product<0 -> trend-confirm 0 -> spared, the Exp2
+                # mixed regression AVOIDED). Targets rally (positive-Sharpe, log(1+Sh) x dd_gate
+                # region -- Sharpe gain amplified not 1:1; rally DD 5.55pct just above the 5pct
+                # knee so a Sharpe gain from cutting pullback losers faster compounds with the
+                # existing dd_gate). Continuous tanh, no boundary, direction-agnostic (no regime
+                # label): a losing position in a local pullback within a confirmed trend is dead
+                # capital (the trend will resume without it) -> reach full time-pressure sooner.
+                _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
+                _tp_trend_confirm = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.04))  # ~1 rally-confirmed, ~0 sideways/mixed-ct
+                _tp_chop_loss_gate = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))) * _tp_trend_confirm
+                _tp_ramp_w = _tp_ramp_w * (1.0 - 0.375 * _tp_chop_loss_gate)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
