@@ -2825,6 +2825,40 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
+                # Exp2 (architectural, indep, this session): CHOP-LOSER tp ramp NARROWING.
+                # Exp1 (low-vol widening) REGRESSED sideways (-0.052 -> -0.105): the wider
+                # ramp held sideways LOSERS longer -> worse. The mirror direction: NARROW
+                # the ramp (faster pressure buildup) for LOSING positions in CHOP, so
+                # sideways losers reach full time-pressure sooner -> smaller realized
+                # losses -> higher PF -> higher sideways Sharpe (the negative-Sharpe regime,
+                # score == bare Sharpe, 1:1). NEW CROSS-COMPONENT DATA DEP: the tp ramp
+                # width now depends on (position PnL sign, trend-strength) jointly -- a
+                # position-level x market-regime interaction absent from the vol-only
+                # width term above. SEPARATORS (both validated, avoid the Exp1 vol_ratio
+                # leak): (a) rsi_trend_str -- the validated chop separator already used by
+                # _w_time/_chop_amp/_be_trend_gate (low = chop/sideways, high = trend); fires
+                # in chop, ~0 in bull/crash/rally trends -> trend regimes BYTE-IDENTICAL
+                # (the keep 296762d8 high-vol widening is preserved unchanged for them).
+                # (b) pos_pnl sign -- LOSERS only (pos_pnl < 0 -> loss-gate 1; winners -> 0 ->
+                # byte-identical, sideways mean-reverters that are winning keep the baseline
+                # 4.0 ramp to ride the recovery). The two gates compose multiplicatively:
+                # fires ONLY for losing positions in chop. DISTINCT from the _exit_dd_gate /
+                # _de_floor sustained-loss-trend-gate (those lower the exit THRESHOLD / de-
+                # risk FLOOR for sustained losers in TRENDING regimes -- near-0 in sideways
+                # by design, sparing sideways mean-reverters); this changes the RAMP WIDTH
+                # (a DIFFERENT exit axis -- how fast pressure BUILDS, not where the threshold
+                # SITS) and fires in CHOP not trend. The prior "spare sideways losers" keeps
+                # were about the THRESHOLD (cutting at lower pressure = earlier exit realized
+                # losses that mean-reverted); the ramp-width axis is untested (Exp1 showed
+                # widening it hurts sideways -> narrowing should help). Continuous tanh on
+                # (1.0 - rsi_trend_str)/0.25 (saturates by ~0.25 trend strength -> byte-
+                # identical for solid trends) x tanh(-pos_pnl/|stop|) (loss-gate, smooth at
+                # BE). Max narrowing: width 4.0 -> 2.5 (faster pressure) at full chop-loser
+                # saturation. Continuous, no boundary, direction-agnostic (no regime label):
+                # a losing position in a directionless market reaches full time-pressure
+                # sooner (the position has no trend to ride, so dead-capital cost dominates).
+                _tp_chop_loss_narrow = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT)))
+                _tp_ramp_w = _tp_ramp_w * (1.0 - 0.375 * _tp_chop_loss_narrow)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
