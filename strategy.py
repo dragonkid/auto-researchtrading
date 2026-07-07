@@ -2825,7 +2825,24 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
+                _tp_progress = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
+                # Exp4 (architectural, indep): CONVEX time-pressure ramp SHAPE (progress^k,
+                # vol-gated to high-vol only). Sanctioned untested lead from prior session-
+                # summary: a convex tp ramp (low early-half pressure -> high-vol trend winners
+                # ride the larger per-bar real move; high late-half -> cut on schedule) moved
+                # the CRASH target +0.0025 at k=2.0 (linear in k). Distinct from the WIDTH
+                # keep (scales window size) and the dead-end ONSET (scales where window
+                # starts): SHAPE changes the pressure-vs-time CURVATURE within the window.
+                # k=2.0 is the bull sweet spot (bull +0.0001 positive); k=3.0 over-held bull
+                # pullback longs. Calm regimes (vol_ratio<0.8 -> k=1.0 linear) byte-identical.
+                # The prior session reverted this as sub-noise (+0.000705 < +0.003 keep
+                # threshold) because crash is negative-Sharpe (1:1 score:Sharpe -> +0.0025
+                # Sharpe = +0.0025 score, small absolute). Re-apply to establish a base for a
+                # compounding branch (the prior session only tried shape variants + width-
+                # narrowing, NOT compounding with a DIFFERENT crash mechanism).
+                _tp_shape_k = 1.0 + 1.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm, 2.0 high-vol
+                _time_pressure = _tp_progress ** _tp_shape_k if _tp_progress > 0 else 0.0
+                _time_pressure = max(0.0, min(1.0, _time_pressure))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
