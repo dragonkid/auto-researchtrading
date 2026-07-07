@@ -2522,33 +2522,7 @@ class Strategy:
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
                 _loss = -pos_pnl
-                # Exp1 (architectural, indep): VOL-NORMALIZED stop-loss soft band WIDTH
-                # (high-vol EXTENSION). _band_half is the half-width of the soft transition
-                # zone around the ATR stop (_sl_pressure ramps 0->1 across [_stop_abs -
-                # _band_half, _stop_abs + _band_half]). The prior form
-                # (0.06 + 0.20*min(1.0, vol_ratio)) SATURATES at vol_ratio=1.0, so high-vol
-                # regimes (crash vol_ratio~1.0-1.3, bull pullback spikes) sit in the FLAT
-                # TAIL past saturation — vol_ratio=1.0 and 1.3 get the IDENTICAL 0.26 band.
-                # This is the EXACT wall the vol-normalized time-pressure ramp WIDTH keep
-                # (296762d8) fixed: that keep extended the ramp past the vol_ratio=1.0
-                # saturation so crash's elevated vol (1.0-1.3) gets a wider ramp. Apply the
-                # SAME validated pattern here: keep the prior form byte-identical for
-                # vol_ratio<=1.0 (preserves calm/normal-vol behavior — sideways/rally grind
-                # and the linear ramp the baseline calibrated), and ADD a tanh EXTENSION
-                # past vol_ratio=1.0 that widens the soft band further in high-vol so
-                # high-vol trend-regime LOSERS (crash shorts, bull pullback longs) de-risk
-                # more gradually through the larger per-bar real move before full SL fires
-                # -> smaller realized loss per losing trade -> higher Sharpe in negative-
-                # Sharpe regimes (score == bare Sharpe there, 1:1). The extension is floored
-                # at 0 for vol_ratio<=1.0 (byte-identical to baseline there) and rises to
-                # ~0.10 at vol_ratio=1.3 (+38pct of the prior 0.26 band). Continuous tanh,
-                # no boundary. Distinct from the tp_ramp_width keep (time-pressure
-                # subsystem): this is the SL subsystem. NOTE: changes ONLY the band WIDTH
-                # (how gradually _sl_pressure ramps), not the stop LEVEL (_stop_abs
-                # unchanged) — the level moves are documented noise-sensitive (prior
-                # sessions); width changes are not (tp_ramp_width keep).
-                _sl_band_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.3))  # 0 vol_ratio<=1.0, ~0.32 @1.1, ~0.62 @1.3
-                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio) + 0.10 * _sl_band_ext) * _stop_abs
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
