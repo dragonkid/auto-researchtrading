@@ -2880,7 +2880,19 @@ class Strategy:
                 # mixed's weak bounces stay in the gate's low-slope region -> ~0 -> mixed
                 # byte-identical. rally (ret_vlong solidly positive) -> still ~1 -> preserved.
                 _tp_trend_confirm = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # ~1 rally-confirmed (strong), ~0 sideways/mixed-weak-bounce
-                _tp_chop_loss_gate = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))) * _tp_trend_confirm
+                # branch step9: DEEPEN the loss-gate so narrowing fires only for DEEP losers
+                # (pos_pnl < -0.5*stop), sparing SHALLOW pullback losers. Hypothesis: rally's
+                # pullback losers that benefit from faster exit are DEEP (the pullback fully
+                # plays out, pos goes underwater >0.5*stop before the trend resumes), while
+                # mixed's trend-phase longs that should be spared are SHALLOWER (oscillate
+                # near BE, less deep). The deepened gate: 0 until pos_pnl=-0.5*stop, ramps to
+                # 1 at -1.0*stop. rally deep-pullback losers still fire (~1 at -stop); mixed
+                # shallow trend-phase losers (~-0.3*stop) -> gate ~0 -> spared. If mixed's
+                # losers are deep too this fails (same as step8), but the depth axis is the
+                # one untested separator. Byte-identical for winners (gate 0) and trend
+                # regimes (chop-gate 0).
+                _tp_loss_deep = max(0.0, np.tanh((-pos_pnl - 0.5 * abs(STOP_LOSS_PCT)) / (0.5 * abs(STOP_LOSS_PCT))))
+                _tp_chop_loss_gate = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * _tp_loss_deep * _tp_trend_confirm
                 _tp_ramp_w = _tp_ramp_w * (1.0 - 0.375 * _tp_chop_loss_gate)
                 # branch step3: CONVEX tp ramp SHAPE (progress^k, k=2.5 vol-gated to high-vol).
                 # Prior session: convex shape (low early-half pressure -> trend winners ride the
