@@ -2800,7 +2800,24 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
+                # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
+                # bars (high vol = large real price move) the same as 4 sideways bars (low vol
+                # = small move). The _vol_hold_ext above extends _max_hold's LEVEL (+12pct)
+                # but the RAMP WIDTH (how gradually pressure ramps from 0->1 once it starts)
+                # is still vol-blind. In high-vol a sharper ramp (narrower width) cuts winners
+                # fast on the first time-pressure bar; a wider ramp in high-vol lets the
+                # position ride the larger per-bar real move more gradually before full
+                # time-pressure fires -> crash/rally trend-aligned winners (the high-vol
+                # trend regimes) get a smoother de-risk -> higher Sharpe. Distinct from
+                # _vol_hold_ext (LEVEL offset, byte-identical when vol_ratio<=1.0): this
+                # changes the ramp SHAPE. Continuous tanh on (vol_ratio-1)/0.5, ramp width
+                # 4.0 (calm, byte-identical) -> 6.0 (high vol, +50pct wider). New control
+                # flow: time-pressure ramp width depends on vol_ratio. Direction-agnostic
+                # general principle (no regime label): the de-risk graduation should be
+                # vol-normalized in width, not just level.
+                _tp_ramp_w = 4.0 + 2.0 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
