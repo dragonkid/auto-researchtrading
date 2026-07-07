@@ -2798,7 +2798,7 @@ class Strategy:
                 # Continuous tanh on (vol_ratio-1)/0.5, max +12pct at vol_ratio>=1.5; calm
                 # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
                 # term in the time-pressure activation. No per-regime labels.
-                _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
+                _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 0.8) / 0.5))  # branch step15: onset 1.0->0.8 (match width/shape onset)
                 # Branch step5: AMPLIFY vol_hold_ext LEVEL 0.12->0.18 (compounding with the
                 # convex tp ramp shape k=2.5 from step3). The prior session found the LEVEL
                 # alone (Exp1 asymmetric EMA on it) was INERT, and the SHAPE alone (convex
