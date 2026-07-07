@@ -2799,23 +2799,7 @@ class Strategy:
                 # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
-                # branch step3: LEVEL amplification 0.12 -> 0.50 (compound with Exp3 width-
-                # narrowing + convex shape). Prior session found level-alone INERT (the
-                # LINEAR ramp cut winners fast on the first time-pressure bar regardless of
-                # where the level sat) BUT level+shape COMPLEMENTARY (with a convex SHAPE the
-                # level extension is productive -- extra hold duration now matters since the
-                # ramp is gradual enough to ride). level 0.50 was the prior-session optimum
-                # (0.65 regressed crash over-hold). level-onset 1.0 is LOAD-BEARING (0.8
-                # catastrophically regressed bull per prior session -- the level extension
-                # MUST only fire for true high-vol vol_ratio>1.0, NOT moderate-vol 0.8-1.0).
-                # The _vol_hold_ext onset (vol_ratio-1.0)/0.5 is already 1.0 -> preserved.
-                # Byte-identical for vol_ratio<=1.0 (gate 0).
-                # branch step4: push level 0.50 -> 0.55 (prior session UNTESTED finer optimum,
-                # documented: "0.55/0.60 might extend the crash gain before the 0.65 regression").
-                # With Exp3 width-narrowing + convex shape compounding, a small level bump may
-                # push crash+bull enough to cross the +0.003 keep threshold (step3 +0.002587,
-                # need +0.0004 more). Monitor crash for the 0.65 over-hold regression cliff.
-                _max_hold *= 1.0 + 0.55 * _vol_hold_ext
+                _max_hold *= 1.0 + 0.12 * _vol_hold_ext
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
@@ -2841,75 +2825,7 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
-                # Exp3 (architectural, indep, this session): TREND-CONFIRMED chop-loser tp
-                # ramp narrowing -- isolates the Exp2 rally +0.0054 signal while protecting
-                # mixed/sideways. Exp2 (chop-loser narrowing, gated on rsi_trend_str x pos_pnl)
-                # helped rally +0.0054 (chop pullback losers cut faster) BUT hurt mixed -0.0057
-                # (sustained chop losers cut that would mean-revert) and sideways -0.0266 (cut
-                # mean-reverters). The SEPARATOR that distinguishes rally's TRANSIENT pullbacks
-                # (cut the loser, trend resumes -> dead capital) from mixed's SUSTAINED chop
-                # (spare, mean-reverts) is MULTI-DAY TREND CONFIRMATION: rally longs sit in a
-                # confirmed uptrend (ret_vlong solidly positive, trend-aligned with position);
-                # mixed wrong-side longs are counter-trend-at-multi-day (ret_vlong<0); sideways
-                # has ret_vlong~0 (no confirmation). NEW CROSS-COMPONENT DATA DEP: tp ramp
-                # width now depends on (pos_pnl sign, rsi_trend_str, ret_vlong x pos_dir) jointly
-                # -- a 3-way position-level x short-trend x multi-day-trend interaction. The
-                # narrowing fires ONLY when ALL THREE agree: losing (pos_pnl<0) AND in local chop
-                # /pullback (low rsi_trend_str) AND multi-day-trend-confirmed (ret_vlong x
-                # pos_dir > 0 strongly). This is the rally-pullback-loser population. Gated by
-                # the SAME multi-day trend-align factor the _ts_supp tp-harvest uses (line ~3257,
-                # tanh(ret_vlong*pos_dir/0.04)) -- a validated, near-constant, noise-robust
-                # signal. Byte-identical for: (a) trend regimes (rsi_trend_str high -> chop-gate
-                # 0 -> bull/crash byte-identical, high-vol widening keep preserved); (b) winners
-                # (pos_pnl>0 -> loss-gate 0); (c) sideways (ret_vlong~0 -> trend-confirm 0 ->
-                # byte-identical, the Exp2 sideways regression AVOIDED); (d) mixed ct longs
-                # (ret_vlong<0, pos_dir=+1 -> product<0 -> trend-confirm 0 -> spared, the Exp2
-                # mixed regression AVOIDED). Targets rally (positive-Sharpe, log(1+Sh) x dd_gate
-                # region -- Sharpe gain amplified not 1:1; rally DD 5.55pct just above the 5pct
-                # knee so a Sharpe gain from cutting pullback losers faster compounds with the
-                # existing dd_gate). Continuous tanh, no boundary, direction-agnostic (no regime
-                # label): a losing position in a local pullback within a confirmed trend is dead
-                # capital (the trend will resume without it) -> reach full time-pressure sooner.
-                _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
-                # branch step2: tighten trend-confirm /0.04 -> /0.02 so only STRONG multi-day
-                # confirmation fires. Exp3 (/0.04) leaked to mixed -0.0023: mixed's local
-                # bounces have ret_vlong weakly positive -> the /0.04 scale (saturates by
-                # ret_vlong x pos_dir ~0.04) fired the gate weakly on mixed rally-phase longs
-                # -> some narrowing -> hurt mixed. The /0.02 scale saturates only for SOLID
-                # confirmation (ret_vlong x pos_dir ~0.02+, rally's persistent uptrend) ->
-                # mixed's weak bounces stay in the gate's low-slope region -> ~0 -> mixed
-                # byte-identical. rally (ret_vlong solidly positive) -> still ~1 -> preserved.
-                _tp_trend_confirm = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # ~1 rally-confirmed (strong), ~0 sideways/mixed-weak-bounce
-                # branch step9: DEEPEN the loss-gate so narrowing fires only for DEEP losers
-                # (pos_pnl < -0.5*stop), sparing SHALLOW pullback losers. Hypothesis: rally's
-                # pullback losers that benefit from faster exit are DEEP (the pullback fully
-                # plays out, pos goes underwater >0.5*stop before the trend resumes), while
-                # mixed's trend-phase longs that should be spared are SHALLOWER (oscillate
-                # near BE, less deep). The deepened gate: 0 until pos_pnl=-0.5*stop, ramps to
-                # 1 at -1.0*stop. rally deep-pullback losers still fire (~1 at -stop); mixed
-                # shallow trend-phase losers (~-0.3*stop) -> gate ~0 -> spared. If mixed's
-                # losers are deep too this fails (same as step8), but the depth axis is the
-                # one untested separator. Byte-identical for winners (gate 0) and trend
-                # regimes (chop-gate 0).
-                _tp_loss_deep = max(0.0, np.tanh((-pos_pnl - 0.5 * abs(STOP_LOSS_PCT)) / (0.5 * abs(STOP_LOSS_PCT))))
-                _tp_chop_loss_gate = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * _tp_loss_deep * _tp_trend_confirm
-                _tp_ramp_w = _tp_ramp_w * (1.0 - 0.375 * _tp_chop_loss_gate)
-                # branch step3: CONVEX tp ramp SHAPE (progress^k, k=2.5 vol-gated to high-vol).
-                # Prior session: convex shape (low early-half pressure -> trend winners ride the
-                # high-vol per-bar real move; high late-half -> cut on schedule) moved crash
-                # +0.0025 Sh (linear in k), bull +0.0001 at k=2.0 (the bull sweet spot; k=3.0
-                # over-held bull pullback longs). k=2.5 was the prior-session optimum (k=2.8
-                # regressed bull). Composes with the level amplification above (level+shape
-                # complementary per prior session) AND the Exp3 width-narrowing (orthogonal axis:
-                # shape changes curvature WITHIN the window, width changes window size, level
-                # changes WHERE the window starts). SHAPE-GATE onset 0.8 (load-bearing per prior
-                # session: lower engages bull moderate-vol -> over-held). Calm (vol_ratio<0.8)
-                # -> k=1.0 LINEAR -> byte-identical (sideways byte-identical). The progress^k
-                # is applied to the clamped [0,1] linear progress; k>1 lowers early-half
-                # pressure (concave -> convex curvature holds near-0 then ramps late).
-                _tp_lin_progress = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
-                _tp_shape_k = 1.0 + 1.5 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm (byte-identical), 2.5 high-vol
-                _time_pressure = _tp_lin_progress ** _tp_shape_k
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
