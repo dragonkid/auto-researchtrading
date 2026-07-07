@@ -2757,7 +2757,7 @@ class Strategy:
                 # tanh on pos_pnl/|stop| (no decision boundary). Byte-identical for shorts
                 # (long gate 0), ct (align 0), losers (profit gate 0).
                 _ta_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
-                _ta_dd_hold_ext_raw = 2.0 * _ta_long_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)  # branch step13: 1.5->2.0 (amplify bull DD hold extension, compound with level+shape)
+                _ta_dd_hold_ext_raw = 1.5 * _ta_long_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
                 # BRANCH (Exp1 opener, architectural): SMOOTH the hold-extension DECISION
                 # INPUT at the source. The keep 47cbe827 added bar-to-bar tracking error at
                 # the source: _ta_dd_hold_ext wobbles under AR(1) noise (profit_gate flips
