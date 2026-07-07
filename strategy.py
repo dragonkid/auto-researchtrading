@@ -2852,31 +2852,7 @@ class Strategy:
                 # as linear at the window end). New control flow: time-pressure ramp shape
                 # depends on vol_ratio (curvature, not just width/level). Continuous (smooth
                 # power, no new decision boundary). Direction-agnostic, no regime label.
-                _tp_shape_k = 1.0 + 2.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm -> 3.0 high-vol (step6: base k_max raised 2.0->3.0, gated by slope-conf below)
-                # branch step6: SLOPE-CONFIRMATION gate on the tp ramp convexity. Step3
-                # (pure convex k=3.0) over-held BULL pullback longs (Sharpe -0.022): the
-                # pullback longs sat in the early-half low-pressure zone while the near-term
-                # slope had ALREADY weakened (correction underway) -> the convex shape rode
-                # the pullback instead of cutting. Root cause: the convexity should only
-                # apply when the near-term trend STILL CONFIRMS the position (a genuine
-                # ongoing trend worth riding through high-vol); when slope weakens (pullback
-                # deepening, correction underway), revert to LINEAR (cut on schedule). Gate
-                # the convexity magnitude by the SAME slope-confirmation signal the de-risk
-                # cushion uses (_dr_slope_conf at line 3517: tanh(_exit_slope * pos_dir /
-                # 0.0004)), recomputed here from the already-available _exit_slope (line 2540)
-                # and current_pos. When slope confirms the position (product>0): _tp_sc->1,
-                # keep the full convex k (up to 3.0); when slope weakens/flips (pullback):
-                # _tp_sc->0, k reverts toward 1.0 (linear, cut on schedule). This lets the
-                # base k_max push to 3.0 (crash downtrend slope stays confirmed across the
-                # high-vol bars -> full convex ride -> extends crash gain past step2) while
-                # protecting bull pullbacks (slope weakens before corrections -> linear ->
-                # no over-hold). Cross-component data dep: tp ramp shape reads the near-term
-                # slope confirmation (reuses _exit_slope; new control flow at the tp decision).
-                # Continuous tanh, no new decision boundary. Calm regimes (vol_ratio<0.8 ->
-                # shape-gate 0 -> k=1.0 linear) byte-identical.
-                _tp_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _tp_sc = max(0.0, np.tanh(_exit_slope * _tp_pos_dir / 0.0004))  # 1 slope-confirmed, 0 slope-weakened
-                _tp_shape_k = 1.0 + (_tp_shape_k - 1.0) * _tp_sc
+                _tp_shape_k = 1.0 + 1.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm -> 2.0 high-vol (step2: 1.5->2.0 amplify crash gain)
                 _time_pressure = _tp_progress ** _tp_shape_k
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
