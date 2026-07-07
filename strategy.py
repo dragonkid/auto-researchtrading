@@ -395,6 +395,26 @@ PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
 PORT_VOL_SPIKE_ONSET = 1.30   # vol_ratio above which cap engages (calm<1.0, chop>1.2; 1.3 = elevated)
 PORT_VOL_SPIKE_SCALE = 0.30
 PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
+# Exp1 (architectural, indep): TREND-ALIGNED RANGE-POSITION entry shrink. Sanctioned
+# untested lead from prior session-summary: crash's LOSING shorts are "dead-cat-
+# bounce-then-resume-down" -- the bounce CONTINUES long enough to stop out the short
+# before the downtrend resumes. The distinguishing signal at entry is the POSITION IN
+# THE DOWN-LEG: a short entered when price has bounced UP toward the top of the recent
+# 96-bar range (a dead-cat bounce off the lows) risks the bounce continuing; a short
+# entered when price is near the 96-bar LOW (trend continuation, making new lows) is
+# high quality. NEW data dep: entry sizing depends on the current price's POSITION in
+# the multi-day high-low range (a cross-bar relative-level signal distinct from the
+# slope/magnitude signals already used). Symmetric: a long entered when price has dipped
+# DOWN toward the bottom of the 96-bar range in an uptrend risks the dip continuing
+# (a falling knife within the uptrend) -> shrink; a long near the range HIGH (breakout
+# continuation) is high quality. Gated on multi-day TREND-ALIGNMENT (entry direction
+# matches ret_vlong sign) so it only fires for trend-aligned entries (not counter-trend,
+# which is already handled by _bear_ct_vlong). Shrink-only (max 0.15), first-bar-only.
+# Continuous tanh on the range-position-vs-entry-direction product (no boundary).
+# Direction-agnostic (no regime label): a trend-aligned entry at the range extreme
+# AGAINST the trend's direction is a counter-move-within-trend (lower quality).
+RANGE_POS_SHRINK_MAX = 0.15   # max shrink at the extreme counter-trend range position
+RANGE_POS_SCALE = 0.30        # range-position fraction at which shrink saturates
 
 
 class Strategy:
@@ -1804,6 +1824,27 @@ class Strategy:
                 _vd_decline = max(0.0, min(1.0, np.tanh(-_vol_trend_r / 0.30)))
                 _vd_ct_shrink_bull = 1.0 - 0.12 * _vd_vl_w * _vd_decline * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull ct in multi-day downtrend
                 _vd_ct_shrink_bear = 1.0 - 0.12 * _vd_vl_w * _vd_decline * max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally)
+                # Exp1 (architectural, indep): TREND-ALIGNED RANGE-POSITION entry shrink.
+                # See RANGE_POS_SHRINK_MAX header for full rationale. Compute the current
+                # price's position in the 96-bar high-low range [0=at low, 1=at high]. For a
+                # trend-aligned entry, shrink when price is at the range extreme AGAINST the
+                # entry direction (short at range high = bounce-top short in downtrend; long
+                # at range low = pullback-bottom long in uptrend). Uses the SAME 96-bar window
+                # as ret_vlong (already OLS-noise-averaged per bar -> range position is smooth,
+                # not 1-bar noisy). Continuous tanh, no boundary. Shrink-only (max 0.15).
+                _rp_n = min(VLONG_WINDOW, len(bd.history["high"].values) - 1)
+                _rp_high = float(np.max(bd.history["high"].values[-_rp_n:]))
+                _rp_low = float(np.min(bd.history["low"].values[-_rp_n:]))
+                _rp_range = max(_rp_high - _rp_low, mid * 1e-4)
+                _rp_pos = (mid - _rp_low) / _rp_range  # [0,1]: 0 at low, 1 at high
+                # trend-alignment gate (entry dir matches ret_vlong): ~1 trend-aligned, ~0 ct
+                _rp_ta_bull = max(0.0, np.tanh(ret_vlong / 0.01))      # bull aligned with multi-day uptrend
+                _rp_ta_bear = max(0.0, np.tanh(-ret_vlong / 0.01))   # bear aligned with multi-day downtrend
+                # counter-move-within-trend: short at range HIGH (bounce), long at range LOW (dip)
+                _rp_counter_bull = max(0.0, (0.5 - _rp_pos) / 0.5)   # 0 at mid/high, 1 at low
+                _rp_counter_bear = max(0.0, (_rp_pos - 0.5) / 0.5)   # 0 at mid/low, 1 at high
+                _rp_shrink_bull = 1.0 - RANGE_POS_SHRINK_MAX * _rp_ta_bull * max(0.0, min(1.0, np.tanh(_rp_counter_bull / RANGE_POS_SCALE)))
+                _rp_shrink_bear = 1.0 - RANGE_POS_SHRINK_MAX * _rp_ta_bear * max(0.0, min(1.0, np.tanh(_rp_counter_bear / RANGE_POS_SCALE)))
                 # Exp5 (architectural, indep): volume-RISING trend-ALIGNED entry boost —
                 # bilateral counterpart to the Exp3 decline shrink. A trend-aligned entry on
                 # RISING volume has strong participation confirming the trend (rally longs on
@@ -2155,11 +2196,11 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _rp_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _rp_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
