@@ -2799,20 +2799,7 @@ class Strategy:
                 # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
-                # Branch step5: AMPLIFY vol_hold_ext LEVEL 0.12->0.18 (compounding with the
-                # convex tp ramp shape k=2.5 from step3). The prior session found the LEVEL
-                # alone (Exp1 asymmetric EMA on it) was INERT, and the SHAPE alone (convex
-                # k=2.0) was sub-noise (+0.000705). But they were never tested TOGETHER. The
-                # convex shape changes the ramp CURVATURE past max_hold (low early-half ->
-                # ride); the level extension shifts WHERE max_hold sits (longer hold before
-                # ramp starts). Combined, crash trend-aligned winners ride the downtrend
-                # longer (level) AND more gradually (shape) -> compound the crash winner
-                # benefit. Calm (vol_ratio<1.0 -> _vol_hold_ext=0) byte-identical. The level
-                # was inert alone because the linear ramp cut winners fast on the first
-                # time-pressure bar regardless of where the level sat; WITH the convex shape
-                # (low early-half pressure), the level extension now matters because the
-                # ramp is gradual enough that the extra hold duration is productive.
-                _max_hold *= 1.0 + 0.50 * _vol_hold_ext
+                _max_hold *= 1.0 + 0.12 * _vol_hold_ext
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
@@ -2838,32 +2825,7 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
-                _tp_progress = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
-                # Exp4 (architectural, indep): CONVEX time-pressure ramp SHAPE (progress^k,
-                # vol-gated to high-vol only). Sanctioned untested lead from prior session-
-                # summary: a convex tp ramp (low early-half pressure -> high-vol trend winners
-                # ride the larger per-bar real move; high late-half -> cut on schedule) moved
-                # the CRASH target +0.0025 at k=2.0 (linear in k). Distinct from the WIDTH
-                # keep (scales window size) and the dead-end ONSET (scales where window
-                # starts): SHAPE changes the pressure-vs-time CURVATURE within the window.
-                # k=2.0 is the bull sweet spot (bull +0.0001 positive); k=3.0 over-held bull
-                # pullback longs. Calm regimes (vol_ratio<0.8 -> k=1.0 linear) byte-identical.
-                # The prior session reverted this as sub-noise (+0.000705 < +0.003 keep
-                # threshold) because crash is negative-Sharpe (1:1 score:Sharpe -> +0.0025
-                # Sharpe = +0.0025 score, small absolute). Re-apply to establish a base for a
-                # compounding branch (the prior session only tried shape variants + width-
-                # narrowing, NOT compounding with a DIFFERENT crash mechanism).
-                # Branch step3: AMPLIFY convex shape k=2.0->2.5 (vol-gated, calm byte-
-                # identical). Prior session tested k=1.5/2.0/3.0 but NOT 2.5. k=3.0 over-held
-                # bull pullback longs (Sharpe 0.474->0.452, -0.022); k=2.5 is the untested
-                # midpoint. Crash gain scales ~linearly with k (+0.0025 at k=2.0, +0.0035 at
-                # k=3.0 per prior session), so k=2.5 might give crash +0.003 while bull stays
-                # near-flat. Step2's ct-loss gate was byte-identical inert (removed for
-                # simplicity -- the convex shape's crash gain is winner-only, no loser-cost
-                # to remove). Calm (vol_ratio<0.8 -> k=1.0 linear) byte-identical.
-                _tp_shape_k = 1.0 + 1.5 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm, 2.5 high-vol
-                _time_pressure = _tp_progress ** _tp_shape_k if _tp_progress > 0 else 0.0
-                _time_pressure = max(0.0, min(1.0, _time_pressure))
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
