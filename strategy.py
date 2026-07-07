@@ -2853,26 +2853,7 @@ class Strategy:
                 # depends on vol_ratio (curvature, not just width/level). Continuous (smooth
                 # power, no new decision boundary). Direction-agnostic, no regime label.
                 _tp_shape_k = 1.0 + 1.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm -> 2.0 high-vol (step2: 1.5->2.0 amplify crash gain)
-                # branch step9: SMOOTHSTEP (S-curve) blend with the linear ramp, vol-gated.
-                # Step2 pure-convex (progress^k) over-holds bull past k=2.0 because the late
-                # half is ALSO flattened (0.75^2=0.5625 vs linear 0.75 -> late cut delayed).
-                # Step4 piecewise (convex early, LINEAR late) regressed crash (the late-half
-                # curvature matters for crash too). The needed profile: LOW early (ride trend
-                # winners -- crash gain) AND HIGH late (cut on schedule -- protect bull).
-                # SMOOTHSTEP = 3p^2 - 2p^3 is a continuous S-curve: CONVEX in the first half
-                # (p<0.5: smoothstep < linear -> low early pressure -> ride winners) and
-                # CONCAVE in the second half (p>0.5: smoothstep > linear -> high late pressure
-                # -> cut sharper than linear near window end). At p=0.5 smoothstep=0.5 (==linear
-                # midpoint). This threads between step2 (pure convex, late-half too flat for
-                # bull) and step4 (piecewise linear-late, cut crash short). Blend smoothstep
-                # with linear via the vol-gate weight so calm (vol_ratio<0.8) stays LINEAR
-                # (byte-identical) and high-vol gets the S-curve. New control flow: tp ramp
-                # shape is a vol-gated smoothstep blend (S-curve), distinct from pure-convex
-                # (step2) and piecewise (step4).
-                _tp_smooth_w = max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 0 calm -> 1 high-vol
-                _tp_lin = _tp_progress
-                _tp_smooth = 3.0 * _tp_progress * _tp_progress - 2.0 * _tp_progress ** 3
-                _time_pressure = _tp_lin * (1.0 - _tp_smooth_w) + _tp_smooth * _tp_smooth_w
+                _time_pressure = _tp_progress ** _tp_shape_k
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
