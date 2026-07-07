@@ -395,12 +395,6 @@ PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
 PORT_VOL_SPIKE_ONSET = 1.30   # vol_ratio above which cap engages (calm<1.0, chop>1.2; 1.3 = elevated)
 PORT_VOL_SPIKE_SCALE = 0.30
 PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
-# Exp5 (architectural, indep): portfolio unrealized-MAE exit-pressure amplification max. When
-# the portfolio has widespread deep-MAE open positions (frac > 0.5), amplify _soft_max for
-# LOSING positions by up to this fraction -> cut them ~1 bar earlier -> smaller realized loss.
-# Applied to the soft exit pressure (de-risk ramp, gradual) NOT the hard stop (avoids the Exp1
-# granularity wall). Winners byte-identical (loss gate 0 -> amp 1.0).
-PORT_OPEN_MAE_EXIT_AMP_MAX = 0.25
 
 
 class Strategy:
@@ -745,39 +739,6 @@ class Strategy:
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
-        # Exp5 (architectural, indep): PORTFOLIO UNREALIZED-MAE FRACTION (exit-pressure
-        # application). Prior session's branch tested this signal as an ADMISSION tightener
-        # (sub-noise +0.000012, reverted: the admission surface hit the dead-cat wall in crash
-        # and the bull-surface was tiny). The SANCTIONED untested lead: "the portfolio
-        # unrealized-MAE signal might combine with non-admission applications (exit-pressure,
-        # sizing) where the bull-surface-limit does not bind." This applies it to the EXIT
-        # side: when the portfolio has widespread deep-MAE open positions (correlated adverse
-        # regime = multiple symbols underwater simultaneously), amplify the SOFT exit pressure
-        # on currently-LOSING positions -> cut them ~1 bar earlier -> smaller realized losses
-        # -> higher Sharpe in negative-Sharpe regimes (score==bare Sharpe; crash -0.156,
-        # sideways -0.067). DISTINCT from the prior admission application (filtered ENTRIES;
-        # this amplifies EXIT pressure on held losers). DISTINCT from Exp1 (MAE-conditioned
-        # STOP tightening, byte-identical granularity wall): this amplifies SOFT pressure
-        # (_soft_max, operates via the de-risk ramp -> gradual, can move the exit bar without
-        # the same-bar granularity wall that the hard stop hit). The signal is computed from
-        # self._mae (per-symbol MAE low-water mark, already tracked) + portfolio.positions
-        # (open-position set) -- NEW cross-component data dep: exit pressure reads PORTFOLIO-
-        # LEVEL unrealized MAE aggregate (distinct from _port_dd_atten realized-equity-DD,
-        # _loss_streak realized-losses, _port_deep_bear price-trend). The portfolio unrealized-
-        # MAE is a LEADING indicator (positions go underwater before equity EMA catches it).
-        # Byte-identical when no open positions are deep-MAE (frac 0 -> amplify 1.0) AND for
-        # winners (loss gate 0). Continuous tanh, no boundary. Direction-agnostic.
-        _port_open_mae_deep_count = 0
-        _port_open_count = 0
-        for _osym in ACTIVE_SYMBOLS:
-            _omae = self._mae.get(_osym, None)
-            if _omae is not None and portfolio.positions.get(_osym, 0.0) != 0.0:
-                _port_open_count += 1
-                # deep-MAE = position underwater beyond ~0.5*stop
-                if _omae < 0.5 * STOP_LOSS_PCT:
-                    _port_open_mae_deep_count += 1
-        _port_open_mae_frac = (_port_open_mae_deep_count / _port_open_count) if _port_open_count > 0 else 0.0
-        _port_open_mae_exit_amp = 1.0 + PORT_OPEN_MAE_EXIT_AMP_MAX * max(0.0, min(1.0, np.tanh((_port_open_mae_frac - 0.5) / 0.3)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -3078,24 +3039,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Exp5 (architectural, indep): PORTFOLIO UNREALIZED-MAE EXIT-PRESSURE AMPLIFICATION
-                # for LOSING positions. When the portfolio has widespread deep-MAE open positions
-                # (_port_open_mae_frac high), amplify _soft_max for currently-LOSING positions ->
-                # cut them ~1 bar earlier -> smaller realized losses. Gate to LOSING (winners byte-
-                # identical: _pnl_scale<0 -> loss gate 0 -> amp 1.0). The portfolio unrealized-MAE
-                # signal is a LEADING correlated-adverse-regime indicator (multiple symbols
-                # underwater simultaneously) -- a losing position during a portfolio-wide adverse
-                # regime is more likely to bleed than recover (the recovery/bleed tension that walled
-                # position-OWN-MAE gating is resolved by the PORTFOLIO-level signal: the whole market
-                # being adverse is a cleaner "won't recover" signal than the position's own MAE).
-                # Amplify _soft_max (not _sl_pressure -> avoids the Exp1 granularity wall on the hard
-                # stop; _soft_max operates via the de-risk ramp -> gradual, can move the exit bar).
-                # Byte-identical when no open positions deep-MAE (frac 0 -> amp 1.0) AND for winners.
-                _exit_loss_gate = max(0.0, -_pnl_scale)  # 0 winner, ~1 deep loser
-                # amplify _soft_max by up to PORT_OPEN_MAE_EXIT_AMP_MAX, scaled by loss gate
-                # (winner: _exit_loss_gate=0 -> amp 1.0 byte-identical; loser: amp up to 1+MAX)
-                _soft_loss_amp = 1.0 + (_port_open_mae_exit_amp - 1.0) * _exit_loss_gate
-                _soft_max = _soft_max * _soft_loss_amp
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
