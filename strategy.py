@@ -2840,28 +2840,15 @@ class Strategy:
                 # Sharpe = +0.0025 score, small absolute). Re-apply to establish a base for a
                 # compounding branch (the prior session only tried shape variants + width-
                 # narrowing, NOT compounding with a DIFFERENT crash mechanism).
-                _tp_shape_k_base = 1.0 + 1.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm, 2.0 high-vol
-                # Branch step2: GATE the convex shape OFF counter-trend LOSERS. The convex
-                # shape (k>1 -> low early-half pressure -> holds longer) helps trend-aligned
-                # WINNERS (crash shorts riding the downtrend, bull longs riding the uptrend)
-                # capture more of the high-vol per-bar real move. But it HURTS ct LOSERS
-                # (crash bounce shorts that continue bouncing, rally pullback shorts that
-                # keep falling) by holding the losing position longer -> larger realized loss.
-                # The step1 net crash gain (+0.0025) is the WINNER benefit minus the LOSER
-                # cost; removing the loser cost should AMPLIFY the net gain toward +0.003.
-                # Gate: reduce k toward 1.0 (linear fast cut) when the position is BOTH ct
-                # (ret_vlong opposes pos_dir) AND losing (pos_pnl<0). Uses the SAME
-                # fast-saturating /0.04 ret_vlong ct scale as _ct_hold_sat (line 2719, near-
-                # constant noise-free) and the SAME tanh(pos_pnl/|stop|) loss-depth scale as
-                # _te_loss_gate / _dr loss-floor. ct+losing -> gate ~1 -> k=1.0 (linear, fast
-                # cut); trend-aligned OR profitable -> gate ~0 -> k=2.0 (convex, ride winner).
-                # Continuous tanh, no boundary. Byte-identical for trend-aligned winners (gate
-                # 0) and calm regimes (k_base=1.0 so the gate multiplies 1.0 base, no effect).
-                _tp_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _tp_ct_str = max(0.0, np.tanh(-_tp_pos_dir * ret_vlong / 0.04))  # ~0 trend-aligned, ~1 ct
-                _tp_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
-                _tp_ct_loss_gate = _tp_ct_str * _tp_loss_gate  # ~1 only when ct AND losing
-                _tp_shape_k = 1.0 + (_tp_shape_k_base - 1.0) * (1.0 - _tp_ct_loss_gate)
+                # Branch step3: AMPLIFY convex shape k=2.0->2.5 (vol-gated, calm byte-
+                # identical). Prior session tested k=1.5/2.0/3.0 but NOT 2.5. k=3.0 over-held
+                # bull pullback longs (Sharpe 0.474->0.452, -0.022); k=2.5 is the untested
+                # midpoint. Crash gain scales ~linearly with k (+0.0025 at k=2.0, +0.0035 at
+                # k=3.0 per prior session), so k=2.5 might give crash +0.003 while bull stays
+                # near-flat. Step2's ct-loss gate was byte-identical inert (removed for
+                # simplicity -- the convex shape's crash gain is winner-only, no loser-cost
+                # to remove). Calm (vol_ratio<0.8 -> k=1.0 linear) byte-identical.
+                _tp_shape_k = 1.0 + 1.5 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm, 2.5 high-vol
                 _time_pressure = _tp_progress ** _tp_shape_k if _tp_progress > 0 else 0.0
                 _time_pressure = max(0.0, min(1.0, _time_pressure))
 
