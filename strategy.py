@@ -1016,30 +1016,9 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp3 (architectural, indep): VOL-NORMALIZED EMA-cross voter sharpness.
-            # The 2nd voter (EMA cross) uses a FIXED sharpness 0.0008: the tanh
-            # transition band is the same width in calm and high-vol. But in high-vol
-            # the EMA-cross signal (_ef-_es)/mid has LARGER magnitude (bigger moves),
-            # so with fixed sharpness the voter SATURATES to ~+/-1 easily — it becomes
-            # a near-binary on/off rather than a graded confidence. This is the vol-blind
-            # sharpness analog of the wall the tp_ramp_width keep (296762d8) fixed: that
-            # keep extended the time-pressure ramp width past vol_ratio=1.0 saturation so
-            # high-vol regimes get a wider (more gradual) ramp. Apply the SAME pattern to
-            # the EMA-cross voter sharpness: widen the tanh transition band in high-vol
-            # (larger denominator) so the voter activation is more GRADUAL/de-saturated in
-            # high-vol — the voter reflects graded EMA-cross conviction rather than binary
-            # saturation. This filters marginal high-vol entries (the EMA-cross voter no
-            # longer saturates to full confidence on modest high-vol crosses) -> higher-
-            # quality crash entries -> higher crash Sharpe (score == bare Sharpe, 1:1).
-            # Calm/normal regimes (vol_ratio<=1.0) byte-identical (extension floored at 0).
-            # The OBV experiment (prior session) confirmed voter-signal changes DO alter
-            # crash/sideways trades (unlike size/admission which are frozen) — this probes
-            # the voter-activation-sharpness axis specifically. Byte-identical for
-            # vol_ratio<=1.0 (sideways ~0.85, rally ~0.75, mixed calm stretches).
-            _ema_cross_sharp = 0.0008 * (1.0 + 0.60 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.3)))
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
-                (_ef - _es) / (mid * _ema_cross_sharp),
+                (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
