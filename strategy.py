@@ -2825,7 +2825,18 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
+                # BRANCH step4: vol-scale the ONSET OFFSET (+3.0 -> vol-adaptive). Step2
+                # widened the ramp WIDTH (post-max_hold region) which crossed keep. The
+                # pre-max_hold onset offset (+3.0, pressure starts ramping 3 bars before
+                # _max_hold) is still vol-blind. In high-vol, starting the ramp EARLIER (more
+                # bars before max_hold) gives crash/bull winners an even more gradual de-risk
+                # onset -> smoother transition into the time-pressure zone. Keep the step2
+                # width (onset 0.8, max 8.0) unchanged; ADD a vol-scaled onset offset that
+                # extends the pre-max_hold region in high-vol. Onset 3.0 (calm, byte-identical
+                # with width 4.0) -> 5.0 (high vol, +2 bars earlier). Tests whether the
+                # pre-max_hold ramp region also benefits from vol-normalization.
+                _tp_onset = 3.0 + 2.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + _tp_onset) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
