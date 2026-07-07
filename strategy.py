@@ -2816,7 +2816,15 @@ class Strategy:
                 # flow: time-pressure ramp width depends on vol_ratio. Direction-agnostic
                 # general principle (no regime label): the de-risk graduation should be
                 # vol-normalized in width, not just level.
-                _tp_ramp_w = 4.0 + 2.0 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
+                # BRANCH step2: lower the vol_ratio onset to 0.8 AND widen max to 8.0. Step1
+                # (onset 1.0, max 6.0) gave crash +0.00096 but the tanh/(vol_ratio-1)/0.5
+                # saturates by vol_ratio~1.5 -- crash's elevated vol_ratio may sit in the
+                # flat tail where the ramp is already near-max, so the +0.00096 is the
+                # saturated ceiling. Lowering onset to 0.8 engages the widening EARLIER (at
+                # crash's vol_ratio which may be ~1.0-1.3, not past 1.5) and widening max to
+                # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
+                # byte-identical. Tests whether the crash gain scales with ramp width.
+                _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
