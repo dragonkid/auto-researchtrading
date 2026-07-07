@@ -2837,7 +2837,7 @@ class Strategy:
                 # crash's vol_ratio which may be ~1.0-1.3, not past 1.5) and widening max to
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
-                _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.7) / 0.4))  # branch step14: onset 0.8->0.7
+                _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
                 _tp_progress = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
                 # Exp4 (architectural, indep): CONVEX time-pressure ramp SHAPE (progress^k,
                 # vol-gated to high-vol only). Sanctioned untested lead from prior session-
@@ -2861,7 +2861,7 @@ class Strategy:
                 # near-flat. Step2's ct-loss gate was byte-identical inert (removed for
                 # simplicity -- the convex shape's crash gain is winner-only, no loser-cost
                 # to remove). Calm (vol_ratio<0.8 -> k=1.0 linear) byte-identical.
-                _tp_shape_k = 1.0 + 1.5 * max(0.0, np.tanh((vol_ratio - 0.7) / 0.4))  # branch step14: onset 0.8->0.7; 1.0 calm, 2.5 high-vol
+                _tp_shape_k = 1.0 + 1.5 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm, 2.5 high-vol
                 _time_pressure = _tp_progress ** _tp_shape_k if _tp_progress > 0 else 0.0
                 _time_pressure = max(0.0, min(1.0, _time_pressure))
 
