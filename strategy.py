@@ -2852,7 +2852,7 @@ class Strategy:
                 # as linear at the window end). New control flow: time-pressure ramp shape
                 # depends on vol_ratio (curvature, not just width/level). Continuous (smooth
                 # power, no new decision boundary). Direction-agnostic, no regime label.
-                _tp_shape_k = 1.0 + 1.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm -> 2.0 high-vol (step2: 1.5->2.0 amplify crash gain)
+                _tp_shape_k = 1.0 + 2.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm -> 3.0 high-vol (step3: 2.0->3.0 probe crash gain scaling)
                 _time_pressure = _tp_progress ** _tp_shape_k
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
