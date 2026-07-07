@@ -2580,41 +2580,6 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp2 (architectural, indep): MAE-DEPTH giveback tightening for fragile
-                # winners. NEW cross-component data dep on the giveback-tolerance subsystem:
-                # _pp_giveback_eff (the effective giveback tolerance, currently reads
-                # portfolio-DD via _pp_tighten ONLY) now ALSO reads the position's MAE
-                # (self._mae, the max-adverse-excursion low-water mark, already maintained).
-                # A position that went deeply underwater (|mae| >= ~0.5*stop) then recovered
-                # to profit is a FRAGILE winner -- it has already demonstrated it can go
-                # underwater and is structurally likely to round-trip the recovery in a
-                # choppy/oscillating regime (sideways/crash bounces where peak_pnl oscillates
-                # -> _giveback_ratio oscillates -> exit-timing noise -> the paper gain gives
-                # back to a loss before _pp_pressure fires at the full giveback tolerance).
-                # Tighten the giveback for deep-MAE winners so _pp_pressure harvests the
-                # fragile recovery EARLIER (smaller giveback -> earlier exit -> lock the
-                # recovery before it round-trips). A CLEAN-MAE winner (never underwater,
-                # mae~0) is a strong trend-aligned winner (bull/rally grind) -> keep the
-                # FULL giveback tolerance byte-identical (let it run). The MAE gate is
-                # independent of portfolio DD (a position can have deep MAE at portfolio
-                # peak -- a single bad entry that recovered -- and a clean MAE during
-                # portfolio DD -- a trend entry in a correlated pullback that never went
-                # underwater). Distinct from the _ts_supp MAE-cleanliness factor at tp-harvest
-                # (that SUPPRESSES harvest for clean-MAE trend extensions, letting them run;
-                # this TIGHTENS giveback for DEEP-MAE fragile winners, harvesting them
-                # earlier -- opposite direction on the opposite MAE subpopulation). Fast-
-                # saturating tanh on (-mae)/(|stop|*0.25) (the SAME scale as _be_mae_depth
-                # and _ts_supp's MAE factor -- near-constant ~1 once mae<=-0.25*stop, noise-
-                # free per the validated MAE-gate lesson). Max additional tightening 0.15
-                # (smaller than the 0.50 portfolio-DD tightening -- a per-position signal,
-                # not a portfolio regime). Profit-side only (only fires when peak_pnl>0, i.e.
-                # the position reached profit -> a winner that can give back; a pure loser
-                # has peak_pnl~0 -> _pp_activation 0 -> tightening inert, no impact). Smooth,
-                # no boundary. Direction-agnostic (MAE is direction-neutral). Targets the
-                # negative-Sharpe sideways/crash regimes where fragile recovered winners
-                # round-trip; spares clean trend winners (bull/rally) byte-identical.
-                _pp_mae_tighten = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
-                _pp_tighten = _pp_tighten * (1.0 - 0.15 * _pp_mae_tighten)
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
