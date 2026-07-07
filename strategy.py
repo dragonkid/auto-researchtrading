@@ -2799,7 +2799,20 @@ class Strategy:
                 # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
-                _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Branch step5: AMPLIFY vol_hold_ext LEVEL 0.12->0.18 (compounding with the
+                # convex tp ramp shape k=2.5 from step3). The prior session found the LEVEL
+                # alone (Exp1 asymmetric EMA on it) was INERT, and the SHAPE alone (convex
+                # k=2.0) was sub-noise (+0.000705). But they were never tested TOGETHER. The
+                # convex shape changes the ramp CURVATURE past max_hold (low early-half ->
+                # ride); the level extension shifts WHERE max_hold sits (longer hold before
+                # ramp starts). Combined, crash trend-aligned winners ride the downtrend
+                # longer (level) AND more gradually (shape) -> compound the crash winner
+                # benefit. Calm (vol_ratio<1.0 -> _vol_hold_ext=0) byte-identical. The level
+                # was inert alone because the linear ramp cut winners fast on the first
+                # time-pressure bar regardless of where the level sat; WITH the convex shape
+                # (low early-half pressure), the level extension now matters because the
+                # ramp is gradual enough that the extra hold duration is productive.
+                _max_hold *= 1.0 + 0.18 * _vol_hold_ext
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
