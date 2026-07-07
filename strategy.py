@@ -2825,35 +2825,7 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
-                _tp_progress = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
-                # Exp1 (architectural, indep): VOL-NORMALIZED time-pressure RAMP SHAPE.
-                # The keep 296762d8 widened the ramp WIDTH (calm 4.0 -> high-vol 8.0); onset
-                # tuning (step3/step4) is a confirmed dead end (over-holds trend winners when
-                # the width is too wide, cuts them too early when the pre-onset extends). The
-                # sanctioned untested lead from the last session-summary: a structurally
-                # different ramp SHAPE (convex/concave rather than linear) might extend the
-                # crash/bull gain. The current ramp is LINEAR in _tp_progress (pressure rises
-                # proportionally across the ramp window). A CONVEX ramp (progress^k, k>1)
-                # redistributes pressure within the window: LOW early (the first half of the
-                # window contributes only progress^k of the pressure -> trend winners ride
-                # the larger per-bar real move in high-vol with near-zero time pressure ->
-                # less premature winner harvest) and HIGHER late (the second half ramps
-                # sharply -> cuts non-progressing positions on schedule rather than over-
-                # holding them, addressing step3's over-hold failure mode via a different
-                # axis: shape, not width/onset). Distinct from width (the keep, scales the
-                # window size) and onset (dead end, scales where the window starts): shape
-                # changes the pressure-vs-time CURVATURE within the window. Gate the
-                # convexity on vol_ratio (the same vol_condition the keep uses for width)
-                # so calm regimes (vol_ratio<0.8 -> _tp_shape_k gate ~0 -> k_eff ~1.0 ->
-                # linear, byte-identical) keep the linear ramp; only high-vol trend regimes
-                # (crash shorts, bull sharp-pullback bars) get the convex curvature. k_max
-                # 1.5 (modest convexity -- progress^1.5: at midpoint 0.5^1.5=0.354 vs linear
-                # 0.5, so early-half pressure is ~0.71x of linear; late-half reaches 1.0 same
-                # as linear at the window end). New control flow: time-pressure ramp shape
-                # depends on vol_ratio (curvature, not just width/level). Continuous (smooth
-                # power, no new decision boundary). Direction-agnostic, no regime label.
-                _tp_shape_k = 1.0 + 1.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm -> 2.0 high-vol (step2: 1.5->2.0 amplify crash gain)
-                _time_pressure = _tp_progress ** _tp_shape_k
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
