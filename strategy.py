@@ -480,7 +480,6 @@ class Strategy:
         # state + new control flow: _max_hold reads a temporally-smoothed hold-extension
         # magnitude (was the instantaneous product). Reset on full exit.
         self._hold_ext_ema = {}
-        self._vol_ratio_ema = {}  # branch step7: per-symbol vol_ratio EMA (vol-persistence for tp ramp convexity)
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2853,36 +2852,7 @@ class Strategy:
                 # as linear at the window end). New control flow: time-pressure ramp shape
                 # depends on vol_ratio (curvature, not just width/level). Continuous (smooth
                 # power, no new decision boundary). Direction-agnostic, no regime label.
-                _tp_shape_k = 1.0 + 2.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm -> 3.0 high-vol (step7: base k_max 2.0->3.0, vol-persistence-modulated below)
-                # branch step7: VOL-PERSISTENCE modulation of the tp ramp convexity. Step3
-                # (k=3.0) over-held BULL pullback longs; step6 (slope-conf gate) was INERT
-                # because the 16-bar slope stays positive during bull pullbacks. Root cause
-                # (step6 diagnosis): the bull/crash asymmetry is a VOL-PERSISTENCE property.
-                # crash high-vol is a PERSISTENT multi-bar downtrend (vol_ratio elevated
-                # across many consecutive bars -> the convex ride is correct, ride the
-                # sustained high-vol trend). bull high-vol is SPIKY pullback corrections
-                # (vol_ratio spikes on a few correction bars then reverts -> the convex
-                # shape over-holds the pullback because it treats the spike as a sustained
-                # trend). Distinguish via a short vol_ratio EMA: when vol is PERSISTENT
-                # (EMA has caught up, EMA/inst ~1), full convexity (ride); when vol is SPIKY
-                # (inst high but EMA lagging lower, EMA/inst <1), reduce convexity toward
-                # linear (cut the spike on schedule, no over-hold). Crash downtrend: vol
-                # sustained -> EMA~inst -> ratio~1 -> full convex -> ride. Bull pullback:
-                # vol spikes -> inst high, EMA lagging -> ratio<1 -> reduced convex -> linear
-                # -> no over-hold. Crash bounce: vol drops -> inst low -> shape gate already
-                # ~0 (vol_ratio<0.8 -> k=1.0) -> SAFE (no dead-cat wall; the bounce low-vol
-                # already disables convexity, the persistence modulation is moot). NEW per-
-                # symbol _vol_ratio_ema state + new control flow: tp ramp shape reads the
-                # vol-persistence ratio (EMA/inst) jointly with vol_ratio. Calm regimes
-                # (vol_ratio<0.8 -> base k=1.0 -> modulation multiplies 0 -> byte-identical).
-                # Fast EMA (alpha 0.4, ~3-bar) catches spiky vol; persistent vol saturates it.
-                _tp_vr_ema_prev = self._vol_ratio_ema.get(symbol, vol_ratio)
-                _tp_vr_ema = 0.4 * vol_ratio + 0.6 * _tp_vr_ema_prev
-                self._vol_ratio_ema[symbol] = _tp_vr_ema
-                # persistence ratio: 1.0 persistent (EMA caught up), <1.0 spiky (EMA lagging).
-                # Floor at 0.3 to avoid over-rewarding a single bar's EMA catching up.
-                _tp_vr_persist = max(0.0, min(1.0, _tp_vr_ema / max(vol_ratio, 1e-6)))
-                _tp_shape_k = 1.0 + (_tp_shape_k - 1.0) * _tp_vr_persist
+                _tp_shape_k = 1.0 + 1.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm -> 2.0 high-vol (step2: 1.5->2.0 amplify crash gain)
                 _time_pressure = _tp_progress ** _tp_shape_k
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
@@ -4259,7 +4229,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._vol_ratio_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
