@@ -2825,39 +2825,6 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
-                # Exp1 (architectural, indep, this session): LOW-VOL time-pressure RAMP
-                # WIDENING -- the bilateral mirror of the validated high-vol width keep
-                # 296762d8. The high-vol widening (above, onset 0.8) was the UNIQUE case
-                # where vol-normalizing a ramp width was productive (prior session: time-
-                # pressure IS the binding exit for sideways winners AND operates in the
-                # active region, not the saturated tail). But it FLOORED the low-vol
-                # region (vol_ratio<0.8 -> width 4.0, byte-identical) leaving sideways
-                # UNTOUCHED -- the prior session-summary explicitly flagged this as the
-                # untested lead: "a sideways-specific mechanism (sideways is the other
-                # negative-Sharpe regime, Sh -0.052) that compounds". MECHANISM: sideways
-                # is low-vol -> small per-bar real moves -> the 4-bar ramp cuts winners at
-                # 4 bars past max_hold before the slow mean-reversion fully plays out (PF
-                # 1.3, WR 67pct, winners small = the 4-bar window is too tight for the
-                # slow mean-reversion timescale). A wider low-vol ramp lets sideways
-                # winners ride longer to capture more of the mean-reversion move. This is
-                # the SAME primitive (ramp width) on the SAME subsystem (time-pressure)
-                # the prior session confirmed productive, applied to the OTHER vol region.
-                # NEW CONTROL FLOW: the ramp-width function changes from MONOTONIC-
-                # INCREASING (4.0 floor at low vol -> 8.0 at high vol) to BILATERAL
-                # (widen at BOTH low and high vol, baseline 4.0 around vol_ratio~0.8-1.0).
-                # The high-vol term (above) is UNCHANGED (load-bearing keep, onset 0.8 max
-                # 8.0 -- lowering onset regressed crash per prior session). The new low-vol
-                # term widens as vol_ratio FALLS below 0.6: tanh((0.6 - vol_ratio)/0.3),
-                # max +3.0 (width 4.0->7.0) at vol_ratio<=0.3. Byte-identical for vol_ratio
-                # >= 0.6 (the low-vol term floors at 0 -> only the high-vol term applies ->
-                # crash/rally/bull byte-identical; the calm-vol band 0.6-0.8 stays at 4.0).
-                # Continuous, no boundary; direction-agnostic general principle (no regime
-                # label): the de-risk graduation should be vol-normalized in width at BOTH
-                # vol extremes, since BOTH extremes have small real per-bar moves relative
-                # to the noise scale (low-vol sideways = slow drift; high-vol = large but
-                # the keep already handles it). Targets sideways (negative-Sharpe, score
-                # == bare Sharpe -> +1 Sharpe = +1 score 1:1).
-                _tp_ramp_w += 3.0 * max(0.0, np.tanh((0.6 - vol_ratio) / 0.3))
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
