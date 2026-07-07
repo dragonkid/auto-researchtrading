@@ -2896,7 +2896,10 @@ class Strategy:
                 # is applied to the clamped [0,1] linear progress; k>1 lowers early-half
                 # pressure (concave -> convex curvature holds near-0 then ramps late).
                 _tp_lin_progress = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
-                _tp_shape_k = 1.0 + 1.5 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm (byte-identical), 2.5 high-vol
+                # branch step6: push shape k_max 2.5 -> 2.6 (small probe; prior session k=2.8
+                # regressed bull over-hold, so 2.6 is in the safe zone; may extend crash+bull
+                # a bit more without the mixed coupling). Calm byte-identical (k=1.0).
+                _tp_shape_k = 1.0 + 1.6 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm (byte-identical), 2.6 high-vol
                 _time_pressure = _tp_lin_progress ** _tp_shape_k
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
