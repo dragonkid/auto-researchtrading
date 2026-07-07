@@ -2824,12 +2824,7 @@ class Strategy:
                 # crash's vol_ratio which may be ~1.0-1.3, not past 1.5) and widening max to
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
-                # BRANCH step3: push max 8.0->10.0 and onset 0.8->0.7 to test headroom.
-                # Step2 crossed +0.003 keep (crash +0.0129, bull +0.0005). Crash vol_ratio
-                # may still be in the ramp's mid-region (not saturated at 8.0); widening
-                # further tests whether the gain scales. Onset 0.7 engages bull's moderate-
-                # vol bars too (risk: sideways vol_ratio~0.85 might start engaging -> test).
-                _tp_ramp_w = 4.0 + 6.0 * max(0.0, np.tanh((vol_ratio - 0.7) / 0.4))
+                _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
