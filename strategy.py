@@ -2752,6 +2752,36 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp3 (architectural, indep): LOW-VOL LOSER max_hold SHORTENING. Targets
+                # sideways (-0.067 bare-Sharpe 1:1 composite lever) from the EXIT-TIME axis.
+                # Exp2 confirmed (via its FAILURE) that sideways's problem is a genuine PF
+                # problem (avg loss > avg win), NOT a wobble problem (stability 1.0) -- the
+                # convex cushion held sideways LOSERS longer -> bigger losses -> worse Sharpe.
+                # The OPPOSITE lever: cut sideways losers FASTER. In sideways (low vol) the
+                # stop is NOT binding (low vol -> moves small -> stop rarely hit, confirmed
+                # by Exp1's stop-distance tighten being byte-identical in crash but sideways
+                # losers bleeding via time-pressure to bar ~10). _time_pressure IS the binding
+                # exit for sideways losers. Reducing _max_hold for low-vol LOSING positions
+                # cuts them ~1 bar earlier -> smaller realized loss -> higher PF -> higher
+                # sideways Sharpe. NEW cross-component data dep: _max_hold reads (vol_ratio,
+                # pos_pnl sign, slope-against) jointly -- the baseline _hold_adj already reads
+                # (slope, vol) but NOT pos_pnl; this adds the pos_pnl-loss dimension so the
+                # shortening fires only for LOSERS (winners byte-identical -- the _ta_dd_hold_ext
+                # handles winner holds). Gate: (a) LOSING (_loss>0 -> _pnl_scale<0), (b) LOW-VOL
+                # (vol_ratio<0.9 = sideways chop; crash/rally medium-high vol excluded -> the
+                # prior Exp2 inert-stop wall in crash byte-identical, rally trend winners
+                # byte-identical), (c) SLOPE-AGAINST (the position is losing GROUND, not just
+                # oscillating -- _slope_strength already computed; gate on slope-against sign
+                # so sideways mean-reverters that are temporarily red but slope-recovering are
+                # spared). Fast-saturating /0.20 scale on vol (near-constant in sideways
+                # 0.6-0.8, near-0 in rally/crash -> noise-free per the validated lesson). Max
+                # -1.5 bar reduction (modest; avoids over-cutting mean-reverters that recover
+                # after a shallow dip). Continuous tanh, no boundary. Direction-agnostic.
+                _lv_loss_gate = max(0.0, min(1.0, np.tanh((0.9 - vol_ratio) / 0.20)))
+                _lv_loss_loss = max(0.0, -_pnl_scale)  # 0 winner, ~1 deep loser
+                _lv_loss_slope = (1.0 if not _slope_agrees else 0.0) * _slope_strength  # slope-against magnitude
+                _lv_loss_short = 1.5 * _lv_loss_gate * _lv_loss_loss * _lv_loss_slope
+                _max_hold -= _lv_loss_short
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
