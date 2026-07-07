@@ -74,12 +74,6 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
-# Exp1 (architectural, indep): MAE-conditioned stop tightening max magnitude. A position
-# that has gone deep underwater (MAE >= 0.50*|stop|) AND is currently losing gets its
-# hard stop distance shrunk by up to this fraction -> _sl_pressure saturates at a smaller
-# loss -> cut earlier on the structurally-fragile population (the stop-bound crash losers
-# no prior lever could reach). See _stop_abs usage for full mechanism.
-STOP_MAE_TIGHTEN_MAX = 0.20
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
@@ -2480,40 +2474,6 @@ class Strategy:
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
                 _loss = -pos_pnl
-                # Exp1 (architectural, indep): MAE-CONDITIONED STOP TIGHTENING for
-                # structurally fragile losing positions. Pursues the documented untested
-                # crash lead from a NEW axis: prior sessions confirmed crash's deep-MAE
-                # losers are STOP-BOUND (exit-side exhausted across _sl_slope_pressure
-                # amplification [byte-identical, MAX-absorbed], _max_hold reduction
-                # [inert, stop fires first], 7th soft source [byte-identical], time-
-                # pressure weight amp [byte-identical], scale-in slowdown [churn wall]).
-                # ALL those levers amplified SOFT sources (absorbed by max(_sl_pressure,
-                # _soft_max) since _sl_pressure already saturates first) or changed TIME
-                # pressure (fires after the stop). NONE touched _stop_abs ITSELF -- the
-                # binding exit distance for the stop-bound population. Tightening _stop_abs
-                # directly moves the dominant term in _exit_pressure=max(_sl_pressure,...).
-                # NEW cross-component data dep: _stop_abs reads self._mae (position life-
-                # cycle min pos_pnl) jointly with current _loss. A position that has gone
-                # deep underwater (deep MAE) AND is currently losing again is structurally
-                # fragile (it already proved it can excursion deep, and is heading back) ->
-                # tighten its stop so _sl_pressure saturates at a SMALLER loss -> cut
-                # earlier -> smaller realized loss on the fragile population -> higher
-                # Sharpe in negative-Sharpe regimes (score==bare Sharpe there; crash -0.156).
-                # _mae_depth_stop saturates at MAE = 0.50*|stop| (deep underwater). Gate to
-                # LOSING positions only (_loss>0): winners that dipped deep then recovered
-                # (rally pullback longs, bull correction longs) have _loss<=0 -> tighten
-                # factor 1.0 -> byte-identical (the _pp_pressure giveback path handles
-                # winning-side exits, not the stop). The _loss/_stop_abs ramp scales the
-                # tighten so it only bites when the current loss is meaningful (not barely
-                # negative). Continuous tanh (no boundary); shrink-only (never widens the
-                # stop); symmetric (both long/short); life-cycle signal (no regime label).
-                # Distinct from the walled _sl_slope_pressure MAE amplification (Exp1 prior
-                # session, MAX-absorbed): that amplified a SOFT source; this tightens the
-                # HARD stop distance that IS the binding constraint for stop-bound losers.
-                _mae_depth_stop = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.50))))
-                _loss_active = max(0.0, min(1.0, _loss / max(_stop_abs, 1e-6)))
-                _stop_tighten = 1.0 - STOP_MAE_TIGHTEN_MAX * _mae_depth_stop * _loss_active
-                _stop_abs = _stop_abs * _stop_tighten
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
