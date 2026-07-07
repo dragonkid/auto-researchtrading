@@ -480,26 +480,6 @@ class Strategy:
         # state + new control flow: _max_hold reads a temporally-smoothed hold-extension
         # magnitude (was the instantaneous product). Reset on full exit.
         self._hold_ext_ema = {}
-        # Exp1 (this session): per-symbol EMA of the _vol_hold_ext MAGNITUDE (the
-        # vol-normalized hold-extension DECISION INPUT that feeds the _max_hold *=
-        # (1 + 0.12 * _vol_hold_ext) multiply at line ~2802 -> _time_pressure). The
-        # _ta_dd_hold_ext EMA keep (0c5ac8c7) smoothed ONE of three _max_hold inputs;
-        # the prior session-summary explicitly documented "_vol_hold_ext was NOT
-        # tested on crash" as untested lead #2. vol_ratio is close-derived and
-        # wobbles bar-to-bar under AR(1) -> _vol_hold_ext wobbles -> the _max_hold
-        # MULTIPLICATIVE term wobbles -> _time_pressure jumps -> emitted target
-        # jumps. Crash's vol_ratio is uniformly elevated throughout the persistent
-        # downtrend (high realized vol -> vol_ratio > 1.0 -> _vol_hold_ext active
-        # for crash shorts), so this wobble is LIVE for crash, unlike the _ta_dd_hold_ext
-        # path (long-only, byte-identical for crash shorts). Smoothing the magnitude
-        # at the source damps the bar-to-bar position-value variance while preserving
-        # the vol-normalized hold benefit (same mean activation level, just stable).
-        # ASYMMETRIC one-pole low-pass mirroring the validated _hold_ext_ema pattern:
-        # SLOW to RISE (alpha 0.55 low-pass dampens the AR(1) wobble = the stability
-        # benefit) but FAST to FALL (alpha 0.15 near-instant release when vol_ratio
-        # drops so the hold-extension releases on real vol-regime shifts, no lag on
-        # winner->loser). Reset on full exit. Pursues prior session untested lead #2.
-        self._vol_hold_ext_ema = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2818,30 +2798,7 @@ class Strategy:
                 # Continuous tanh on (vol_ratio-1)/0.5, max +12pct at vol_ratio>=1.5; calm
                 # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
                 # term in the time-pressure activation. No per-regime labels.
-                _vol_hold_ext_raw = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
-                # Exp1 (this session): ASYMMETRIC fast-fall/slow-rise EMA on the
-                # _vol_hold_ext MAGNITUDE at the source (mirrors the validated
-                # _hold_ext_ema keep on _ta_dd_hold_ext). vol_ratio is close-derived
-                # -> bar-to-bar AR(1) wobble -> _vol_hold_ext wobble -> the _max_hold
-                # multiplicative term wobbles -> _time_pressure jumps -> emitted
-                # target jumps (stability tracking error). Crash's vol_ratio is
-                # uniformly elevated (persistent downtrend, high realized vol) so
-                # _vol_hold_ext is ACTIVE for crash shorts (unlike _ta_dd_hold_ext
-                # which is long-only -> byte-identical for crash shorts). Smoothing
-                # the magnitude damps the wobble while preserving the vol-normalized
-                # hold benefit (same mean activation, stable amount). SLOW to RISE
-                # (alpha 0.55 low-pass = the stability benefit) but FAST to FALL
-                # (alpha 0.15 release on real vol-regime drops, no lag). Byte-
-                # identical when vol_ratio<=1.0 (raw floored at 0 -> EMA converges
-                # to 0 -> no extension). Continuous, no boundary. New per-symbol
-                # state + new control flow on the _max_hold multiply.
-                _prev_vhe = self._vol_hold_ext_ema.get(symbol, _vol_hold_ext_raw)
-                if _vol_hold_ext_raw >= _prev_vhe:
-                    _vhe_alpha = 0.55  # slow rise: low-pass the AR(1) wobble (stability)
-                else:
-                    _vhe_alpha = 0.15  # fast fall: release on real vol-regime drop (no lag)
-                _vol_hold_ext = (1.0 - _vhe_alpha) * _vol_hold_ext_raw + _vhe_alpha * _prev_vhe
-                self._vol_hold_ext_ema[symbol] = _vol_hold_ext
+                _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
@@ -4219,7 +4176,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._vol_hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
