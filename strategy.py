@@ -777,7 +777,7 @@ class Strategy:
                 if _omae < 0.5 * STOP_LOSS_PCT:
                     _port_open_mae_deep_count += 1
         _port_open_mae_frac = (_port_open_mae_deep_count / _port_open_count) if _port_open_count > 0 else 0.0
-        _port_open_mae_admit_tighten = 1.0 + 0.15 * max(0.0, min(1.0, np.tanh((_port_open_mae_frac - 0.5) / 0.3)))
+        _port_open_mae_admit_tighten = 1.0 + 0.40 * max(0.0, min(1.0, np.tanh((_port_open_mae_frac - 0.5) / 0.3)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
