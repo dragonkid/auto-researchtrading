@@ -2639,39 +2639,6 @@ class Strategy:
                 # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
                 # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
                 _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
-                # Exp4 (architectural, indep): LOW-VOL-WINNER pp_pressure attenuation. Targets
-                # sideways (-0.067 bare-Sharpe 1:1 composite lever) via the WINNER-SIDE exit
-                # axis (distinct from Exp2's cushion failure and Exp3's time-axis failure).
-                # Exp2 confirmed sideways is a PF problem (avg win < avg loss) NOT a wobble
-                # problem (stability 1.0); Exp2's cushion held LOSERS longer -> worse. Exp3's
-                # max_hold shortening cut RECOVERIES -> catastrophic churn. The REMAINING axis:
-                # let sideways WINNERS run longer (raise avg win -> higher PF -> higher Sharpe)
-                # WITHOUT touching losers (losers have no peak -> _pp_pressure is 0 for them
-                # -> byte-identical). _pp_pressure is the BINDING soft-exit for winners (MAX
-                # fusion). In low-vol sideways, _pp_min is small (vol_ratio^0.5 scaling) ->
-                # _pp_pressure activates on tiny peaks -> harvests sideways winners too early
-                # -> small realized wins -> low PF. Mirror the validated _ta_winner_gate
-                # structure (bull trend-aligned long winners) for the sideways LOW-VOL winner
-                # population: attenuate _pp_pressure when (a) LOW-VOL (vol_ratio<0.9 = sideways
-                # chop; crash/rally high-vol byte-identical), (b) in-profit (losers byte-
-                # identical -- pos_pnl<0 -> profit-gate 0), (c) past scale-in (fresh entries
-                # keep full pp protection), (d) GRADUAL giveback (giveback_ratio<0.15 -> the
-                # attenuation turns OFF on sharp reversals, mirrors _gb_mag_gate), (e) small
-                # slope-against (not reversing, mirrors _slope_against_gate). Distinct from
-                # _ta_winner_gate: that gates on trend-ALIGNMENT (ret_vlong*pos_dir, ~0 in
-                # sideways mean-reverters); this gates on LOW-VOL (vol_ratio, ~1 in sideways).
-                # The two gates are OR-composed (a winner earns attenuation via EITHER path).
-                # NEW cross-component data dep: pp_pressure now reads vol_ratio jointly with
-                # (profit, hold-duration, giveback, slope-against) via a SECOND attenuation
-                # path parallel to the trend-aligned path. Direction-agnostic (both long/short
-                # sideways mean-reverters eligible; crash/rally byte-identical via low-vol gate).
-                # Max 0.40 attenuation (modest vs _ta_winner_gate's 0.95; sideways winners are
-                # small-cap, less headroom than bull trend winners). Continuous tanh, no boundary.
-                _lv_winner_vol = max(0.0, min(1.0, np.tanh((0.9 - vol_ratio) / 0.20)))
-                _lv_winner_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _lv_winner_hold = 1.0 if bars_held > ENTRY_FULL_BARS else 0.0
-                _lv_winner_gate = _lv_winner_vol * _lv_winner_profit * _lv_winner_hold * _gb_mag_gate * _slope_against_gate
-                _pp_pressure = _pp_pressure * (1.0 - 0.40 * _lv_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
