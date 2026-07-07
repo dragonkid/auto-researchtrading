@@ -395,21 +395,6 @@ PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
 PORT_VOL_SPIKE_ONSET = 1.30   # vol_ratio above which cap engages (calm<1.0, chop>1.2; 1.3 = elevated)
 PORT_VOL_SPIKE_SCALE = 0.30
 PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
-# BRANCH (architectural, indep): PORTFOLIO CROSS-SYMBOL RETURN-DISPERSION admission
-# tightener. NEW portfolio-level data dep: cross-sectional std of 20-bar returns
-# across BTC/ETH/SOL, normalized by mean |return|. GATED on SIGN-DISAGREEMENT
-# (1 - _consensus_strength): high dispersion is only "idiosyncratic noise" when
-# symbols move in DIFFERENT directions (one up, others down = rotation/regime-mix).
-# When all three trend the SAME sign (broad bull/rally/crash), high magnitude-
-# dispersion (SOL falls faster than BTC) is a broad move, not noise -> gate=0 ->
-# crash's legitimate trend-aligned shorts protected. The sign-gate also targets
-# sideways (BTC/ETH/SOL oscillate with different signs -> high dispersion + low
-# consensus -> fires). Noise-robustness: dispersion computed on median-of-3 closes
-# at both endpoints (reduces AR(1) close-perturbation sensitivity ~sqrt(3) so a
-# 4.5bps perturbation no longer flips the std ranking when returns are small).
-PORT_DISP_ONSET = 0.50
-PORT_DISP_SCALE = 0.30
-PORT_DISP_MAX_TIGHTEN = 0.12  # max admission threshold raise at full saturation (step2: lowered 0.18->0.12 to reduce sideways admission-boundary noise sensitivity that drove stability 0.465 below the 0.50 floor)
 
 
 class Strategy:
@@ -755,44 +740,6 @@ class Strategy:
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
 
-        # BRANCH step2 (architectural, indep): PORTFOLIO CROSS-SYMBOL RETURN-DISPERSION
-        # admission tightener, BEAR-EXEMPT GATED. Step1's sign-disagreement gate did NOT
-        # fix crash (crash has mixed 20-bar signs during dead-cat bounces -> sign-gate
-        # still fired -> crash still -1.54). NEW gate: exempt the dispersion tightener
-        # in PERSISTENT DEEP-BEAR via the validated _port_bear_cap (cross-symbol avg
-        # down_persist > ONSET -> bear_cap < 1.0). crash is a persistent multi-month bear
-        # across all 3 symbols -> down_persist avg ~0.9 -> bear_cap ~0.65 -> exempt gate
-        # ~1.0 (full exemption). sideways (oscillator, down_persist ~0.5) + mixed (one
-        # symbol at a time) + bull/rally (transient dips, down_persist ~0.3) -> bear_cap
-        # = 1.0 -> exempt gate 0 -> tightener active. CONTINUOUS tanh gate on the
-        # validated smooth _port_bear_cap signal (not a regime switch -- no boundary;
-        # the same signal already drives the existing size cap with 4 keeps). The
-        # dispersion signal's value is in the chop/rotation regimes (sideways +0.85 Sh);
-        # crash's trend-aligned shorts are the winners and must not be tightened.
-        # Median-of-3 close endpoints retained for AR(1) noise robustness (step1 kept
-        # sideways stability 0.465 vs Exp1's 0.0). Computed here (after _port_bear_cap
-        # at line ~722) since the bear-exempt gate reads it.
-        _disp_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > LONG_WINDOW + 2]
-        _port_disp_tighten = 1.0
-        if len(_disp_syms) >= 2:
-            _disp_rets = []
-            for _dsym in _disp_syms:
-                _dc = bar_data[_dsym].history["close"].values
-                # median-of-3 at both endpoints: noise-robust under AR(1) close perturbation
-                _dc_now = float(np.median(_dc[-3:]))
-                _dc_prev = float(np.median(_dc[-LONG_WINDOW - 2:-LONG_WINDOW + 1])) if len(_dc) >= LONG_WINDOW + 3 else float(_dc[-LONG_WINDOW])
-                _disp_rets.append((_dc_now - _dc_prev) / _dc_prev)
-            _disp_arr = np.array(_disp_rets)
-            _disp_mean = float(np.mean(_disp_arr))
-            _disp_std = float(np.std(_disp_arr))
-            _disp_scale = max(abs(_disp_mean), 0.01)  # normalize by mean |return|; floor 1pct
-            _disp_norm = _disp_std / _disp_scale  # 0 = all equal, >1 = more dispersed than mean
-            # Bear-exempt gate: _port_bear_cap is 1.0 normally, <1.0 in persistent bear.
-            # Multiply tightening by bear_cap -> full effect normally, reduced in crash.
-            _disp_bear_exempt = _port_bear_cap
-            _disp_disagree = 1.0 - _consensus_strength  # fire when signs disagree
-            _port_disp_tighten = 1.0 + PORT_DISP_MAX_TIGHTEN * _disp_disagree * _disp_bear_exempt * max(0.0, min(1.0, np.tanh((_disp_norm - PORT_DISP_ONSET) / PORT_DISP_SCALE)))
-
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
         # (96-bar trend) feeding alt sizing; this uses BTC VOLUME (6/18-bar mean ratio), a
@@ -1137,12 +1084,6 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
-            # BRANCH step1 (this session): apply portfolio cross-symbol return-DISPERSION
-            # admission tightener (computed at top level, sign-disagreement-gated).
-            # Tightens admission when symbols' 20-bar returns diverge in DIRECTION
-            # (idiosyncratic/rotation = lower entry quality). Byte-identical when
-            # _port_disp_tighten=1.0 (all-same-sign broad trend legs -> gate 0).
-            _strong_min = _strong_min * _port_disp_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
