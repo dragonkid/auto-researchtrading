@@ -2880,19 +2880,7 @@ class Strategy:
                 # mixed's weak bounces stay in the gate's low-slope region -> ~0 -> mixed
                 # byte-identical. rally (ret_vlong solidly positive) -> still ~1 -> preserved.
                 _tp_trend_confirm = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # ~1 rally-confirmed (strong), ~0 sideways/mixed-weak-bounce
-                # branch step8: PORTFOLIO-HEALTH gate to spare mixed's trend-phase longs. The
-                # mixed leak (-0.0022) is the narrowing firing on mixed's rally-phase longs (which
-                # are trend-aligned at 96-bar, same as rally). The distinction: mixed's trend
-                # phases occur within a PERSISTENTLY-WEAK/BEAR portfolio (cross-symbol down_persist
-                # elevated), whereas rally's pullbacks occur in a HEALTHY portfolio (persistent
-                # uptrend, _port_bear_cap ~1.0). Gate the narrowing on portfolio HEALTH: multiply
-                # by _port_bear_cap (1.0 healthy rally, <1.0 persistent-bear mixed/crash). Crash is
-                # already byte-identical (trend-gate 0) so this only affects mixed/rally. If mixed's
-                # trend phases have elevated persistent-bear (the cross-symbol avg down_persist),
-                # _port_bear_cap < 1.0 -> narrowing softened -> mixed spared. rally (healthy) ->
-                # _port_bear_cap ~1.0 -> narrowing preserved. NEW data dep: tp ramp width narrowing
-                # depends on portfolio bear state (cross-symbol persistent-bear average).
-                _tp_chop_loss_gate = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))) * _tp_trend_confirm * _port_bear_cap
+                _tp_chop_loss_gate = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))) * _tp_trend_confirm
                 _tp_ramp_w = _tp_ramp_w * (1.0 - 0.375 * _tp_chop_loss_gate)
                 # branch step3: CONVEX tp ramp SHAPE (progress^k, k=2.5 vol-gated to high-vol).
                 # Prior session: convex shape (low early-half pressure -> trend winners ride the
