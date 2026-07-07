@@ -2855,7 +2855,15 @@ class Strategy:
                 # label): a losing position in a local pullback within a confirmed trend is dead
                 # capital (the trend will resume without it) -> reach full time-pressure sooner.
                 _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
-                _tp_trend_confirm = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.04))  # ~1 rally-confirmed, ~0 sideways/mixed-ct
+                # branch step2: tighten trend-confirm /0.04 -> /0.02 so only STRONG multi-day
+                # confirmation fires. Exp3 (/0.04) leaked to mixed -0.0023: mixed's local
+                # bounces have ret_vlong weakly positive -> the /0.04 scale (saturates by
+                # ret_vlong x pos_dir ~0.04) fired the gate weakly on mixed rally-phase longs
+                # -> some narrowing -> hurt mixed. The /0.02 scale saturates only for SOLID
+                # confirmation (ret_vlong x pos_dir ~0.02+, rally's persistent uptrend) ->
+                # mixed's weak bounces stay in the gate's low-slope region -> ~0 -> mixed
+                # byte-identical. rally (ret_vlong solidly positive) -> still ~1 -> preserved.
+                _tp_trend_confirm = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # ~1 rally-confirmed (strong), ~0 sideways/mixed-weak-bounce
                 _tp_chop_loss_gate = max(0.0, np.tanh((1.0 - rsi_trend_str) / 0.25)) * max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))) * _tp_trend_confirm
                 _tp_ramp_w = _tp_ramp_w * (1.0 - 0.375 * _tp_chop_loss_gate)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
