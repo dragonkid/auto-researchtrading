@@ -2848,7 +2848,7 @@ class Strategy:
                 # near-flat. Step2's ct-loss gate was byte-identical inert (removed for
                 # simplicity -- the convex shape's crash gain is winner-only, no loser-cost
                 # to remove). Calm (vol_ratio<0.8 -> k=1.0 linear) byte-identical.
-                _tp_shape_k = 1.0 + 1.8 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm, 2.8 high-vol
+                _tp_shape_k = 1.0 + 1.5 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # 1.0 calm, 2.5 high-vol
                 _time_pressure = _tp_progress ** _tp_shape_k if _tp_progress > 0 else 0.0
                 _time_pressure = max(0.0, min(1.0, _time_pressure))
 
