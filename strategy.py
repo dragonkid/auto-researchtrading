@@ -2521,6 +2521,44 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp1 (architectural, indep): PORTFOLIO-DD-ADAPTIVE stop tightening for
+                # LOSING positions. NEW data dependency at the stop-loss subsystem: the
+                # hard stop level (_stop_abs) currently depends on ATR (per-symbol vol)
+                # ONLY -- it does NOT read the portfolio equity state. The portfolio has a
+                # DD circuit-breaker on ENTRY SIZE (cbf4e8c keep, shrinks NEW entries) and
+                # a DD-adaptive GIVEBACK tightening (7a5e2422 keep, tightens PROFIT giveback)
+                # but the LOSS-STOP itself is portfolio-blind. In crash (MaxDD 17.81pct,
+                # near the 16pct total-loss cliff; Sharpe -0.143 -> score == bare Sharpe so
+                # DD reduction alone cannot flip the sign but cutting the cascading-loser
+                # magnitude raises Sharpe toward 0 = +0.14 of score headroom), the DD is
+                # driven by LOSING positions that ride down through the ATR stop while the
+                # portfolio is already bleeding (a correlated cascade: one symbol's stop-
+                # loss is another's drawdown source). Tighten the hard stop for LOSING
+                # positions when the portfolio is in DD, so a losing position during a
+                # portfolio cascade is cut FASTER -> breaks the cascade -> lower crash DD
+                # AND a smaller per-loser realized loss (Sharpe up). WINNING positions
+                # (pos_pnl > 0) keep the FULL ATR stop byte-identical (don't cut winners
+                # in DD -- they are the recovery; the giveback-tightening already handles
+                # profit-locking at peaks). The loss-side gate uses tanh(pos_pnl/|stop|)
+                # (the validated _pnl_scale form, continuous, no boundary): ~0 in profit,
+                # ~1 in deep loss, smooth through breakeven. The DD-depth gate reuses
+                # _port_dd_atten (the EMA-smoothed, asymmetric, leverage-coupled portfolio-DD
+                # signal already computed at top level for the entry circuit-breaker and
+                # giveback-tightening -- noise-robust per the validated keeps). (1.0 -
+                # _port_dd_atten) is 0 at peak equity (byte-identical there) and ~1 in deep
+                # DD. Product = loss-side x DD-depth: fires ONLY for losing positions
+                # DURING portfolio DD, zero for winners OR at peak equity. Magnitude modest
+                # (max 15pct tighten) -- breaks the cascade without whipsawing trend
+                # positions that bounce against then resume (the 0.85 floor preserves the
+                # soft band proportional to the tightened stop so the soft-exit ramp
+                # narrows too, consistent). Distinct from the discarded portfolio-DD exit
+                # accelerator (that added a 7th ADDITIVE soft source firing during cascades
+                # and hurt crash via premature winner exits; this MODIFIES the loss-stop
+                # BOUNDARY for losers only -- no soft-pressure addition, no winner impact).
+                # Direction-agnostic general principle (no regime label): a losing position
+                # during a portfolio drawdown is higher-risk -> tighter risk control.
+                _port_dd_stop_tighten = (1.0 - _port_dd_atten) * max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _stop_abs = _stop_abs * (1.0 - 0.15 * _port_dd_stop_tighten)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
