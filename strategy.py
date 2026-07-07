@@ -412,7 +412,7 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 # counter-move magnitude (no boundary). Direction-agnostic (no regime label): a trend-
 # aligned entry chasing a sharp counter-move is lower quality.
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
-COUNTER_VEL_SCALE = 0.015      # 3-bar return magnitude at which shrink saturates (~1.5pct)
+COUNTER_VEL_SCALE = 0.008      # 3-bar return magnitude at which shrink saturates (step3: 0.015->0.008 widen to fire on more pullbacks)
 
 
 class Strategy:
