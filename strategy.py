@@ -2349,32 +2349,6 @@ class Strategy:
                     _own_margin = _bull_margin if current_pos > 0 else _bear_margin
                     _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
                     _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
-                    # Exp4 (architectural, indep, this session): WEAK-TREND ADVERSE-VELOCITY
-                    # scale-in SLOWDOWN. The _adv_freeze below freezes adverse (pos_pnl<0)
-                    # scale-in ONLY when COUNTER-TREND at multi-day (_ct_si_gate high). In
-                    # SIDEWAYS, entries are NOT counter-trend at multi-day (ret_vlong~0 ->
-                    # _ct_si_gate~0) -> _adv_freeze~0 -> a sideways entry that immediately goes
-                    # adverse scales to full, then bleeds. But sideways adverse-early entries
-                    # are the noise-driven churn losers (admitted on a mean-reversion spike
-                    # that immediately reverses). NEW cross-component data dep: a scale-in
-                    # adverse slowdown gated on PERSISTENT WEAK multi-day trend (_weak_persist,
-                    # ~1 in sideways/mixed-oscillation, ~0 in crash's strong downtrend AND
-                    # rally's strong uptrend). In weak-trend, an immediately-adverse entry is
-                    # noise (no trend to confirm it) -> slow scale-in (keep smaller until it
-                    # recovers); in strong-trend, an adverse dip may be a real pullback
-                    # (weak_persist~0 -> byte-identical, the trend-aligned _adv_freeze path
-                    # handles real ct reversals). DISTINCT from _adv_freeze (ct-gated, fires
-                    # on TREND regimes' ct entries): this is weak-trend-gated, fires on
-                    # sideways adverse entries _adv_freeze misses (_ct_si_gate~0 there).
-                    # CRASH-SAFE: _weak_persist~0 in crash (strong downtrend |ret_vlong| high ->
-                    # not weak) -> byte-identical (avoids the Exp1/2/3 crash-catastrophe
-                    # pattern where signals firing during bounces starved the 100pct WR
-                    # winning shorts; _weak_persist does NOT fire on crash bounces since the
-                    # 96-bar trend stays strongly down through bounces). One-sided (max(0,
-                    # -pos_pnl) -> 0 for winners). Smooth tanh on pos_pnl/(0.5*|stop|).
-                    # Max 20pct slowdown at deep adverse in weak-trend.
-                    _weak_adv_slow = max(0.0, np.tanh(-pos_pnl / (0.5 * abs(STOP_LOSS_PCT)))) * _weak_persist
-                    _eff_progress = _eff_progress * (1.0 - 0.20 * _weak_adv_slow)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
