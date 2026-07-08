@@ -3145,38 +3145,7 @@ class Strategy:
                 # the exit-threshold logic already tolerates since _exit_pressure > 1.0
                 # triggers exit anyway).
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
-                # Exp3 (this session): LONG-ONLY DEEP-GIVEBACK mute on the confirmation
-                # amplification -- the DIRECTION x GIVEBACK decoupling of the 654588e9
-                # crash-gain/bull-loss coupling. The two prior experiments this session
-                # established: (1) Exp1 inverse giveback gate (direction-AGNOSTIC, mute amp
-                # at large giveback for ALL positions) collapses crash to -0.143 -- because
-                # crash's winner-side amp fires PARTLY at giveback>10pct (the gain spans the
-                # 0.10 boundary), so muting there cuts part of the crash gain. (2) Exp2
-                # ta_winner_gate mute is byte-IDENTICAL -- the bull-loss positions (winner-side
-                # longs at giveback>10pct) are NOT the canonical gradual-persistent-pullback
-                # winners that _ta_winner_gate covers. The MISSING axis is DIRECTION: the
-                # crash gain is on SHORTS (trend-aligned crash shorts realizing bounces), the
-                # bull loss is on LONGS (winner-side longs cut at deep pullback before resume).
-                # The long/short risk asymmetry (codebase line ~2654: downtrend bounces are
-                # sharper/more-often-failing, uptrend pullbacks more-often-resume) means amp
-                # on shorts at deep giveback is GOOD (realize the bounce before it fails) but
-                # amp on longs at deep giveback is BAD (cut before the resume). So mute amp on
-                # LONGS ONLY at deep giveback, leave shorts full. _long_only_gate (1 longs,
-                # 0 shorts, already computed line ~2663) x a smooth deep-giveback factor (0
-                # below giveback 0.15, ramping to 1 by 0.40 -- the SAME 0.15 onset used by the
-                # validated _gb_mag_gate, so the mute engages only where pp_pressure's gradual-
-                # pullback relief DISENGAGES, i.e. precisely the deep-pullback region where
-                # bull longs are being cut). Shorts: _long_only_gate=0 -> mute=0 -> amp full
-                # across the giveback range (crash gain preserved, including the >10pct part
-                # Exp1 cut). Longs at shallow giveback<0.15: deep factor=0 -> mute=0 -> amp
-                # full (a long sharply reversing at shallow giveback SHOULD still exit -- do
-                # not protect those). Longs at deep giveback>0.15: mute ramps to 1 -> amp
-                # muted (bull deep-pullback cut recuperated). NEW cross-component data dep:
-                # fusion amp reads position direction x position-life-cycle giveback. The
-                # vol-gate confines to high-vol regimes so sideways/rally/mixed byte-identical.
-                _deep_giveback_factor = max(0.0, min(1.0, np.tanh(max(0.0, (_giveback_ratio - 0.15) / 0.25))))
-                _agree_amp_long_mute = _long_only_gate * _deep_giveback_factor
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate * (1.0 - _agree_amp_long_mute)
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
                 _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
