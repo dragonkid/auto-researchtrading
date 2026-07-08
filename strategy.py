@@ -2861,7 +2861,31 @@ class Strategy:
                     _tot_tm = float(np.sum(np.abs(np.diff(_ppa_tm))))
                     _mtm_eff_tm = _net_tm / max(_tot_tm, 1e-10)
                     _mtm_chop_tm = max(0.0, min(1.0, 1.0 - _mtm_eff_tm))
-                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _ct_hold_sat
+                # BRANCH step7: PERSISTENT-TREND-EITHER-DIRECTION spare gate (replaces steps2-6).
+                # Steps 2-6 ALL crashed crash: any gate using trend-ALIGNMENT (ret_vlong*pos_dir)
+                # flips during crash bounces; any DIRECTION gate (down_persist for pos dir)
+                # hits crash ct-long mixed population. The only axis that cleanly separates
+                # crash (persistent downtrend, down_persist~0.9) from sideways (trendless,
+                # down_persist~0.5) WITHOUT distinguishing long vs short is the PERSISTENCE of
+                # the trend in EITHER direction: crash down_persist~0.9 (persistent down),
+                # bull/rally down_persist~0.3 (persistent up), sideways down_persist~0.5
+                # (neither). Spare (no shorten) when the trend is PERSISTENT in EITHER
+                # direction (down_persist high OR low); shorten only when TRENDLESS
+                # (down_persist~0.5 = sideways). This spares ALL crash positions (trend
+                # shorts AND ct longs -- the persistent downtrend makes the gate 1 for both
+                # directions), sparing crash ct longs lets the existing exit paths (soft
+                # pressure/stop) handle them at baseline behavior (no -2bar additional hit).
+                # Sideways (trendless) gets the shortened hold. _persistent_either =
+                # max(tanh((down_persist-0.65)/0.10), tanh((0.35-down_persist)/0.10)): ~1 when
+                # down_persist>0.65 OR <0.35, ~0 when ~0.5. down_persist = 48-bar fraction of
+                # noise-IMMUNE integer count -> no boundary noise. Byte-identical for crash
+                # (down_persist 0.9 -> gate 1), bull/rally (down_persist 0.3 -> gate 1).
+                _persistent_either_tm = max(
+                    max(0.0, np.tanh((_down_persist - 0.65) / 0.10)),
+                    max(0.0, np.tanh((0.35 - _down_persist) / 0.10)),
+                )
+                _dead_capital_gate = 1.0 - _persistent_either_tm
+                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _dead_capital_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
