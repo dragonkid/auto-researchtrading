@@ -221,26 +221,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
-# Exp2 (architectural, indep): VOLUME-FADE EXIT PRESSURE (7th soft MAX source).
-# The exit subsystem uses volume in TWO forms: _vc_pressure (a volume LEVEL spike
-# z-score > 2 = climax/blowoff) and entry-side _vol_decline_shrink (volume decline
-# at ENTRY sizing). The EXIT has NO volume-DECLINE signal: a winning position whose
-# recent volume is SUSTAINEDLY DECLINING (6-bar mean volume falling well below 18-bar
-# mean) is running out of participation -- the move is exhausting WITHOUT a climax
-# (the quiet bleed-down before a pullback that _vc_pressure's spike signal misses,
-# since the top is a plateau-fade not a blowoff). NEW cross-data-type exit dep:
-# exit pressure reads the volume TREND (6/18-bar mean ratio), distinct from the
-# volume LEVEL (z-score) and from price-vol expansion (_ve_pressure, vol-of-PRICE).
-# Profit-side only (lock gains on exhaustion; losers left to slope/stop). Gated on
-# COUNTER-TREND-AT-MULTI-DAY so trend-aligned winners (rally/bull grind longs, crash
-# trend shorts) whose volume gently declines during healthy consolidation are SPARED
-# (ct gate ~0 for trend-aligned) -- targets mixed's wrong-side longs bouncing into
-# profit on fading volume + rally's ct-short winners on a pullback exhausting (lock
-# the pullback gain before the uptrend resumes). Deep-saturating /0.30 volume-ratio
-# scale (the same validated scale as entry-side _vol_decline_shrink). Continuous tanh,
-# no boundary. Reduction/risk-reducing family (harvests winners, never cuts losers).
-VOL_FADE_EXIT_MAX = 0.40
-VOL_FADE_EXIT_SCALE = 0.30
 
 
 def ema(values, span):
@@ -3039,24 +3019,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp2 (architectural, indep): VOLUME-FADE exit pressure (7th soft source).
-                # See VOL_FADE_EXIT_MAX header for full rationale. A winning position whose
-                # 6-bar mean volume has fallen well below its 18-bar mean is exhausting
-                # without a climax (the plateau-fade top _vc_pressure's z-spike misses).
-                # Profit-side only + COUNTER-TREND-AT-MULTI-DAY gate: spares trend-aligned
-                # winners (rally/bull grind longs, crash trend shorts) whose volume declines
-                # during healthy consolidation; targets mixed's ct wrong-side longs bouncing
-                # into profit on fading volume + rally ct-short winners on an exhausting
-                # pullback. NEW cross-data-type exit dep (volume TREND at exit, was volume
-                # LEVEL only). Continuous tanh, no boundary; reduction family (harvest only).
-                _vf_vol_recent = float(np.mean(bd.history["volume"].values[-6:]))
-                _vf_vol_long = max(float(np.mean(bd.history["volume"].values[-18:])), 1e-10)
-                _vf_trend_r = (_vf_vol_recent - _vf_vol_long) / _vf_vol_long  # + rising, - declining
-                _vf_decline = max(0.0, min(1.0, np.tanh(-_vf_trend_r / VOL_FADE_EXIT_SCALE)))
-                _vf_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _vf_ct_gate = max(0.0, np.tanh(-_vf_pos_dir * ret_vlong / 0.04))  # ~0 trend-aligned, ~1 ct-at-multi-day
-                _vf_pressure = VOL_FADE_EXIT_MAX * _vf_decline * _vf_ct_gate
-                _w_vf = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
@@ -3152,7 +3114,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
-                    _w_vf * _vf_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
