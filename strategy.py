@@ -1502,8 +1502,31 @@ class Strategy:
                 # catastrophic-DD regime).
                 _peak_thresh = 0.60  # margin above which the climax-shrink engages
                 _peak_shrink_max = 0.30  # max 0.70x size at extreme peak conviction
-                _bull_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
-                _bear_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
+                # branch step3: VOL-REGIME gate on the climax-shrink. Steps 1-2t3 proved the
+                # crash +0.013 requires BROAD peak-conviction shrink on BOTH bull longs AND
+                # bear shorts (both are losers at climax in crash -- dead-cat-bounce longs +
+                # squeezed shorts); any trend-direction or direction-asymmetric narrowing
+                # removes protection and crash degrades catastrophically. But the broad shrink
+                # hurts sideways (-0.013) and rally (-0.023): trend-aligned climax entries in
+                # LOW/MODERATE-VOL regimes are trend-CONTINUATION winners. The non-regime
+                # separator is VOL_RATIO (the SAME primitive the kept fusion _fusion_vol_gate
+                # uses, onset 1.15): HIGH-vol climax = EXHAUSTION (crash vol_ratio ~1.2-1.3,
+                # peak conviction marks a climactic reversal -> shrink), LOW/MODERATE-vol
+                # climax = CONTINUATION (sideways ~0.8-1.1, rally moderate, peak conviction
+                # marks trend-confirmation -> keep full). Gate the climax-shrink magnitude on
+                # vol_ratio above an onset so it fires fully in high-vol (crash) and is ~zero
+                # in moderate-vol (sideways/rally). Mechanism-backed (volatility regime
+                # distinguishes exhaustion-climax from continuation-climax; mirrors the
+                # validated _fusion_vol_gate separator), NOT regime-detection. Continuous tanh
+                # /0.15 (same scale as _fusion_vol_gate), onset 1.15 (same). Byte-identical
+                # when vol_ratio < ~1.0 (the sideways/rally low-vol region); full magnitude
+                # at vol_ratio >= ~1.3 (crash high-vol). New data dep: climax-size-shrink
+                # magnitude depends on (conviction margin, vol regime) jointly.
+                _peak_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
+                _bull_peak_mag = _peak_shrink_max * _peak_vol_gate
+                _bear_peak_mag = _peak_shrink_max * _peak_vol_gate
+                _bull_peak_shrink = 1.0 - _bull_peak_mag * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
+                _bear_peak_shrink = 1.0 - _bear_peak_mag * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
                 _bull_conv_atten = _bull_conv_atten * _bull_peak_shrink
                 _bear_conv_atten = _bear_conv_atten * _bear_peak_shrink
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
