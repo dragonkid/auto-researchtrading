@@ -1502,8 +1502,31 @@ class Strategy:
                 # catastrophic-DD regime).
                 _peak_thresh = 0.60  # margin above which the climax-shrink engages
                 _peak_shrink_max = 0.30  # max 0.70x size at extreme peak conviction
-                _bull_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
-                _bear_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
+                # branch step2: COUNTER-TREND gate on the climax-shrink. Exp1 (ungated)
+                # helped crash (+0.013 Sharpe) but regressed sideways (-0.013) and rally
+                # (-0.023): shrinking TREND-ALIGNED climax entries hurt (those are real
+                # trend-confirmation winners in rally/sideways), while shrinking COUNTER-
+                # TREND climax entries helped (crash dead-cat-bounce longs that climax against
+                # the downtrend are the losers). Gate the climax-shrink on counter-trend
+                # agreement: a bull entry (long) is counter-trend when ret_vlong<0 (long into
+                # a multi-day downtrend); a bear entry (short) is counter-trend when ret_vlong>0
+                # (short into a multi-day uptrend). Continuous tanh (no boundary); the EXISTING
+                # _ct_vlong shrink (line ~1394) already shrinks counter-trend entries on a
+                # fast-saturating /0.01 scale, but Exp1 proved the climax-conviction axis
+                # catches ADDITIONAL crash losers _ct_vlong misses (entries where ret_vlong
+                # mildly disagrees so _ct_vlong is partial, but conviction is climactic).
+                # This gate keeps the climax-shrink OFF trend-aligned entries (rally longs,
+                # sideways mean-reverters that align with local trend) -> recovers the
+                # sideways/rally regression while preserving the crash gain. New cross-timescale
+                # data dep: climax-size-shrink depends on (conviction margin, multi-day trend
+                # direction x entry direction). ret_vlong is the validated 96-bar OLS
+                # (noise-robust). Use a WIDER /0.03 scale (vs _ct_vlong's /0.01) so the gate is
+                # not near-binary -- mild counter-trend gets partial climax-shrink, only deep
+                # counter-trend gets full.
+                _bull_ct_climax_gate = max(0.0, np.tanh(-ret_vlong / 0.03))  # 1 when bull entry & ret_vlong<0
+                _bear_ct_climax_gate = max(0.0, np.tanh(ret_vlong / 0.03))   # 1 when bear entry & ret_vlong>0
+                _bull_peak_shrink = 1.0 - _peak_shrink_max * _bull_ct_climax_gate * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
+                _bear_peak_shrink = 1.0 - _peak_shrink_max * _bear_ct_climax_gate * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
                 _bull_conv_atten = _bull_conv_atten * _bull_peak_shrink
                 _bear_conv_atten = _bear_conv_atten * _bear_peak_shrink
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
