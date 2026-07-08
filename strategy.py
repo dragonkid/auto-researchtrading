@@ -2686,7 +2686,34 @@ class Strategy:
                 # are the safety: attenuation ONLY fires on gradual pullbacks in persistent uptrends,
                 # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
                 # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
-                _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
+                # Exp3 (architectural, indep): PORTFOLIO-DD-GATED attenuation magnitude.
+                # The 0.95 attenuation magnitude is PORTFOLIO-DD-BLIND: it fires at full
+                # strength regardless of whether the portfolio is at its peak or in deep DD.
+                # bull's DD (12.88pct, the dominant dd_gate penalty -> score 0.0043) comes
+                # from riding trend-aligned long winners THROUGH the deep pullback that
+                # drives the portfolio DD itself. During that portfolio DD, the attenuation
+                # should WEAKEN (let pp_pressure fire more -> harvest winners earlier -> cap
+                # the DD from riding winners through deep pullbacks). At portfolio peak
+                # (dd_frac=0), full 0.95 attenuation (ride winners, baseline behavior).
+                # NEW cross-component data dep: the trend-aligned-winner attenuation
+                # magnitude now reads the portfolio DD state (was DD-blind). This targets
+                # bull's DD root cause: the attenuation is what lets bull longs ride the
+                # deep pullback that BECOMES bull's DD; weakening it during DD caps that DD.
+                # Distinct from the existing portfolio-DD GIVEBACK TIGHTENING (line 2582:
+                # tightens the giveback TOLERANCE BAND, fires pp earlier in the giveback):
+                # this reduces the attenuation MAGNITUDE (pp fires at full strength once the
+                # band is crossed). They compose on the same path but target different
+                # aspects (band vs magnitude) -> during DD, pp fires earlier AND stronger.
+                # NATURAL TARGETING: bull DD 12.88pct -> deep _port_dd_frac -> strong
+                # magnitude reduction; rally DD 5.55pct -> shallow _port_dd_frac -> small
+                # reduction (rally's ride-winners behavior preserved). Continuous tanh on
+                # the DD fraction (no boundary); leverage-coupled scale (same discipline as
+                # the giveback tightening: PORT_DD_GIVEBACK_SCALE*LEVERAGE_K keeps the
+                # activation DD-LEVEL invariant under leverage). Byte-identical at portfolio
+                # peak (dd_frac=0 -> factor 1.0 -> magnitude 0.95 unchanged).
+                _ta_dd_reduce = max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))  # 0 peak, ~1 deep DD
+                _ta_atten_mag = 0.95 * (1.0 - 0.40 * _ta_dd_reduce)  # 0.95 at peak, 0.57 at deep DD
+                _pp_pressure = _pp_pressure * (1.0 - _ta_atten_mag * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
