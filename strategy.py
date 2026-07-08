@@ -3145,30 +3145,7 @@ class Strategy:
                 # the exit-threshold logic already tolerates since _exit_pressure > 1.0
                 # triggers exit anyway).
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
-                # Exp1 (this session): INVERSE giveback-magnitude gate on the confirmation
-                # amplification. Prior session established (Exp1 loss-side gate, Exp5 forward
-                # giveback gate) that the 654588e9 baseline's confirmation-amp produces a
-                # COUPLED tradeoff: the crash +0.083 gain fires at SMALL giveback (<10%, the
-                # bounce onset on trend-aligned winning shorts -> realizes gains before the
-                # bounce grows), while the bull -0.0006 regression fires at LARGE giveback
-                # (>10%, deep pullbacks where 2-signal agreement co-fires -> cuts bull longs
-                # -> misses the resume). The giveback MAGNITUDE distinguishes the two regimes'
-                # amp effects. The INVERSE gate (amp ON at small giveback, OFF at large
-                # giveback) decouples the crash-gain from the bull-loss without touching the
-                # loss-side (Exp1 confirmed loss-side amp is inert for crash; losers caught
-                # by SL/full-exit regardless). NEW cross-component data dep: the fusion amp
-                # now reads position-life-cycle giveback magnitude (_giveback_ratio, already
-                # computed at line ~2562) jointly with vol_ratio -- a position-level property
-                # (how much of the peak the winner has given back), NOT a regime label. The
-                # gate is 1.0 at giveback_ratio<=0.10 (preserves crash bounce-onset amp),
-                # fading to 0 by giveback_ratio~0.40 (mutes bull deep-pullback amp so winners
-                # ride the resume). Losers (peak_pnl<=0 -> _giveback_ratio=0) get gate=1.0:
-                # safe because Exp1 measured loss-side amp as inert for crash; the loss-side
-                # amp is dominated by the SL floor regardless. Smooth tanh (no hard switch ->
-                # stability-robust); vol-gate still confines to high-vol regimes so sideways/
-                # rally/mixed byte-identical.
-                _agree_gb_gate = max(0.0, 1.0 - np.tanh(max(0.0, (_giveback_ratio - 0.10) / 0.15)))
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate * _agree_gb_gate
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
                 _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
