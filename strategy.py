@@ -74,6 +74,28 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
+# Exp1 (architectural, indep): COUNTER-TREND-SPECIFIC stop-loss tightening. The ATR
+# stop (_stop_abs, line ~2550) is vol-adaptive but TREND-BLIND: a trend-aligned crash
+# short (winning, riding the downtrend) gets the SAME stop width as a counter-trend
+# crash long (dead-cat-bounce loser). Prior convergent finding (Exp1+Exp5 at the
+# 654588e9 baseline): crash losers are "caught by SL/full-exit regardless" — i.e. the
+# stop IS the binding exit for the losing population, and crash score == bare Sharpe
+# (negative), so cutting losers faster raises Sharpe 1:1 (the documented crash lever).
+# Tighten the effective stop for COUNTER-TREND positions (pos_dir OPPOSITE to the
+# multi-day trend ret_vlong) so they exit at a smaller realized loss; trend-aligned
+# winners (pos_dir matches ret_vlong) keep the baseline stop byte-identical. DISTINCT
+# from the legacy "trend-aligned asymmetric ATR stop" discard (row 294, composite 0.99
+# era): that WIDENED trend-aligned stops when SL rarely dominated (byte-identical, dead-
+# code-adjacent); this TIGHTENS counter-trend stops in the mature strategy where SL is
+# the binding loser exit, and uses the multi-day ret_vlong scale (not the 20-bar ret_long).
+# New cross-component data dep: stop width now reads (ret_vlong, position direction)
+# jointly — the stop subsystem previously read only ATR/vol_ratio. Fast-saturating
+# /0.01 ret_vlong scale (same as _ct_hold_sat/_ct_si_gate: near-constant noise-free, fires
+# only on DEEP counter-trend, not marginal — the validated noise-robust ct scale). Continuous
+# tanh (no boundary), shrink-only. Byte-identical for trend-aligned (gate 0) and for
+# sideways (ret_vlong~0 -> gate ~0.5 but the strategy is rarely in deep sideways ct; the
+# /0.01 scale means |ret_vlong|<0.001 -> gate<0.10 -> <2pct tightening, near byte-identical).
+CT_STOP_TIGHTEN_MAX = 0.25  # max fractional tightening of stop_abs at deep counter-trend (-> 0.75x stop)
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
@@ -2548,6 +2570,24 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp1 (architectural, indep): COUNTER-TREND-SPECIFIC stop-loss tightening.
+                # The ATR stop above is vol-adaptive but TREND-BLIND: a trend-aligned
+                # crash short (winner) gets the same stop width as a counter-trend crash
+                # long (loser). Per the convergent Exp1+Exp5 finding at the 654588e9
+                # baseline, the stop IS the binding exit for the crash LOSING population
+                # (dead-cat-bounce longs + shorts entered into bounces that continue);
+                # crash score == bare Sharpe (negative), so cutting losers at a smaller
+                # realized loss raises Sharpe 1:1. Tighten the effective stop ONLY for
+                # counter-trend positions (pos_dir OPPOSITE to the multi-day trend
+                # ret_vlong): they exit at a smaller loss -> smaller realized losses ->
+                # higher crash Sharpe. Trend-aligned winners (pos_dir matches ret_vlong)
+                # get gate 0 -> byte-identical stop. Fast-saturating /0.01 ret_vlong scale
+                # (same as _ct_hold_sat line ~2746: near-constant noise-free, fires only on
+                # DEEP counter-trend, not marginal — validated ct scale). Continuous tanh,
+                # shrink-only, no new decision boundary. New cross-component data dep: the
+                # stop subsystem now reads (ret_vlong, position direction) jointly.
+                _ct_stop_gate = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _stop_abs = _stop_abs * (1.0 - CT_STOP_TIGHTEN_MAX * _ct_stop_gate)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
