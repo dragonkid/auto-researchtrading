@@ -3123,25 +3123,23 @@ class Strategy:
                 # Confirmation-amplified MAX: add a bounded fraction of the 2nd term.
                 # AGREE_MAX caps the added fraction (0.50 = up to 50% of 2nd term added).
                 SOFT_FUSION_AGREE_MAX = 0.50
-                # branch step2: TREND-GATE the agreement amplification. step1 (no gate)
-                # collapsed sideways (-0.052->-1.26): chop has frequent multi-source
-                # agreement on NOISE (slope + time + break-even all spike together on a
-                # chop bar) -> amplification fires on noise -> exits mean-reverters at the
-                # noise spike -> destroys sideways. The validated separator (used by
-                # _chop_atten_w, _be_trend_gate, _exit_dd_gate): rsi_trend_str. In trends
-                # (high rsi_trend_str) multi-source agreement is a REAL exit signal (slope
-                # + time both firing on a trend break = genuine); in chop it is noise.
-                # Gate the amplification ON trend-strength so it fires in trends
-                # (crash/bull/rally) and ~off in chop (sideways byte-identical). The
-                # existing _soft_atten (chop attenuator) already keys on the SAME
-                # _chop_atten_w -- this makes the amplification its trend-regime mirror.
-                # branch step3: step2 STILL collapsed sideways (-1.29): the /0.04 ret_long
-                # gate is too loose -- sideways directional legs have |ret_long|~0.02-0.04
-                # passing the gate at 0.2-0.6. Tighten to /0.06 onset (only STRONG trends
-                # amplify; sideways directional legs ~0.02 -> gate ~0 -> byte-identical)
-                # and reduce AGREE_MAX 0.75->0.50 (cap the amplification magnitude).
-                _fusion_trend_w = max(0.0, np.tanh((abs(ret_long) - 0.02) / 0.04))  # 0 weak trend, ~1 strong trend
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_trend_w
+                # branch step4: PROFIT-SIDE gate. steps 1-3 loss-side amplification
+                # collapsed sideways AND crash: amplifying loss-side multi-source
+                # agreement cuts RECOVERIES (sideways mean-reverters dip then recover;
+                # crash winning shorts bounce then resume) -- the same wall as Exp3
+                # MAE-deepening. The strategy's existing loss-exit stack is already tuned
+                # to NOT cut recoveries; amplifying loss-side exits breaks that protection.
+                # FLIP DIRECTION: amplify only PROFIT-SIDE multi-source agreement (pp +
+                # ve + vc all fire on a confirmed winner peak). step1 showed rally/mixed
+                # IMPROVED (+0.014/+0.025) with bilateral amplification -- the gain came
+                # from the profit-side amplification (let winners ride deeper peaks
+                # before the MAX-fusion would have harvested). Gate amplification on
+                # _pnl_scale > 0 (winner): amplification fires only for winners, boosting
+                # the confirmed-peak harvest pressure so the winner's giveback-protection
+                # fires more reliably at the confirmed peak. Losers byte-identical
+                # (loss-gate 0) -> sideways/crash recoveries preserved. AGREE_MAX 0.50.
+                _fusion_profit_gate = max(0.0, _pnl_scale)  # 0 loss, ~1 deep profit
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_profit_gate
                 _soft_max = min(1.0, _soft_max + _agree_amp * _sorted_terms[1])
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
