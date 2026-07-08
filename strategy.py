@@ -3089,6 +3089,42 @@ class Strategy:
                     _w_be * _be_pressure,
                 )
                 _soft_max = max(_soft_terms)
+                # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
+                # mechanism. Old: pure element-wise MAX (single dominant term; all other
+                # terms DISCARDED regardless of magnitude). This is the documented MAX-
+                # fusion absorption wall -- Exp1 (loss-velocity), Exp2 (cross-symbol freq),
+                # prior sessions' _w_slope DD-amp ALL byte-identical inert because a second
+                # moderately-firing soft term (e.g. loss-velocity 0.4) is fully absorbed by
+                # a slightly-larger dominant term (slope-against 0.5): MAX gives 0.5, the
+                # 0.4 contributes NOTHING. New core mechanism: CONFIRMATION-AMPLIFIED MAX --
+                # _soft_max stays the MAX (preserves single-source noise rejection), but a
+                # bounded fraction of the 2nd-highest term is ADDED when multi-source
+                # agreement is high: soft_combined = max + _agree_amp * 2nd, where _agree_amp
+                # scales with the 2nd/1st ratio (0 at single-source, up to AGREE_MAX at full
+                # agreement). Two agreeing mid-magnitude sources (0.5 + 0.45) now yield 0.5 +
+                # 0.34 = 0.84 (cuts the loser faster), while a single 0.9 spike yields 0.9 +
+                # 0 = 0.9 (no change, noise rejected). Capped at 1.0 to preserve the binary-
+                # exit pressure ceiling. The stop-loss floor (max(sl, soft)) is preserved.
+                # Distinct from the OLD weighted-sum (removed line ~3076): that ADDED all 6
+                # terms unconditionally (correlated noise summed); this adds ONLY the 2nd
+                # term, gated on agreement ratio (confirmation-filtered). Net effect: multi-
+                # source confirmation AMPLIFIES exit pressure above the single-term MAX,
+                # breaking the absorption wall for confirmed multi-source exit signals.
+                # WHY OLD MECHANISM AT CEILING: 3 architectural experiments this session
+                # (Exp1 loss-velocity pressure, Exp3 MAE-deepening threshold) hit the wall
+                # that the MAX-fusion absorbs any new loss-side signal; threshold-based
+                # variants (Exp3) collapsed crash because winning shorts share the signal.
+                # The fusion MECHANISM itself is the constraint -- rewriting it is the only
+                # remaining untested axis on the exit side.
+                _sorted_terms = sorted(_soft_terms, reverse=True)
+                _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
+                # Confirmation strength: 0 at single-source, 1 at full agreement
+                _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
+                # Confirmation-amplified MAX: add a bounded fraction of the 2nd term.
+                # AGREE_MAX caps the added fraction (0.75 = up to 75% of 2nd term added).
+                SOFT_FUSION_AGREE_MAX = 0.75
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate
+                _soft_max = min(1.0, _soft_max + _agree_amp * _sorted_terms[1])
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
@@ -3099,10 +3135,6 @@ class Strategy:
                 # axis) and threshold raising (boundary-axis) — operates on the
                 # pressure-source dimension. Top exit decision: 2nd-highest term
                 # ratio gates the strength of the MAX. New cross-source data dep.
-                _sorted_terms = sorted(_soft_terms, reverse=True)
-                _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
-                # Confirmation strength: 0 at single-source, 1 at full agreement
-                _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
                 # Branch step 2: chop-only gating. In trends (high abs(ret_long)),
                 # single-source pressure signals are real (slope reversal alone =
                 # genuine trend break). Mute the attenuator's effect by trend strength
