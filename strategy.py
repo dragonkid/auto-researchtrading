@@ -3121,8 +3121,8 @@ class Strategy:
                 # Confirmation strength: 0 at single-source, 1 at full agreement
                 _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
                 # Confirmation-amplified MAX: add a bounded fraction of the 2nd term.
-                # AGREE_MAX caps the added fraction (0.75 = up to 75% of 2nd term added).
-                SOFT_FUSION_AGREE_MAX = 0.75
+                # AGREE_MAX caps the added fraction (0.50 = up to 50% of 2nd term added).
+                SOFT_FUSION_AGREE_MAX = 0.50
                 # branch step2: TREND-GATE the agreement amplification. step1 (no gate)
                 # collapsed sideways (-0.052->-1.26): chop has frequent multi-source
                 # agreement on NOISE (slope + time + break-even all spike together on a
@@ -3135,7 +3135,12 @@ class Strategy:
                 # (crash/bull/rally) and ~off in chop (sideways byte-identical). The
                 # existing _soft_atten (chop attenuator) already keys on the SAME
                 # _chop_atten_w -- this makes the amplification its trend-regime mirror.
-                _fusion_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
+                # branch step3: step2 STILL collapsed sideways (-1.29): the /0.04 ret_long
+                # gate is too loose -- sideways directional legs have |ret_long|~0.02-0.04
+                # passing the gate at 0.2-0.6. Tighten to /0.06 onset (only STRONG trends
+                # amplify; sideways directional legs ~0.02 -> gate ~0 -> byte-identical)
+                # and reduce AGREE_MAX 0.75->0.50 (cap the amplification magnitude).
+                _fusion_trend_w = max(0.0, np.tanh((abs(ret_long) - 0.02) / 0.04))  # 0 weak trend, ~1 strong trend
                 _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_trend_w
                 _soft_max = min(1.0, _soft_max + _agree_amp * _sorted_terms[1])
                 # Architectural: multi-source agreement attenuator on soft_max.
