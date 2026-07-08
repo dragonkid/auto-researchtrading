@@ -1502,8 +1502,32 @@ class Strategy:
                 # catastrophic-DD regime).
                 _peak_thresh = 0.60  # margin above which the climax-shrink engages
                 _peak_shrink_max = 0.30  # max 0.70x size at extreme peak conviction
-                _bull_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
-                _bear_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
+                # branch step2-take3: DIRECTION-ASYMMETRIC climax shrink. Step1 (symmetric
+                # 0.30 on both bull/bear) helped crash (+0.013 -- peak-conviction SHORTS
+                # get squeezed at dead-cat bounces; shrinking them is protective) but hurt
+                # sideways (-0.013) and rally (-0.023 -- peak-conviction LONGS in an uptrend
+                # are trend-CONTINUATION winners; shrinking them cuts the winners). Step2
+                # (counter-trend gate) and step2-take2 (graduated exemption) both destroyed
+                # crash because they REDUCED the shrink on crash shorts (the protective
+                # component). The clean separator is ENTRY DIRECTION (a real market
+                # asymmetry, not a regime label): SHORT positions face SQUEEZE RISK at
+                # climactic shorting points (peak bearish conviction -> the short is crowded
+                # -> a dead-cat bounce squeezes it violently), while LONG positions at peak
+                # conviction in an uptrend are trend CONTINUATION (no equivalent squeeze
+                # asymmetry -- longs don't get squeezed the same way). So the climax-shrink
+                # should fire FULLY on BEAR (short) peak entries (squeeze protection, keeps
+                # the crash +0.013) and be REDUCED on BULL (long) peak entries (continuation,
+                # recovers rally/sideways long-side winners). Mechanism-backed asymmetry
+                # (short squeeze is a documented phenomenon; longs lack equivalent), NOT
+                # regime-detection. Asymmetric magnitude: bear full _peak_shrink_max=0.30,
+                # bull reduced to 0.10 (keeps a small protective trim on climactic longs that
+                # might be counter-trend bounces, but mostly preserves rally/sideways
+                # continuation). Continuous tanh, no boundary. New data dep: first-bar size
+                # climax-shrink is direction-asymmetric (was direction-symmetric).
+                _bull_peak_mag = 0.10  # reduced: longs at peak conviction are mostly continuation
+                _bear_peak_mag = _peak_shrink_max  # full: shorts at peak conviction face squeeze risk
+                _bull_peak_shrink = 1.0 - _bull_peak_mag * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
+                _bear_peak_shrink = 1.0 - _bear_peak_mag * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
                 _bull_conv_atten = _bull_conv_atten * _bull_peak_shrink
                 _bear_conv_atten = _bear_conv_atten * _bear_peak_shrink
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
