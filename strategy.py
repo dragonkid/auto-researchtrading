@@ -3145,7 +3145,25 @@ class Strategy:
                 # the exit-threshold logic already tolerates since _exit_pressure > 1.0
                 # triggers exit anyway).
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
+                # Exp4 (this session): STEEP LONG-ONLY GIVEBACK mute on the confirmation
+                # amplification -- refined direction x giveback decoupling. Exp3 (this
+                # session) proved the direction axis is right (shorts full amp preserves
+                # crash in principle; longs muted at deep giveback recovers bull in principle)
+                # but its onset 0.15 + width 0.25 was too gentle (mute=0.20 at giveback=0.20,
+                # 0.76 at 0.40) -> byte-identical, because bull's harmful winner-side amp
+                # fires in the 0.10-0.30 giveback band (per prior Exp5 forward gate byte-
+                # identical at onset 0.10, and prior Exp1 loss-side REMOVAL recuperated
+                # bull +0.0006). This steepens the ramp: onset 0.05, width 0.10 -> mute=
+                # 0.46 at giveback 0.10, 0.76 at 0.15, 0.91 at 0.20, ~1.0 by 0.30. Engages
+                # strongly exactly where bull's harmful long amp fires, while leaving
+                # shorts fully amplified across the entire giveback range (_long_only_gate=0
+                # -> mute=0) -- preserving crash's winner-side short amp incl. the >0.10
+                # part Exp1 (direction-agnostic) cut. Longs at shallow giveback<0.05 keep
+                # full amp (a long sharply reversing at shallow giveback SHOULD still exit).
+                # Vol-gate confines to high-vol regimes so sideways/rally/mixed byte-identical.
+                _long_deep_gb = max(0.0, min(1.0, np.tanh(max(0.0, (_giveback_ratio - 0.05) / 0.10))))
+                _agree_amp_long_mute = _long_only_gate * _long_deep_gb
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate * (1.0 - _agree_amp_long_mute)
                 _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
