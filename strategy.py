@@ -457,17 +457,6 @@ class Strategy:
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
         self._entry_accum = {}
-        # Exp2 (architectural, indep): per-symbol ENTRY-TIME CONVICTION margin cache.
-        # Stores the conviction margin (_bull_margin/_bear_margin) at the bar the position
-        # was opened. Used at the exit-decision subsystem to modulate exit tolerance by
-        # ENTRY QUALITY: a high-conviction entry (margin well above admission threshold)
-        # is a higher-quality signal -> when it later shows exit pressure (slope-against,
-        # giveback), the pressure is more likely a transient pullback than a real reversal
-        # -> give more rope (raise exit threshold). A low-conviction (marginal) entry is
-        # lower-quality -> exit at baseline threshold. NEW cross-temporal data dep: exit
-        # pressure tolerance reads the entry-time conviction state cached at entry (all
-        # existing exit sources read CURRENT-bar state only). Reset on full exit.
-        self._entry_conv_held = {}
         # Architectural (Exp1 this session): per-symbol counter-trend exit-pressure EMA.
         # Temporally smooths the fused SOFT exit pressure ONLY while a position is
         # counter-trend to the multi-day (96-bar) trend (rally's pullback shorts);
@@ -2212,13 +2201,11 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
-                    self._entry_conv_held[symbol] = _bull_margin  # Exp2: cache entry conviction
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
-                    self._entry_conv_held[symbol] = _bear_margin  # Exp2: cache entry conviction
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -3264,32 +3251,6 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
-                # Exp2 (architectural, indep): ENTRY-CONVICTION exit-threshold raise.
-                # NEW cross-temporal data dep at the exit-decision subsystem: the full-exit
-                # threshold (_exit_thresh) is RAISED for positions opened with HIGH conviction
-                # (entry-time margin well above the admission threshold, cached at entry in
-                # self._entry_conv_held). All existing exit-pressure sources read CURRENT-bar
-                # state; this reads the ENTRY-TIME conviction state — a structurally different
-                # (cross-temporal) data dependency. Mechanism: a high-conviction entry is a
-                # higher-quality signal (broad voter agreement at entry) -> when it later shows
-                # exit pressure (slope-against, giveback), the pressure is more likely a
-                # transient pullback than a genuine reversal -> give more rope (raise exit
-                # threshold up to +12pct) so the position rides through mid-range exit-pressure
-                # noise. A marginal entry (low cached margin) gets the baseline threshold
-                # (exits at standard pressure). One-sided: only RAISES (high conviction = more
-                # rope); marginal/low conviction byte-identical (raise floored at 0).
-                # LOSS-SAFE: gated OFF when the position is a deep loser (pos_pnl < -0.5*stop =
-                # half-stop underwater) so the raise NEVER rides losers longer (the existing
-                # portfolio-DD + sustained-loss lowering already cuts losers; this raise is
-                # strictly for in-profit / shallow-dip winners). Continuous tanh on the cached
-                # margin (no boundary), direction-agnostic general principle (no regime label):
-                # entry quality earns exit tolerance. Falls out per regime: crash trend-aligned
-                # shorts (high conviction) ride the downtrend longer (crash is return-limited);
-                # sideways (low-conviction chop entries) byte-identical-ish (low cached margin).
-                _ec_held = self._entry_conv_held.get(symbol, 0.0)
-                _ec_not_deep_loser = max(0.0, np.tanh((pos_pnl + 0.5 * abs(STOP_LOSS_PCT)) / (0.25 * abs(STOP_LOSS_PCT))))  # 0 deep loser, ~1 in-profit
-                _ec_raise = max(0.0, np.tanh(_ec_held / 0.30)) * _ec_not_deep_loser  # /0.30: saturates at margin~0.30 (high conviction)
-                _exit_thresh = _exit_thresh * (1.0 + 0.12 * _ec_raise)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -4294,7 +4255,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._entry_conv_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
