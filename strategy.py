@@ -2627,7 +2627,31 @@ class Strategy:
                 # giving back) are SPARED the attenuation only while in-profit -- once they
                 # dip negative the profit-gate goes to 0 -> full pp protection resumes.
                 _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
-                _ta_winner_gate = max(0.0, np.tanh(ret_vlong * _pos_dir_pp / 0.01)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * (1.0 if bars_held > ENTRY_FULL_BARS else 0.0)
+                # Exp3 (architectural, indep): SMOOTH the scale-in-past binary gate in
+                # _ta_winner_gate. The baseline used a hard binary (1.0 if bars_held >
+                # ENTRY_FULL_BARS else 0.0) -- this creates a DECISION DISCONTINUITY at the
+                # scale-in boundary: a position at bar ENTRY_FULL_BARS gets FULL pp_pressure
+                # (attenuation 0), at bar ENTRY_FULL_BARS+1 gets full attenuation (0.95x). The
+                # binary switch is a noise channel under AR(1): whether a position is OPEN past
+                # bar ENTRY_FULL_BARS depends on prior noisy exit decisions -> the gate's
+                # on/off state wobbles across the noise ensemble -> pp_pressure wobbles -> bull
+                # exit-timing tracking error (bull stability 0.8055 sits right at the 0.80
+                # stability_factor knee; the prior session found the cliff is NOT from any
+                # single signal's noise but CUMULATIVE attenuator sensitivity -- this binary
+                # gate is one such attenuator with a discontinuity). Replace with a SMOOTH
+                # linear ramp over [ENTRY_FULL_BARS, ENTRY_FULL_BARS+2]: attenuation ramps 0->1
+                # across 2 bars past scale-in. Removes the discontinuity (the gate's value
+                # changes smoothly with bars_held, no flip); the pp_pressure attenuation
+                # transitions gradually. The ramp width 2 bars is short enough that the
+                # validated late-winner protection (full attenuation past scale-in+2) is
+                # preserved, while the scale-in bars (fresh winners, full pp protection) are
+                # still spared. Continuous (no boundary); bars_held is deterministic given open
+                # but the SMOOTH form removes the ensemble wobble from the binary flip. Targets
+                # bull stability (the cliff regime); byte-identical-ish elsewhere (the gate
+                # value near 1 for established winners is unchanged; only the [3,5] bar window
+                # transitions from binary to smooth).
+                _ta_hold_gate_smooth = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS) / 2.0))
+                _ta_winner_gate = max(0.0, np.tanh(ret_vlong * _pos_dir_pp / 0.01)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * _ta_hold_gate_smooth
                 # Branch step2: GIVEBACK-MAGNITUDE gate. step1 let crash's trend-aligned
                 # shorts ride into dead-cat bounces (sharp reversals) -> crash DD 20pct.
                 # Distinguish bull's GRADUAL pullbacks (small giveback_ratio, attenuation
