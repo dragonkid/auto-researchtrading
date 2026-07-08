@@ -1500,7 +1500,7 @@ class Strategy:
                 # bull DD (the dd_gate-crushed regime; dd_gate at DD=12.88pct ~0.017, so any DD
                 # reduction is a large score lever -- NOT marginal DD shaving, escaping a
                 # catastrophic-DD regime).
-                _peak_thresh = 0.60  # margin above which the climax-shrink engages
+                _peak_thresh = 0.80  # step4: raised 0.60->0.80 (only the MOST extreme climax)
                 _peak_shrink_max = 0.30  # max 0.70x size at extreme peak conviction
                 # branch step3: VOL-REGIME gate on the climax-shrink. Steps 1-2t3 proved the
                 # crash +0.013 requires BROAD peak-conviction shrink on BOTH bull longs AND
@@ -1522,7 +1522,7 @@ class Strategy:
                 # when vol_ratio < ~1.0 (the sideways/rally low-vol region); full magnitude
                 # at vol_ratio >= ~1.3 (crash high-vol). New data dep: climax-size-shrink
                 # magnitude depends on (conviction margin, vol regime) jointly.
-                _peak_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
+                _peak_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 0.95) / 0.15)))  # step4: onset 1.15->0.95 (step3 1.15 was no-op at peak bars)
                 _bull_peak_mag = _peak_shrink_max * _peak_vol_gate
                 _bear_peak_mag = _peak_shrink_max * _peak_vol_gate
                 _bull_peak_shrink = 1.0 - _bull_peak_mag * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
