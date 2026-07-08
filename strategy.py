@@ -3072,6 +3072,31 @@ class Strategy:
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
+                # Exp2 (architectural, indep): PEAK-MAGNITUDE GRADUATION on break-even pressure.
+                # NEW cross-component data dep: _be_pressure reads the position's PEAK profit
+                # magnitude jointly with the BE-stall signal. A position that PEAKED HIGH then
+                # stalled at breakeven is a "failed winner" -- it captured a real gain, gave it
+                # back to BE, and is now dead capital likely to bleed further (the peak
+                # demonstrated the position CAN move favorably, so stalling at BE = the move
+                # exhausted). DISTINCT from a shallow-peak stall (a sideways mean-reverter that
+                # never peaked high -- its BE-stall is its natural oscillation, NOT dead capital;
+                # the prior session's MAE gate protects fresh shallow-MAE recoveries, but a deep-
+                # MAE sideways stall with a SMALL peak is still a mean-reverter). The peak ratio
+                # (peak_pnl / _pp_min, the SAME reference pp_pressure uses) separates "failed
+                # winner" (high peak, deep giveback to BE) from "never-developed" (small peak).
+                # Graduation: _be_peak_grad ramps 0->1 as peak_ratio crosses 2.0->3.5 (a position
+                # that peaked 2x _pp_min = modest, no amp; 3.5x+ = deep failed winner, full amp).
+                # Applied as a bounded AMPLIFIER (max +60% _be_pressure) so it only strengthens
+                # the harvest on confirmed-failed-winners, never mutes it on shallow-peak stalls.
+                # Byte-identical for positions that never crossed _pp_activation (peak_pnl <
+                # _pp_min -> peak_ratio < 1 -> _be_peak_grad 0 -> no amp); continuous tanh (no
+                # boundary). Targets crash winning shorts that peak then bounce to BE (the
+                # confirmation-amp harvests at bounce ONSET; this catches any that slip to BE),
+                # and mixed trend longs that peak then stall. Sideways shallow-peak mean-
+                # reverters spared (peak_ratio < 2 -> graduation 0).
+                _be_peak_ratio = self.peak_pnl.get(symbol, 0.0) / max(_pp_min, 1e-6)
+                _be_peak_grad = max(0.0, min(1.0, np.tanh((_be_peak_ratio - 2.0) / 1.5)))
+                _be_pressure = _be_pressure * (1.0 + 0.60 * _be_peak_grad)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
