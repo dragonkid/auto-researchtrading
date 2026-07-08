@@ -2861,7 +2861,29 @@ class Strategy:
                     _tot_tm = float(np.sum(np.abs(np.diff(_ppa_tm))))
                     _mtm_eff_tm = _net_tm / max(_tot_tm, 1e-10)
                     _mtm_chop_tm = max(0.0, min(1.0, 1.0 - _mtm_eff_tm))
-                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _ct_hold_sat
+                # BRANCH step6: DIRECTION-PERSISTENCE spare gate (replaces steps2-5). Steps
+                # 2-5 ALL crashed crash because the trend-ALIGNMENT term (ret_vlong*pos_dir,
+                # instantaneous) FLIPS positive during sustained crash bounces -> crash
+                # shorts not spared -> cut at bounce top -> DD blow-up (the exact failure
+                # mode the prior session found for _ta_winner_gate pp_pressure, fixed there
+                # with the duration-based _up_persist_gate). Use down_persist ALONE
+                # (direction-dependent, NO ret_vlong*pos_dir): the 48-bar fraction of
+                # ret_vlong<0 bars is a DURATION signal that does NOT flip during multi-week
+                # bounces (a few positive bars barely move the 48-bar fraction). Spare shorts
+                # when down_persist HIGH (persistent downtrend = crash ~0.9), spare longs when
+                # down_persist LOW (persistent uptrend = bull ~0.3). Shorten everything else:
+                # sideways (down_persist~0.5 -> neither high nor low -> shortened, TARGET),
+                # ct losers. This is the validated _up_persist_gate (line 2704) pattern applied
+                # to the time-onset spare. _persist_aligned = (1-down_persist) for longs, or
+                # down_persist for shorts (fraction of recent bars trending in pos dir).
+                # _persistent_gate = tanh((_persist_aligned-0.6)/0.15): ~1 crash/bull,
+                # ~0 sideways. down_persist is a 48-bar FRACTION of a noise-IMMUNE integer
+                # count (ret_vlong<0) -> no boundary noise (the validated safe-family lesson).
+                # Byte-identical for persistent-trend winners (crash shorts, bull longs).
+                _persist_aligned_tm = (1.0 - _down_persist) if current_pos > 0 else _down_persist
+                _persistent_gate_tm = max(0.0, np.tanh((_persist_aligned_tm - 0.60) / 0.15))
+                _dead_capital_gate = 1.0 - _persistent_gate_tm
+                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _dead_capital_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
