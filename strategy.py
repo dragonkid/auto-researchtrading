@@ -4267,8 +4267,35 @@ class Strategy:
             if _is_resize and abs(current_pos) < 2.0 * _grid_em:
                 _pos_dir_em = 1.0 if current_pos > 0 else -1.0
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
-                if _ct_vlong_em > 0.50:
-                    _emit_thresh = 0.7 * LEVERAGE_K
+                # Exp1 (architectural, indep): CONTINUOUS ramp replacing the binary 0.50
+                # gate on the counter-trend-at-multi-day emission threshold lowering. The
+                # baseline lowered _emit_thresh to 0.7*LEVERAGE_K only when _ct_vlong_em
+                # exceeded a hard 0.50 boundary; moderate-ct small reductions (the mixed
+                # dead-capital population at PARTIAL multi-day counter-trend, |ret_vlong|
+                # ~0.003-0.005 -> _ct_vlong_em ~0.3-0.5) sat JUST BELOW the gate -> threshold
+                # stayed at 1.0*LEVERAGE_K -> their signal-driven reductions (tp_harvest /
+                # de-risk trims of mixed's whippy ~breakeven wrong-side longs) did NOT emit
+                # -> the dead-capital bled further. The binary 0.50 boundary itself is also
+                # noise-sensitive (a 96-bar ret_vlong perturbed by AR(1) noise crosses 0.005
+                # -> _ct_vlong_em crosses 0.50 -> the emission of the resize flips -> stability
+                # tracking error). Replace with a CONTINUOUS tanh ramp: _emit_thresh scales
+                # linearly from 1.0*LEVERAGE_K at _ct_vlong_em=0 (byte-identical to the
+                # no-activate branch for trend-aligned/calm positions) down to 0.7*LEVERAGE_K
+                # at _ct_vlong_em~1.0 (same saturated floor as baseline). The 0.30 magnitude
+                # matches the baseline's 1.0->0.7 lowering span (so the saturated floor and
+                # the no-activate ceiling are both byte-identical; only the INTERMEDIATE
+                # 0<_ct_vlong_em<1 region changes, lowering the threshold for moderate-ct
+                # small reductions so their trims emit). NEW cross-component data dep: the
+                # emission threshold now reads the CONTINUOUS ct-at-multi-day depth (was a
+                # binary 0.50 gate). General principle (no regime label): a counter-trend-at-
+                # multi-day small reduction's emission bar should scale with the DEPTH of
+                # the counter-trend (deeper ct -> more clearly dead capital -> lower emission
+                # bar -> trim executes), not snap at a single boundary. Reduction-only (the
+                # threshold only LOWERs, never raises; the _is_resize + small-pos + ct>0
+                # guard is retained). Byte-identical for trend-aligned positions (_ct_vlong_em
+                # ~0 -> thresh 1.0*LEVERAGE_K = baseline) and for deep-ct positions (thresh
+                # 0.7*LEVERAGE_K = baseline floor); only moderate-ct small reductions change.
+                _emit_thresh = LEVERAGE_K * (1.0 - 0.30 * _ct_vlong_em)
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
