@@ -1016,6 +1016,45 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
+            # Exp3 (architectural, this session): 9th voter -- CLOSE-POSITION-CONTINUATION.
+            # The prior branch VALIDATED the close-position signal (close-low)/(high-low) as a
+            # REAL exhaustion-vs-conviction separator for the EXIT harvest (sideways/rally
+            # +0.0015, no regressions). That was the EXIT side. Here it is added as an ENTRY
+            # voter on a NEW data axis no existing voter reads: the close's POSITION within
+            # the recent bar's high-low range. Distinct from the 8th (which reads the RATIO
+            # of interbar close-movement to intrabar range -- a movement efficiency, NOT a
+            # position); distinct from VWAP (a volume-weighted PRICE LEVEL vs close, not a
+            # within-bar position); distinct from RSI (an oscillator over closes, not a
+            # within-bar placement). Mechanism: a close near the high of its bar = buyers
+            # held control into the close = bullish conviction (continuation); a close near
+            # the low = sellers held control = bearish conviction. A mid-range close =
+            # balance/uncertainty = chop. Signed by the 12-bar close direction (same smooth
+            # sign as the 8th -- a 12-bar net, not a 1-bar zero-crossing) so it contributes
+            # bull in an uptrend, bear in a downtrend. Averaged over 3 bars (current+prior2)
+            # for noise-robustness (a single bar's close-position wobbles under AR(1) close
+            # perturbation; a 3-bar average is more stable while preserving the conviction
+            # signal). Sharpness 1.0 (same as 8th). Small fixed weight 0.55 (appended WITHOUT
+            # modifying the 8 existing _base_weights; the trend-strength redistribution shifts
+            # indices 1-3, leaving the 8th and 9th untouched). Targets bull stability (the
+            # binding cliff at 0.8055): a higher-quality trend-continuation entry signal
+            # makes bull entries less noise-sensitive (close-position is a structural
+            # conviction property, less correlated with the close-price noise that drives
+            # the AR(1) sign-flip than ret_short/EMA-cross/slope voters). Crash shorts are
+            # high-conviction (closes persistently near the low in sustained downtrend) so
+            # the voter's contribution to _bear_strong is below the admission threshold
+            # change there -- crash admission unchanged (same byte-identical-in-crash pattern
+            # as the 8th voter keep). Sideways closes are mid-range (chop oscillation) ->
+            # voter ~0 -> sideways admission unchanged.
+            _cp_n = 3
+            _cp_high = bd.history["high"].values[-_cp_n:]
+            _cp_low = bd.history["low"].values[-_cp_n:]
+            _cp_close = closes[-_cp_n:]
+            _cp_range = _cp_high - _cp_low
+            # close-position within each bar's range in [0,1]; average over _cp_n bars
+            _cp_pos = float(np.mean((_cp_close - _cp_low) / np.maximum(_cp_range, 1e-10)))
+            # center at 0.5 and scale; sign by 12-bar close direction (smooth, not 1-bar)
+            _cp_dir = 1.0 if closes[-1] >= closes[-12] else -1.0
+            _cp_signal = (_cp_pos - 0.5) / 0.25 * _cp_dir  # >0 close-at-trend-pole in dir
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1025,6 +1064,7 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
+                _cp_signal / 1.0,  # 9th voter: close-position-continuation (sharpness 1.0)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1051,7 +1091,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency, 9th: close-position-continuation (both small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -1073,13 +1113,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 8)
+                _arr = np.array(_sig_hist)  # (K, 9)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)
+                _persistence_mult = np.ones(9)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
