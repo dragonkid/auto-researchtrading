@@ -2349,6 +2349,34 @@ class Strategy:
                     _own_margin = _bull_margin if current_pos > 0 else _bear_margin
                     _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
                     _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
+                    # Exp3 (architectural, indep, this session): COUNTER-CONVICTION scale-in
+                    # SLOWDOWN. NEW cross-side data dep at scale-in pace. The fade-slowdown
+                    # above keys on the OWN-SIDE margin going NEGATIVE (own voters fading =
+                    # passive conviction loss). It MISSES the case where the OWN-side
+                    # margin is still >=0 (voters haven't faded) BUT the OPPOSITE-side
+                    # voters have started FIRING (the counter-conviction voters turn on =
+                    # active contradiction, a stronger and earlier signal than passive
+                    # fade). For a long, that's _bear_margin going positive (bear voters
+                    # firing against the long); for a short, _bull_margin positive. A
+                    # position whose counter-conviction voters are actively firing during
+                    # scale-in is being contradicted by the market -> lower quality -> slow
+                    # scale-in (keep smaller until the counter-conviction resolves).
+                    # DISTINCT from fade-slowdown (own-side margin<0 = passive fade): this
+                    # fires on opposite-side margin>0 = active counter-conviction; the two
+                    # can fire independently (own faded + opp firing is the worst case,
+                    # composes multiplicatively). DISTINCT from admission-side
+                    # _bull_quality_atten (opp RATIO at first-bar size, not scale-in pace)
+                    # and exit-side _opp_atten (exit voter_bias, not scale-in). Sideways
+                    # mean-reverters: the entry is admitted on own-side conviction; when
+                    # the reversion starts the OPP-side voters fire -> this slows scale-in
+                    # on the reversion portion, but the position is a mean-reverter that
+                    # profits FROM the reversion -> risk of misfire. Mitigation: one-sided
+                    # (max(0, opp_margin) -> 0 when opp faded), small max (20pct), and the
+                    # /0.40 width (only DEEP counter-conviction fires, not mild opp wobble).
+                    # Byte-identical when opp margin <= 0 (no counter-conviction firing).
+                    _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
+                    _counter_conv_slow = max(0.0, np.tanh(_opp_margin / 0.40))
+                    _eff_progress = _eff_progress * (1.0 - 0.20 * _counter_conv_slow)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
