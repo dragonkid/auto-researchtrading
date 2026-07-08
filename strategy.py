@@ -2348,35 +2348,7 @@ class Strategy:
                     # population: trend-aligned entries whose voters stay positive).
                     _own_margin = _bull_margin if current_pos > 0 else _bear_margin
                     _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
-                    # Exp5 (architectural, indep, this session): WEAK-TREND AMPLIFIER on the
-                    # fade-slowdown. The fade-slowdown shrinks scale-in when the own-side
-                    # conviction margin has gone negative (the entry-voter spike faded).
-                    # Its magnitude (0.30) is uniform across regimes. A conviction fade in
-                    # PERSISTENT WEAK multi-day trend is MORE likely to be noise (no trend
-                    # to sustain the entry spike) than a fade in STRONG trend (where the
-                    # spike may resume on the trend). Amplify the fade-slowdown magnitude
-                    # in weak-trend (sideways consolidations, where faded mean-reversion
-                    # spikes are noise -> shrink more) toward the weak-trend population.
-                    # CRASH-SAFE BY CONSTRUCTION: the fade_slowdown is 0 for crash
-                    # trend-aligned SHORTS (bear_margin stays POSITIVE through the
-                    # downtrend, including consolidations, since the 96-bar trend is down
-                    # -> bear voters fire -> bear_margin>0 -> fade_slowdown=0 -> the
-                    # amplifier 0 * anything = 0 -> byte-identical for the 100pct WR winning
-                    # shorts, AVOIDING the Exp1/2/3/4 crash-catastrophe where signals firing
-                    # during bounces/consolidations starved the winning shorts). The
-                    # amplifier only binds when fade_slowdown>0, which is the bounce-LONG
-                    # population in crash (bull_margin fades as the bounce exhausts) AND
-                    # the sideways noise-spike population (own-margin fades). For crash
-                    # bounce-longs, weak_persist may be high (consolidation) -> MORE shrink
-                    # -> smaller bounce-long losers -> HELPS crash. For sideways, weak_persist
-                    # ~1 -> MORE shrink -> smaller noise entries -> HELPS sideways (the
-                    # productive lever per the Exp5 KEEP). New cross-component data dep:
-                    # scale-in fade-slowdown magnitude depends on portfolio weak-trend
-                    # state (was uniform). Amplify-only (floor at baseline 0.30; never
-                    # reduces the fade-slowdown, so strong-trend trend-aligned-fade cases
-                    # keep baseline). Smooth tanh on _weak_persist/0.40 (deep-weak only).
-                    _fade_amp = 1.0 + 0.50 * max(0.0, min(1.0, np.tanh((_weak_persist - 0.40) / 0.25)))
-                    _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_amp * _fade_slowdown)
+                    _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
