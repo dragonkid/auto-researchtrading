@@ -1476,59 +1476,6 @@ class Strategy:
                 # first-bar size depends on conviction margin above floor.
                 _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
                 _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
-                # Exp1 (architectural, indep): PEAK-CONVICTION CONTRARIAN entry-size shrink.
-                # Prior session-summary documented an untested lead: bull's 12.88pct DD is
-                # created on RIDE bars after SHARP-REVERSAL entries, and "bull DD reduction
-                # via the ENTRY side -- a structural filter that avoids taking the specific
-                # trend-climax entries that become the sharp-reversal DD (the Exp2
-                # backwards-finding suggests entry-conviction PEAK predicts the reversal --
-                # a CONTRARIAN entry filter that AVOIDS peak-conviction entries might help,
-                # the inverse of Exp2)." Exp2 (failed) RAISED the exit threshold for high-
-                # conviction entries (gave more rope) -> collapsed (high conviction marks
-                # trend EXHAUSTION/climax, not durable-move start). The INVERSE here:
-                # SHRINK the first-bar SIZE of PEAK-conviction entries (margin well above the
-                # 0.40 saturation of _conv_atten, i.e. the most one-sided voter agreement) so
-                # the position that becomes the sharp-reversal DD is smaller -> smaller DD
-                # contribution. Non-monotone (inverted-U) size-vs-conviction curve: moderate
-                # conviction (the proven good entries) stays at full 1.0x; only the PEAK tail
-                # (margin > 0.6, climactic) is shrunk. Byte-identical for margin<=0.6 (the
-                # entire marginal->decisive range _conv_atten already covers; crash/sideways/
-                # rally margin distributions sit below 0.6 mostly), shrink-only above 0.6.
-                # Continuous tanh (no boundary), symmetric (both bull/bear), Sharpe-affecting
-                # (alters SIZE of climax entries, not admission count). New data dep: first-bar
-                # size is non-monotone in conviction margin (was monotone-increasing). Targets
-                # bull DD (the dd_gate-crushed regime; dd_gate at DD=12.88pct ~0.017, so any DD
-                # reduction is a large score lever -- NOT marginal DD shaving, escaping a
-                # catastrophic-DD regime).
-                _peak_thresh = 0.80  # step4: raised 0.60->0.80 (only the MOST extreme climax)
-                _peak_shrink_max = 0.30  # max 0.70x size at extreme peak conviction
-                # branch step3: VOL-REGIME gate on the climax-shrink. Steps 1-2t3 proved the
-                # crash +0.013 requires BROAD peak-conviction shrink on BOTH bull longs AND
-                # bear shorts (both are losers at climax in crash -- dead-cat-bounce longs +
-                # squeezed shorts); any trend-direction or direction-asymmetric narrowing
-                # removes protection and crash degrades catastrophically. But the broad shrink
-                # hurts sideways (-0.013) and rally (-0.023): trend-aligned climax entries in
-                # LOW/MODERATE-VOL regimes are trend-CONTINUATION winners. The non-regime
-                # separator is VOL_RATIO (the SAME primitive the kept fusion _fusion_vol_gate
-                # uses, onset 1.15): HIGH-vol climax = EXHAUSTION (crash vol_ratio ~1.2-1.3,
-                # peak conviction marks a climactic reversal -> shrink), LOW/MODERATE-vol
-                # climax = CONTINUATION (sideways ~0.8-1.1, rally moderate, peak conviction
-                # marks trend-confirmation -> keep full). Gate the climax-shrink magnitude on
-                # vol_ratio above an onset so it fires fully in high-vol (crash) and is ~zero
-                # in moderate-vol (sideways/rally). Mechanism-backed (volatility regime
-                # distinguishes exhaustion-climax from continuation-climax; mirrors the
-                # validated _fusion_vol_gate separator), NOT regime-detection. Continuous tanh
-                # /0.15 (same scale as _fusion_vol_gate), onset 1.15 (same). Byte-identical
-                # when vol_ratio < ~1.0 (the sideways/rally low-vol region); full magnitude
-                # at vol_ratio >= ~1.3 (crash high-vol). New data dep: climax-size-shrink
-                # magnitude depends on (conviction margin, vol regime) jointly.
-                _peak_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 0.95) / 0.15)))  # step4: onset 1.15->0.95 (step3 1.15 was no-op at peak bars)
-                _bull_peak_mag = _peak_shrink_max * _peak_vol_gate
-                _bear_peak_mag = _peak_shrink_max * _peak_vol_gate
-                _bull_peak_shrink = 1.0 - _bull_peak_mag * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
-                _bear_peak_shrink = 1.0 - _bear_peak_mag * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
-                _bull_conv_atten = _bull_conv_atten * _bull_peak_shrink
-                _bear_conv_atten = _bear_conv_atten * _bear_peak_shrink
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
                 # don't block). The diagnostic (c265424d) proved fast re-entries are the
                 # entire rally instability; BLOCKING them (branch) gave PERFECT rally
