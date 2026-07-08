@@ -2957,6 +2957,31 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Exp3 (branch step4): CLOSE-POSITION exhaustion-vs-conviction gate, computed
+                # ONCE here and applied to BOTH the vol-expansion (_ve_pressure) and volume-
+                # climax (_vc_pressure) harvest sources. Both are regime-shift detectors that
+                # conflate EXHAUSTION (close AGAINST the position = opponent-driven expansion/
+                # climax = genuine regime shift -> harvest) with CONVICTION (close WITH the
+                # position = friend-driven trend acceleration/continuation bar -> NOT a
+                # regime shift to harvest -> mute). The close position within the bar's
+                # high-low range, close_loc = (close-low)/(high-low) in [0,1], is a pure
+                # intrabar conviction signal: close near the high = buyers controlled the bar
+                # (bullish), near the low = sellers controlled it (bearish). For a LONG,
+                # exhaustion = close near LOW (close_loc~0 -> _vc_exhaustion_loc = 1-close_loc
+                # ~1); for a SHORT, exhaustion = close near HIGH (close_loc~1 -> exhaustion_loc
+                # = close_loc ~1). 3-bar mean close_loc for noise-robustness (single-bar close
+                # position flips under AR(1) noise; the entry-side close_loc boost uses the
+                # same 3-bar pattern). _vc_close_gate in [0,1]: ramps from 0 at the conviction
+                # pole to ~1 at the exhaustion pole. Continuous tanh on (exhaustion_loc - 0.40)
+                # /0.20 (no boundary). Direction-agnostic via position-sign pole selection.
+                _vc_h3 = bd.history["high"].values[-3:]
+                _vc_l3 = bd.history["low"].values[-3:]
+                _vc_c3 = closes[-3:]
+                _vc_span3 = np.maximum(_vc_h3 - _vc_l3, 1e-10)
+                _vc_close_loc = float(np.mean((_vc_c3 - _vc_l3) / _vc_span3))  # [0,1], 3-bar mean
+                _vc_exhaustion_loc = (1.0 - _vc_close_loc) if current_pos > 0 else _vc_close_loc  # [0,1], 1=exhaustion
+                _vc_close_gate = max(0.0, min(1.0, np.tanh((_vc_exhaustion_loc - 0.40) / 0.20)))
+                _ve_pressure = _ve_pressure * _vc_close_gate
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
@@ -2991,36 +3016,13 @@ class Strategy:
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                # Exp2 (architectural, indep): CLOSE-POSITION gate on the volume-climax
-                # harvest. NEW data dep on the _vc_pressure source: it reads the intrabar
-                # close position (close-low)/(high-low) in [0,1] jointly with the volume
-                # spike, distinguishing EXHAUSTION-volume from CONVICTION-volume. A volume
-                # spike where the close is AGAINST the position direction (close near the
-                # bar's LOW for a long, near the HIGH for a short) is a distribution/
-                # selling-climax bar -> the volume is OPPONENT-sided (exhaustion, the bar
-                # absorbed the opposing flow = a true climax) -> strong harvest signal. A
-                # volume spike where the close is WITH the position (close near high for a
-                # long) is a conviction-continuation bar (the volume is FRIEND-sided, a
-                # healthy trend bar) -> NOT a climax -> mute the harvest (let the trend
-                # winner run). The prior _vc_pressure fired on ANY volume spike in profit,
-                # conflating these two populations -> over-harvested conviction-continuation
-                # rally/crash winners (volume spikes are common in healthy trends, not just
-                # at tops). _vc_close_gate in [0,1]: 1.0 when close is fully against the
-                # position (exhaustion), 0.0 when fully with it (conviction). 3-bar mean for
-                # noise-robustness (single-bar close position flips under AR(1) noise; the
-                # entry-side close_loc boost uses the same 3-bar pattern). Continuous tanh
-                # on (0.5 - |close_loc - against_pole|) so the gate ramps smoothly as the
-                # close moves from the conviction pole toward the exhaustion pole, no
-                # boundary. Direction-agnostic via the position-sign pole selection.
-                _vc_h3 = bd.history["high"].values[-3:]
-                _vc_l3 = bd.history["low"].values[-3:]
-                _vc_c3 = closes[-3:]
-                _vc_span3 = np.maximum(_vc_h3 - _vc_l3, 1e-10)
-                _vc_close_loc = float(np.mean((_vc_c3 - _vc_l3) / _vc_span3))  # [0,1], 3-bar mean
-                # For a LONG (current_pos>0): exhaustion pole = close near LOW = _vc_close_loc~0.
-                # For a SHORT (current_pos<0): exhaustion pole = close near HIGH = _vc_close_loc~1.
-                _vc_exhaustion_loc = (1.0 - _vc_close_loc) if current_pos > 0 else _vc_close_loc  # [0,1], 1=exhaustion
-                _vc_close_gate = max(0.0, min(1.0, np.tanh((_vc_exhaustion_loc - 0.40) / 0.20)))
+                # Exp2 (architectural, indep): CLOSE-POSITION exhaustion-vs-conviction gate on
+                # the volume-climax harvest. The _vc_close_gate is computed ONCE at the
+                # _ve_pressure block above (step4) and applied to both _ve_pressure (vol-of-
+                # price expansion) and _vc_pressure (volume climax) harvest sources -- both are
+                # regime-shift detectors that conflate EXHAUSTION (close AGAINST position =
+                # opponent-driven climax) with CONVICTION (close WITH position = friend-driven
+                # trend continuation). See the _ve_pressure block for the full computation.
                 _vc_pressure = _vc_pressure * _vc_close_gate
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
