@@ -3009,8 +3009,8 @@ class Strategy:
                 # 100pct->80pct to lessen the mixed hurt while keeping most of the sideways
                 # gain (the sideways gain at 0.40 onset was driven by the onset/broaden, not
                 # the magnitude ceiling, so 80pct should retain most of it).
-                _port_chop_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - 0.40) / PORT_WEAK_PERSIST_AVG_SCALE)))
-                _opp_div_relief = 1.0 - 0.80 * max(_div_taper, _port_chop_gate)
+                _port_chop_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - 0.45) / PORT_WEAK_PERSIST_AVG_SCALE)))  # branch step10: onset 0.40->0.45 (find optimum balance; 100pct mag restored)
+                _opp_div_relief = 1.0 - 1.00 * max(_div_taper, _port_chop_gate)
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * _opp_div_relief * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
