@@ -2349,6 +2349,39 @@ class Strategy:
                     _own_margin = _bull_margin if current_pos > 0 else _bear_margin
                     _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
                     _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
+                    # Exp1 (architectural, indep, this session): CONSENSUS-DISAGREEMENT
+                    # scale-in SLOWDOWN. NEW cross-symbol data dep at scale-in pace. The
+                    # fade-slowdown above keys on the OWN-SIDE voter margin (bull_margin
+                    # for a long). It MISSES the crash dead-cat-bounce LONG: during the
+                    # bounce, bull voters fire (price rising) -> _bull_margin POSITIVE ->
+                    # fade_slowdown=0 -> full scale-in; the bounce then exhausts and the
+                    # long loses big (the bounce-then-resume-down crash loser population).
+                    # The OWN-SIGNAL ct gates (_ct_si_gate via ret_vlong) catch the
+                    # position's own counter-trend-ness but only the _adv_freeze ACTS on
+                    # it, and _adv_freeze keys on ADVERSE pos_pnl (negative) -> a winning
+                    # bounce (pos_pnl>0) is unprotected. This fills the gap with a
+                    # CROSS-SYMBOL signal: when the position DISAGREES with the broad-
+                    # market 3-symbol consensus (all symbols moving opposite to the entry
+                    # dir, _consensus_strength high AND _consensus_dir opposite to pos),
+                    # the entry is fighting the whole market -> lower quality -> slow
+                    # scale-in (keep smaller until the broad market re-confirms). For a
+                    # crash dead-cat-bounce LONG, all 3 symbols are still in the multi-
+                    # month downtrend (consensus_dir=-1) while the long is +1 -> full
+                    # disagreement -> slowdown fires even though _bull_margin>0 (the
+                    # bounce is OWN-symbol-local, not broad-market). Trend-aligned
+                    # entries (rally longs in uptrend consensus_dir=+1, crash shorts in
+                    # downtrend consensus_dir=-1) AGREE with consensus -> slowdown 0 ->
+                    # byte-identical. Distinct from fade-slowdown (own-symbol voter
+                    # margin), _ct_si_gate (own-symbol ret_vlong), and the cross-symbol
+                    # consensus ENTRY-SIZE boost (different path: first-bar size, not
+                    # scale-in pace; and that BOOSTS agreement whereas this SLOWS
+                    # disagreement). One-sided: only fires on DISagreement (agreement
+                    # -> 0, byte-identical for trend-aligned). Smooth tanh, no boundary;
+                    # /0.20 consensus-strength scale matches the entry-boost gate.
+                    # Max 25pct slowdown at full disagreement.
+                    _pos_dir_cons = 1.0 if current_pos > 0 else -1.0
+                    _cons_disagree = _consensus_strength * max(0.0, -_consensus_dir * _pos_dir_cons)
+                    _eff_progress = _eff_progress * (1.0 - 0.25 * max(0.0, np.tanh(_cons_disagree / 0.20)))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
