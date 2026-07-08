@@ -221,6 +221,30 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+# Exp2 (architectural, indep): GIVEBACK-VELOCITY gate on the trend-aligned-winner
+# pp_pressure attenuation. The kept attenuation (_ta_winner_gate) lets trend-aligned
+# persistent-uptrend LONG winners ride gradual pullbacks (bull raw lift). Its existing
+# gates separate gradual from sharp reversal via:
+#  - _gb_mag_gate: giveback RATIO magnitude (0.15->0.30 fade)
+#  - _slope_against_gate: 1-bar slope magnitude (0.0004->0.0012 fade)
+# NEITHER reads the giveback RATE over the whole giveback period. A 3-bar gradual
+# climb followed by a 1-bar sharp drop has high 1-bar slope (caught by slope gate) but
+# also a moderate giveback velocity over 4 bars; a 1-bar sharp drop from a fresh peak
+# has high velocity but the slope gate already catches it. The UNCOVERED case is a
+# MODERATE giveback that accumulates FAST (e.g. giveback_ratio 0.12 over 2 bars =
+# velocity 0.06 -- below the _gb_mag_gate onset 0.15 so attenuation stays ON, but the
+# giveback is happening at a rate that indicates reversal not transient dip). Giveback
+# velocity = giveback_ratio / max(peak_age, 1) combines magnitude with age into a
+# rate-of-reversal signal: a gradual pullback (low ratio over many bars = low velocity)
+# keeps full attenuation; a fast giveback (moderate ratio over few bars = high velocity)
+# fades the attenuation so pp_pressure harvests the fast-reversing winner sooner ->
+# cuts the ride that would deepen into DD. NEW cross-component data dep: pp_pressure
+# attenuation reads giveback velocity (magnitude-per-bar-since-peak) jointly with
+# trend-align. Byte-identical when giveback_ratio=0 (at peak, velocity 0 -> gate 1 ->
+# full attenuation) and for the existing gate-0 population (counter-trend/shorts/
+# sharp-reversal where other gates already 0). Reduction-friendly. Continuous ramp.
+GB_VEL_ONSET = 0.04   # giveback-per-bar velocity below which full attenuation is kept (gradual pullback)
+GB_VEL_SCALE = 0.06   # ramp width: fade to 0 by velocity ~ ONSET+SCALE (~0.10/bar)
 
 
 def ema(values, span):
@@ -418,6 +442,17 @@ COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturate
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        # Exp2 (architectural, indep): per-symbol bar index of the last peak_pnl
+        # refresh (when the confirmed-peak high-water mark last moved up). Used to
+        # compute peak AGE for the GIVEBACK-VELOCITY gate on the trend-aligned-winner
+        # pp_pressure attenuation: giveback velocity = giveback_ratio / peak_age
+        # distinguishes a SHARP reversal (high giveback over few bars) from a GRADUAL
+        # pullback (low giveback over many bars). Exp1 (peak-age alone, discarded) showed
+        # peak-age ALONE does not separate the DD-generating rides from benign ones;
+        # giveback VELOCITY combines magnitude with age into the rate-of-reversal signal
+        # that the 1-bar _slope_against_gate (instantaneous slope) and the _gb_mag_gate
+        # (magnitude only) each miss individually. New per-symbol state. Reset on full exit.
+        self._peak_bar = {}
         # Maximum adverse excursion (MAE): per-symbol low-water mark of pos_pnl since entry.
         # Used by adverse-recovery exit pressure (architectural): when current pos_pnl
         # has recovered from MAE but still in modest loss, position is "barely surviving"
@@ -2500,6 +2535,7 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
+                    self._peak_bar[symbol] = self.bar_count  # Exp2: record bar of peak refresh
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
@@ -2675,7 +2711,16 @@ class Strategy:
                 # attenuation gate. Crash (down_persist~0.9) byte-identical (gate 0); bull
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
+                # Exp2 (architectural, indep): GIVEBACK-VELOCITY gate. Combines
+                # giveback magnitude with peak-age into a rate-of-reversal signal.
+                # giveback velocity = giveback_ratio / max(peak_age, 1) per bar since
+                # peak. Full attenuation at LOW velocity (gradual pullback, ride it);
+                # fades to 0 at HIGH velocity (fast giveback = reversal, harvest sooner).
+                # Byte-identical when _giveback_ratio=0 (at peak, velocity 0 -> gate 1).
+                _peak_age = max(1.0, float(self.bar_count - self._peak_bar.get(symbol, self.bar_count)))
+                _gb_velocity = _giveback_ratio / _peak_age
+                _gb_vel_gate = max(0.0, 1.0 - max(0.0, (_gb_velocity - GB_VEL_ONSET) / GB_VEL_SCALE))
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate * _gb_vel_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
@@ -4255,7 +4300,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._peak_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -4266,6 +4311,7 @@ class Strategy:
                     self._entry_accum[symbol] = (0.0, 0.0)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self._peak_bar[symbol] = self.bar_count  # Exp2: peak refresh at entry
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
