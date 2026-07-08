@@ -669,6 +669,49 @@ class Strategy:
             _consensus_strength = 0.0
             _consensus_dir = 0.0
 
+        # Exp1 (architectural, indep, this session): CROSS-SYMBOL SHORT-WINDOW
+        # ADVERSE-RETURN coherence -- a NEW portfolio-level EXIT-fusion source. The 6
+        # existing soft exit terms (slope/pp/time/ve/vc/be) each read per-symbol state
+        # only; none reads whether the OTHER symbols are ALSO moving against the position
+        # simultaneously. A broad-market reversal (BTC+ETH+SOL all turning against a long
+        # at once) is a higher-conviction exit signal than an idiosyncratic single-symbol
+        # move -- it is the structural counterpart of the kept entry-side _consensus_strength
+        # (broad agreement = higher-quality entry), applied to the EXIT decision. This is
+        # the documented sanctioned-but-untested lead (a): "a NEW confirmation-amplified
+        # fusion SOURCE that fires in a distinct situation" (distinct from the 6 existing
+        # sources which read slope/giveback/time/vol-expansion/volume-climax/breakeven --
+        # none reads CROSS-SYMBOL return coherence). It does NOT touch the entry voter
+        # strong-sum or admission thresholds (avoids the 9th-voter threshold-shift collapse).
+        # Compute the cross-symbol AVERAGE signed SHORT_WINDOW (8-bar) return, AND a
+        # broad-agreement indicator (count of symbols whose 8-bar return sign-agrees with
+        # the adverse direction). The per-symbol exit term (line ~3088) signs the average
+        # against the position direction (adverse for that position) and gates on the
+        # broad-agreement count. Uses the SAME 8-bar close window as SHORT_WINDOW; 8 bars
+        # of AR(1) noise (~1/sqrt(8)=0.35 attenuation) makes the SIGN robust. Falls to 0
+        # if <2 symbols present. Computed once per bar (read-only); the per-symbol loop
+        # consumes it. Direction-agnostic general principle (no regime label): a broad
+        # adverse move is a stronger reversal signal than a narrow one.
+        _xco_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > SHORT_WINDOW]
+        _xco_avg_ret = 0.0
+        _xco_count = 0
+        if len(_xco_syms) >= 2:
+            _xco_rets = []
+            for _xsym in _xco_syms:
+                _xc = bar_data[_xsym].history["close"].values
+                _xr = (_xc[-1] - _xc[-SHORT_WINDOW]) / _xc[-SHORT_WINDOW]
+                _xco_rets.append(_xr)
+            _xco_avg_ret = float(np.mean(_xco_rets))
+            _xco_count = len(_xco_rets)
+            # broad-agreement: how many symbols sign-agree with the average direction
+            _xco_avg_sign = 1.0 if _xco_avg_ret > 0 else (-1.0 if _xco_avg_ret < 0 else 0.0)
+            _xco_agree = sum(1 for _r in _xco_rets if (_r > 0 and _xco_avg_sign > 0) or (_r < 0 and _xco_avg_sign < 0))
+            # _xco_broad in [0,1]: 0 at <2 agreeing (idiosyncratic), 1 at all-agree (broad)
+            _xco_broad = max(0.0, min(1.0, np.tanh((_xco_agree - 1.0) / 1.0)))
+        else:
+            _xco_avg_ret = 0.0
+            _xco_count = 0
+            _xco_broad = 0.0
+
         # Exp1 (architectural, indep): PORTFOLIO CROSS-SYMBOL DEEP-BEAR down_persist.
         # Compute each symbol's _down_persist (fraction of last PERSIST_WINDOW bars where
         # 96-bar ret_vlong<0) at the top level and average across symbols present. This is
@@ -3073,6 +3116,31 @@ class Strategy:
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
+                # VOL-REGIME gate for the soft-pressure fusion (shared by the kept
+                # confirmation-amp below and the Exp1 _xco_press term). Computed here so
+                # both consumers use one value; was inline at the confirmation-amp block.
+                _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
+                # Exp1 (architectural, indep, this session): CROSS-SYMBOL ADVERSE-RETURN
+                # exit-coherence -- a 7th soft exit-fusion SOURCE. Reads the portfolio-level
+                # cross-symbol short-window signal computed once per bar at the top level
+                # (_xco_avg_ret, _xco_broad). Fires when the broad-market short-window return
+                # moves AGAINST the position direction AND the move is broad (>=2 symbols
+                # sign-agree). A broad adverse reversal is a higher-conviction exit than an
+                # idiosyncratic one; this is the structural exit-side counterpart of the kept
+                # entry-side _consensus_strength. DISTINCT from all 6 existing soft sources
+                # (none reads cross-symbol return coherence). NEW control flow + NEW cross-
+                # symbol data dep in the MAX fusion. Profit-sign-neutral weight (a broad
+                # reversal hits winners and losers alike). VOL-GATED to high-vol regimes via
+                # the SAME _fusion_vol_gate (onset 1.15) the kept confirmation-amp uses, so
+                # sideways (moderate vol, mean-reversion) is byte-identical -- the documented
+                # lesson that sideways is sensitive to exit-pressure amplification in both
+                # directions. Pressure magnitude: tanh on the adverse average return /0.012
+                # (saturates around a ~1.2pct broad adverse 8-bar move), scaled by broad-
+                # agreement _xco_broad. Bounded [0,1]; weight 1.0 (like _w_be).
+                _pos_dir_xco = 1.0 if current_pos > 0 else -1.0
+                _xco_adverse = -_xco_avg_ret * _pos_dir_xco  # >0 when broad market moves against position
+                _xco_press = 0.55 * max(0.0, np.tanh(_xco_adverse / 0.012)) * _xco_broad * _fusion_vol_gate
+                _w_xco = 1.0  # profit-sign-neutral, vol-gated inside _xco_press
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -3087,6 +3155,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
+                    _w_xco * _xco_press,
                 )
                 _soft_max = max(_soft_terms)
                 # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
@@ -3144,7 +3213,6 @@ class Strategy:
                 # bounds the added term to 0.50*1.0 = 0.50, so _soft_max max ~1.6, which
                 # the exit-threshold logic already tolerates since _exit_pressure > 1.0
                 # triggers exit anyway).
-                _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
                 _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
                 _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
                 # Architectural: multi-source agreement attenuator on soft_max.
