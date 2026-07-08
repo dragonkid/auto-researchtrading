@@ -2841,6 +2841,30 @@ class Strategy:
                 # 12b6bc63/Exp4/Exp5 byte-identical simplification precedent. (_scale_in_winning
                 # at line ~2440 is a SEPARATE variable, unaffected.)
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)  # heavier in loss
+                # Exp5 (architectural, indep): RE-TEST portfolio-DD amplification of loss-side
+                # _w_slope under the NEW confirmation-amplified fusion. The prior _w_slope
+                # DD-amp (cbf265bd, 0d70149c) was BYTE-IDENTICAL INERT under the OLD pure-MAX
+                # fusion: amplifying the slope-against weight raised the slope-against TERM,
+                # but pure-MAX discarded it whenever another term was larger (the documented
+                # MAX-fusion absorption wall). The current baseline 654588e9 REPLACED pure-MAX
+                # with CONFIRMATION-AMPLIFIED MAX: _soft_max = max + _agree_amp*2nd, adding a
+                # bounded fraction of the 2nd-highest term when two sources agree (vol-gated
+                # to high-vol regimes). Under the new fusion, an amplified slope-against term
+                # (during portfolio DD) can now COMBINE with a 2nd source (time/pp) via the
+                # agreement amplification -> it is NO LONGER absorbed -> it can cut sharp-
+                # reversal losers faster during portfolio DD. This directly targets the Exp3
+                # diagnostic: bull's 12.88pct DD is a SHARP-REVERSAL DD (attenuation magnitude
+                # was byte-identical); the sharp reversal fires slope-against, and amplifying
+                # it during portfolio DD (when the sharp reversal is producing the DD) cuts
+                # the loser faster -> caps bull's sharp-reversal DD. Loss-side only (gated on
+                # -_pnl_scale -> only fires for losers; winners byte-identical). Continuous
+                # tanh on the portfolio DD fraction; leverage-coupled scale (same discipline
+                # as PORT_DD_GIVEBACK_SCALE). Byte-identical at portfolio peak (dd_frac=0).
+                # Vol-gate inherits from the fusion (the amplification binds via the fusion's
+                # _fusion_vol_gate, so sideways byte-identical). Max amp +0.20 on the loss
+                # weight (1.15 -> up to 1.35 at deep DD for deep losers).
+                _w_slope_dd_amp = max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))  # 0 peak, ~1 deep DD
+                _w_slope = _w_slope + 0.20 * max(0.0, -_pnl_scale) * _w_slope_dd_amp
                 # Architectural: vol-conditioned profit-side _w_pp.
                 # Low vol (sideways/rally): _w_pp simplified (no extra boost).
                 #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
