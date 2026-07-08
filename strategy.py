@@ -2580,31 +2580,7 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp3 (architectural, indep): CHOP-WIDENED giveback tolerance. The
-                # pp_pressure giveback tolerance (PEAK_PROFIT_GIVEBACK=0.22, the fraction of
-                # peak profit given back before pp_pressure saturates) is a fixed constant.
-                # In CHOP (sideways, low rsi_trend_str), small givebacks are NOISE (the
-                # mean-reverting price oscillates around the peak) -> a tight tolerance fires
-                # pp_pressure on chop noise -> premature exit -> re-entry churn -> fee drag
-                # (sideways is fee-bound: 151 trades, WR 67pct, PF 1.3 GROSS profitable, net
-                # -0.26pct = pure fee drag ~4.7pct/yr). Widening the tolerance in chop lets
-                # sideways winners ride small giveback oscillations without triggering pp exit
-                # -> fewer exits on noise -> fewer re-entries -> lower fee drag -> higher
-                # sideways Sharpe (the 1:1 composite lever, score==bare Sharpe at -0.052).
-                # In TRENDS (high rsi_trend_str), giveback is a REAL reversal (not noise) ->
-                # keep the tight tolerance so pp_pressure fires promptly (protects crash/bull
-                # trend winners from riding real reversals). Gate on rsi_trend_str (the
-                # validated chop/trend separator already used by _w_time/_be_trend_gate/
-                # _exit_dd_gate): byte-identical at rsi_trend_str>=0.30 (trends), widens up
-                # to +25pct at rsi_trend_str~0 (chop). Continuous tanh, no boundary. NEW
-                # cross-component data dep: the pp giveback tolerance now depends on trend
-                # strength (was pnl/DD only). Direction-agnostic (no regime label). Byte-
-                # identical at portfolio peak (the chop-widen is multiplicative on
-                # _pp_tighten which is 1.0 at peak, but _pp_giveback_eff = base*tighten*widen;
-                # widen!=1 in chop even at peak -> NOT byte-identical at peak in chop, but
-                # that is the intended effect: chop winners get wider tolerance always).
-                _pp_chop_widen = max(0.0, np.tanh((0.30 - rsi_trend_str) / 0.15))  # 0 trend, ~1 chop
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * (1.0 + 0.25 * _pp_chop_widen)
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
