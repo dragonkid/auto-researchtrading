@@ -2990,7 +2990,7 @@ class Strategy:
                 _vol_mean_e = float(np.mean(_vol_arr_e))
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
-                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 1.5) / 1.5)))  # step10: lower z onset 2.0->1.5 (engage close-position gate on more bars)
+                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 # Exp2 (architectural, indep): CLOSE-POSITION gate on the volume-climax
                 # harvest. NEW data dep on the _vc_pressure source: it reads the intrabar
                 # close position (close-low)/(high-low) in [0,1] jointly with the volume
