@@ -3123,7 +3123,20 @@ class Strategy:
                 # Confirmation-amplified MAX: add a bounded fraction of the 2nd term.
                 # AGREE_MAX caps the added fraction (0.75 = up to 75% of 2nd term added).
                 SOFT_FUSION_AGREE_MAX = 0.75
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate
+                # branch step2: TREND-GATE the agreement amplification. step1 (no gate)
+                # collapsed sideways (-0.052->-1.26): chop has frequent multi-source
+                # agreement on NOISE (slope + time + break-even all spike together on a
+                # chop bar) -> amplification fires on noise -> exits mean-reverters at the
+                # noise spike -> destroys sideways. The validated separator (used by
+                # _chop_atten_w, _be_trend_gate, _exit_dd_gate): rsi_trend_str. In trends
+                # (high rsi_trend_str) multi-source agreement is a REAL exit signal (slope
+                # + time both firing on a trend break = genuine); in chop it is noise.
+                # Gate the amplification ON trend-strength so it fires in trends
+                # (crash/bull/rally) and ~off in chop (sideways byte-identical). The
+                # existing _soft_atten (chop attenuator) already keys on the SAME
+                # _chop_atten_w -- this makes the amplification its trend-regime mirror.
+                _fusion_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_trend_w
                 _soft_max = min(1.0, _soft_max + _agree_amp * _sorted_terms[1])
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
