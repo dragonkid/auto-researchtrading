@@ -3136,9 +3136,17 @@ class Strategy:
                 # rally. step5 onset 1.0 fixed crash (-0.145, byte-identical) but sideways
                 # still collapsed (-1.25) -> sideways vol_ratio passes 1.0 too often.
                 # Raise onset to 1.15 to exclude sideways. AGREE_MAX 0.50.
+                # branch step6b DIAGNOSTIC FOUND: the min(1.0,...) CLAMP on _soft_max
+                # was changing behavior even when _agree_amp=0 -- the original code did
+                # NOT clamp _soft_max (weighted terms can exceed 1.0, e.g. weight 1.25 *
+                # pressure 0.9 = 1.125), so min(1.0, _soft_max+...) capped it = behavior
+                # change. REMOVE the clamp; cap via _agree_amp magnitude (AGREE_MAX 0.50
+                # bounds the added term to 0.50*1.0 = 0.50, so _soft_max max ~1.6, which
+                # the exit-threshold logic already tolerates since _exit_pressure > 1.0
+                # triggers exit anyway).
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
                 _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
-                _soft_max = min(1.0, _soft_max + _agree_amp * _sorted_terms[1])
+                _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
