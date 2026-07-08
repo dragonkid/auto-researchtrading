@@ -3070,13 +3070,8 @@ class Strategy:
                 # before they bleed to the stop raises sideways Sharpe directly).
                 _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
-                # Exp5 (architectural simplification, indep): test whether the step12 SPLIT
-                # hold-gate (trend 4-bar ramp vs mae 2-bar faster ramp) is load-bearing.
-                # Revert to a single 4-bar ramp for both paths. The _be_pressure source is
-                # MAX-absorbed on most bars (Exp2 this session: amplifying _be_pressure was
-                # byte-identical), so the ramp SHAPE may also be inert. If byte-identical,
-                # the split is dead code -> simplification KEEP. If regression, revert.
-                _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_trend * _be_mae_depth)
+                # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
+                _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
