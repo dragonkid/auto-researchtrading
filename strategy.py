@@ -1025,25 +1025,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                # Exp4 (architectural, indep): 9th voter -- CROSS-SYMBOL CONSENSUS direction.
-                # Prior-session CROSS-EXPERIMENT CONCLUSION (line ~996): the ONLY un-disproven
-                # axis for moving a regime raw is "a fundamentally new orthogonal DATA-SOURCE
-                # voter added WITHOUT touching existing voter weights." All 8 existing voters
-                # are PER-SYMBOL price-derived (ret, EMA, RSI, MACD, slope, VWAP, range/close).
-                # The cross-symbol 3-symbol SIGN-AGREEMENT (_consensus_dir * _consensus_strength,
-                # computed top-level line ~666) is a genuinely orthogonal PORTFOLIO-LEVEL data
-                # source -- it reads whether BTC/ETH/SOL agree on 20-bar direction, NOT any one
-                # symbol's price level. Currently used ONLY for sizing (_consensus_boost line
-                # 2179); NOT as an admission voter. A position entered when all 3 symbols agree
-                # on direction (broad-market move) is higher-quality than a single-symbol
-                # signal (broad confirmation). Signed so all-up -> bull voter, all-down -> bear
-                # voter. Scaled /0.30 (tanh sharpness ~1 at full |sign|=3 agreement,
-                # _consensus_strength ~0.76 -> s ~2.5 -> tanh ~1). Small fixed weight 0.55
-                # (below the 0.7 base floor, like the 8th voter) -- appended WITHOUT modifying
-                # any existing _base_weights (the trend-strength redistribution shifts only
-                # indices 1-3, leaving 7/8/9 untouched). New orthogonal-ish portfolio-level
-                # data-source voter.
-                _consensus_dir * _consensus_strength / 0.30,  # 9th voter: cross-symbol 3-sign agreement
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1070,7 +1051,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency; 9th: cross-symbol consensus (both small fixed, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -1092,13 +1073,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 9)
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
