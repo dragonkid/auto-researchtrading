@@ -2348,24 +2348,6 @@ class Strategy:
                     # population: trend-aligned entries whose voters stay positive).
                     _own_margin = _bull_margin if current_pos > 0 else _bear_margin
                     _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
-                    # Exp6 (architectural, follow-up to Exp5 KEEP): TREND-ALIGN gate on the
-                    # fade slowdown. The Exp5 keep's one small regression was crash -0.0016:
-                    # trend-aligned crash SHORTS (ret_vlong<0, pos_dir=-1 -> trend-aligned)
-                    # whose bear_margin flickered negative during dead-cat bounces got
-                    # shrunk, then the bounce faded and the short resumed winning -> small
-                    # size cost on a winner. Suppress the fade slowdown for TREND-ALIGNED
-                    # positions (the multi-day trend confirms the entry despite a transient
-                    # voter flicker) so trend shorts/longs keep full scale-in through
-                    # pullback/bounce voter flickers. Sideways (ret_vlong~0 -> trend-align~0
-                    # -> suppression 0 -> fade slowdown FULL ON) keeps the +0.039 sideways
-                    # gain (the chop entries are not trend-aligned). Crash trend shorts
-                    # (trend-align high -> suppression 1 -> slowdown OFF) recover. Uses the
-                    # validated multi-day ret_vlong*pos_dir trend-align (fast-saturating
-                    # /0.04, noise-robust 96-bar OLS). (1 - trend_align) multiplier: 1 in
-                    # chop/ct, 0 trend-aligned. Smooth tanh, no boundary.
-                    _pos_dir_fa = 1.0 if current_pos > 0 else -1.0
-                    _fa_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_fa / 0.04))  # 0 ct/chop, 1 trend-aligned
-                    _fade_slowdown = _fade_slowdown * (1.0 - _fa_trend_align)
                     _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
