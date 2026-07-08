@@ -2322,6 +2322,33 @@ class Strategy:
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
+                    # Exp5 (architectural, indep, this session): FADING-CONVICTION scale-in
+                    # SLOWDOWN. NEW cross-temporal data dep at scale-in: the scale-in rate
+                    # reads the OWN-SIDE voter conviction margin trajectory post-entry. A
+                    # fresh entry whose own-side margin (bull_margin/bear_margin, the same
+                    # threshold-normalized conviction used at admission) has gone NEGATIVE
+                    # during scale-in has LOST its entry rationale -- the entry-voter spike
+                    # was transient and has faded -> do NOT build to full size on a position
+                    # the voters no longer support. Slow scale-in (reduce _eff_progress) so
+                    # the position stays smaller until the voters re-confirm. DISTINCT from
+                    # the removed live-conviction ACCELERATOR (prior session: positive margin
+                    # -> faster, NOISY per-bar -> added bull noise -> removed): this is a
+                    # one-sided SLOWDOWN gated on margin<0 (a CLEAR faded signal, not per-
+                    # bar noise -- the margin is threshold-normalized and the gate fires
+                    # only once it crosses zero, the same admission boundary, noise-robust).
+                    # DISTINCT from _adv_freeze (adverse pos_pnl freeze, keys on realized
+                    # loss not voter conviction) and _ct_si_gate (counter-trend freeze, keys
+                    # on multi-day trend not per-bar voters). Here the voters can fade BEFORE
+                    # the position is in loss (the entry spike unwinds but price hasn't
+                    # moved adversely yet) -> catches the fading-conviction population the
+                    # loss-based freeze misses. One-sided: only fires when the own-side
+                    # margin is negative (winning-conviction positions keep full scale-in).
+                    # Max 30pct slowdown at deep negative margin. Smooth tanh, no boundary.
+                    # Byte-identical when own-side margin >= 0 (the winning-conviction
+                    # population: trend-aligned entries whose voters stay positive).
+                    _own_margin = _bull_margin if current_pos > 0 else _bear_margin
+                    _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
+                    _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
