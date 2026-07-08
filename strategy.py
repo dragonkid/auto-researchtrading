@@ -3123,23 +3123,20 @@ class Strategy:
                 # Confirmation-amplified MAX: add a bounded fraction of the 2nd term.
                 # AGREE_MAX caps the added fraction (0.50 = up to 50% of 2nd term added).
                 SOFT_FUSION_AGREE_MAX = 0.50
-                # branch step4: PROFIT-SIDE gate. steps 1-3 loss-side amplification
-                # collapsed sideways AND crash: amplifying loss-side multi-source
-                # agreement cuts RECOVERIES (sideways mean-reverters dip then recover;
-                # crash winning shorts bounce then resume) -- the same wall as Exp3
-                # MAE-deepening. The strategy's existing loss-exit stack is already tuned
-                # to NOT cut recoveries; amplifying loss-side exits breaks that protection.
-                # FLIP DIRECTION: amplify only PROFIT-SIDE multi-source agreement (pp +
-                # ve + vc all fire on a confirmed winner peak). step1 showed rally/mixed
-                # IMPROVED (+0.014/+0.025) with bilateral amplification -- the gain came
-                # from the profit-side amplification (let winners ride deeper peaks
-                # before the MAX-fusion would have harvested). Gate amplification on
-                # _pnl_scale > 0 (winner): amplification fires only for winners, boosting
-                # the confirmed-peak harvest pressure so the winner's giveback-protection
-                # fires more reliably at the confirmed peak. Losers byte-identical
-                # (loss-gate 0) -> sideways/crash recoveries preserved. AGREE_MAX 0.50.
-                _fusion_profit_gate = max(0.0, _pnl_scale)  # 0 loss, ~1 deep profit
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_profit_gate
+                # branch step5: VOL-REGIME gate (exclude sideways). steps 1-4 ALL
+                # collapsed sideways because sideways is a MEAN-REVERSION regime
+                # fundamentally sensitive to exit-pressure amplification in BOTH
+                # directions (profit-side amplification over-harvests mean-reverters
+                # before their natural peak; loss-side amplification cuts dips that
+                # recover). The clean separator between sideways and the trending
+                # regimes is VOL_RATIO: sideways 2023 is calm chop (vol_ratio ~0.6-0.9);
+                # crash/rally have elevated vol (1.0-1.3+); bull has high vol (1.2+).
+                # Gate amplification on vol_ratio > 1.0 so it fires ONLY in elevated-vol
+                # regimes (crash/bull/rally) and is byte-identical in calm chop
+                # (sideways). No pnl-sign gate (both profit/loss amplification can help
+                # trending regimes). AGREE_MAX 0.50. Continuous tanh on (vol_ratio-1.0)/0.2.
+                _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.0) / 0.20)))
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
                 _soft_max = min(1.0, _soft_max + _agree_amp * _sorted_terms[1])
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
