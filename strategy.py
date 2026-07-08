@@ -3002,7 +3002,7 @@ class Strategy:
                 # divergence OR portfolio-wide chop. Magnitude stays at the 100pct ceiling.
                 # Tests whether a broader sideways gate captures enough bars to jump the gain
                 # above the magnitude-axis ceiling (+0.000010).
-                _port_chop_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - 0.40) / PORT_WEAK_PERSIST_AVG_SCALE)))  # branch step6: lower onset 0.55->0.40 (relief fires on moderate chop, still spares trending regimes where weak_persist~0)
+                _port_chop_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - 0.48) / PORT_WEAK_PERSIST_AVG_SCALE)))  # branch step7: onset 0.40->0.48 (balance sideways gain vs mixed regression)
                 _opp_div_relief = 1.0 - 1.00 * max(_div_taper, _port_chop_gate)
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * _opp_div_relief * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
