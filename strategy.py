@@ -865,28 +865,7 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            # Exp2 (architectural, this session): DENOISED realized_vol via short+long BLEND.
-            # The 24-bar realized_vol is a PIVOTAL signal: it drives vol_ratio -> combined_mult
-            # position sizing, _w_pp profit-side weight, _slope_thresh/band, and the cap
-            # interpolation. A pure 24-bar std of log-returns is noise-sensitive (24 samples,
-            # 1/sqrt(24) ~ 20% noise floor) -> vol_ratio wobbles bar-to-bar under the AR(1)
-            # close-perturbation ensemble -> position size and exit thresholds wobble ->
-            # stability tracking error (bull sits at 0.8055, right at the 0.80 knee). Blend
-            # with a longer 48-bar window (0.6*24 + 0.4*48) to denoise: the 48-bar std has
-            # ~1/sqrt(48) ~ 14% noise floor (sqrt(2) more averaging), so the blend cuts the
-            # noise content of vol_ratio without the LAG penalty of a pure-longer window
-            # (the 24-bar component keeps responsiveness to vol-regime transitions -- the
-            # Exp1 lesson: denoising via pure smoothing adds lag that is catastrophic on
-            # timing-critical paths; sizing is less timing-critical but a blend is still
-            # safer than a pure 48-bar). NEW data dependency: realized_vol reads a 48-bar
-            # window in addition to the 24-bar (was 24-bar only). The 24-bar stays the
-            # dominant component (0.6) so the mean vol_ratio level is near-unchanged; only
-            # the noise variance shrinks. Continuous (no boundary); the blend weights are
-            # fixed (not regime-dependent) so no new decision boundary.
-            _rv_short = float(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))))
-            _rv_long_w = 2 * VOL_LOOKBACK  # 48 bars
-            _rv_long = float(np.std(np.diff(np.log(closes[-_rv_long_w - 1:-1])))) if len(closes) > _rv_long_w + 1 else _rv_short
-            realized_vol = max(0.6 * _rv_short + 0.4 * _rv_long, 1e-6)
+            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             # Architectural: per-symbol adaptive vol baseline. Replace constant TARGET_VOL
             # with long-window (200-bar) realized vol blended with TARGET_VOL anchor at
             # 0.5 weight. Long-window vol is each symbol's structural baseline (BTC ~0.012,
