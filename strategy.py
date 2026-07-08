@@ -2993,33 +2993,6 @@ class Strategy:
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
-                # Exp1 (architectural, indep): LOSS-TRAJECTORY-VELOCITY exit pressure (7th
-                # soft source in the MAX fusion). NEW data dependency: reads the rolling
-                # 12-bar pos_pnl path (_pnl_path, already maintained for the MTM-path-
-                # efficiency signal) -- a POSITION-PnL signal, orthogonal to the existing
-                # loss-side terms which are all PRICE-derived (slope-against = price slope;
-                # _sl_pressure = price vs ATR stop; _be_pressure = pos_pnl LEVEL near 0).
-                # This reads the RATE OF DECLINE of pos_pnl over the last 2 bars: a short
-                # whose loss is ACCELERATING (pos_pnl dropped sharply over 2 consecutive
-                # bars) is riding a continuation against the position that will reach the
-                # ATR stop before slope-against (a slower price-slope signal) catches up.
-                # Targets the crash pattern: trend-aligned shorts entered into dead-cat
-                # bounces lose ACCELERATINGLY as the bounce continues. Loss-side only
-                # (gated on pos_pnl < 0); byte-identical for winners. The MAX-fusion means
-                # this only binds when loss-velocity is the most-pressing source (a
-                # sharply accelerating loss overrides the slower slope-against/time terms).
-                # Continuous tanh on the 2-bar pos_pnl drop (no boundary); symmetric.
-                _pp_vel = self._pnl_path.get(symbol, [])
-                _lv_pressure = 0.0
-                if len(_pp_vel) >= 3 and pos_pnl < 0.0:
-                    _lv_drop = max(0.0, _pp_vel[-2] - _pp_vel[-1])  # latest bar loss magnitude
-                    _lv_drop_prev = max(0.0, _pp_vel[-3] - _pp_vel[-2])  # prior bar loss magnitude
-                    # Acceleration = current loss exceeds prior loss (losses growing).
-                    # Scale by stop magnitude so the activation is vol-regime-invariant.
-                    _lv_accel = _lv_drop - _lv_drop_prev
-                    _lv_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_lv_drop - 0.40 * abs(STOP_LOSS_PCT)) / (0.40 * abs(STOP_LOSS_PCT))))) * max(0.0, min(1.0, np.tanh(_lv_accel / (0.20 * abs(STOP_LOSS_PCT)))))
-                _w_lv = max(0.0, -_pnl_scale)  # loss-side only
-
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
                 # crash/sideways (PF 0.7/0.3/0.4) -- many positions survive scale-in then
@@ -3113,7 +3086,6 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
-                    _w_lv * _lv_pressure,
                     _w_be * _be_pressure,
                 )
                 _soft_max = max(_soft_terms)
