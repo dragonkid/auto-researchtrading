@@ -2378,6 +2378,35 @@ class Strategy:
                     _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
+                    # Exp2 (architectural, indep, this session): COUNTER-TREND-WINNING-BOUNCE
+                    # scale-in SLOWDOWN. The _adv_freeze above only fires on LOSING
+                    # counter-trend scale-in (pos_pnl<0 -> adverse -> freeze). It MISSES the
+                    # crash dead-cat-bounce LONG: the bounce makes the ct entry WINNING
+                    # (pos_pnl>0) during scale-in -> _adv_freeze=0 -> full scale-in -> then
+                    # the bounce exhausts and the trend resumes -> large realized loss. The
+                    # gap: a COUNTER-TREND-at-multi-day entry that is currently WINNING is
+                    # precisely a bounce (a counter-trend move that is transient) -- building
+                    # to full size on a counter-trend bounce over-commits to a position the
+                    # multi-day trend will resume against. Slow scale-in (shrink) when BOTH
+                    # (a) _ct_si_gate high (counter-trend at multi-day, ret_vlong*pos_dir<0)
+                    # AND (b) pos_pnl>0 (currently winning = the bounce). The shrink keeps
+                    # the ct-bounce entry smaller while it's winning -> if the bounce
+                    # exhausts (the common ct case), the loss is on a smaller position;
+                    # if the ct entry turns out to be a real reversal (rare, pos_pnl keeps
+                    # climbing), the position is still at the (reduced) scale_frac which
+                    # captures most of the continuation since scale-in is bounded anyway.
+                    # Byte-identical when _ct_si_gate=0 (trend-aligned: rally longs in
+                    # uptrend, crash shorts in downtrend, bull longs -> ret_vlong*pos_dir>0
+                    # -> ct 0) AND when pos_pnl<=0 (losing ct already frozen by _adv_freeze;
+                    # no double-shrink: this fires only on the WINNING-ct gap _adv_freeze
+                    # misses). Sideways mean-reverters: ret_vlong~0 -> _ct_si_gate~0 ->
+                    # byte-identical (NOT misfired, unlike Exp1's consensus-disagreement).
+                    # One-sided (max(0,pos_pnl) -> 0 for losers). Smooth tanh on pos_pnl/
+                    # (0.5*|stop|) (winning magnitude; saturates by ~half-stop profit, a
+                    # large bounce). Composes multiplicatively with _adv_freeze (independent:
+                    # adverse vs winning ct). Max 20pct shrink at deep winning ct bounce.
+                    _ct_bounce_shrink = max(0.0, np.tanh(pos_pnl / (0.5 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
+                    scale_frac = scale_frac * (1.0 - 0.20 * _ct_bounce_shrink)
                     # Exp1 (architectural, indep): FEED-FORWARD scale_frac quantization
                     # to a FIXED discrete fraction grid. The continuous scale-in ramp
                     # (ENTRY_INITIAL_FRAC + (1-ENTRY_INITIAL_FRAC)*progress) lands at a
