@@ -3002,23 +3002,15 @@ class Strategy:
                 # divergence OR portfolio-wide chop. Magnitude stays at the 100pct ceiling.
                 # Tests whether a broader sideways gate captures enough bars to jump the gain
                 # above the magnitude-axis ceiling (+0.000010).
-                # branch step8: onset back to 0.40 (step6 best composite +0.000204) AND add a
-                # TREND-ALIGNED gate to the port_chop_gate (the 3rd factor _div_taper already
-                # has, but port_chop_gate lacked). Step6 (0.40, no trend-align gate) gave
-                # sideways +0.001 BUT mixed -0.000356: the port_chop_gate fired on mixed's
-                # COUNTER-TREND wrong-side longs (pos_dir=+1, ret_long<0 in the downtrend)
-                # where opp-exit is SIGNAL (exit the dead-capital long), reducing it = let dead
-                # capital run = mixed hurt. Add the trend-aligned factor (pos_dir*ret_long>0)
-                # so the port_chop relief fires ONLY on trend-aligned positions (where opp is
-                # noise: sideways trend-aligned mean-reverters + mixed's rally-phase trend-
-                # aligned longs), sparing ct positions (mixed's wrong-side longs). This should
-                # keep step6's sideways gain while recovering mixed (the ct longs no longer
-                # get the relief -> their opp-exit restored -> mixed recovered; mixed's trend-
-                # aligned rally-phase longs keep the relief -> mixed gain preserved).
-                _pd_rel = 1.0 if current_pos > 0 else -1.0
-                _port_chop_ta = max(0.0, np.tanh((_pd_rel * ret_long + 0.005) / 0.010))  # trend-aligned (mirrors _div_taper 3rd factor)
-                _port_chop_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - 0.40) / PORT_WEAK_PERSIST_AVG_SCALE))) * _port_chop_ta
-                _opp_div_relief = 1.0 - 1.00 * max(_div_taper, _port_chop_gate)
+                # branch step9: revert to step6 config (onset 0.40, NO trend-align gate on
+                # port_chop -- step8 showed the TA gate made mixed WORSE, the relief on mixed's
+                # ct longs was net-positive not negative as hypothesized). Step6 was the best
+                # composite (+0.000204: sideways +0.001, mixed -0.000356). Lower the magnitude
+                # 100pct->80pct to lessen the mixed hurt while keeping most of the sideways
+                # gain (the sideways gain at 0.40 onset was driven by the onset/broaden, not
+                # the magnitude ceiling, so 80pct should retain most of it).
+                _port_chop_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - 0.40) / PORT_WEAK_PERSIST_AVG_SCALE)))
+                _opp_div_relief = 1.0 - 0.80 * max(_div_taper, _port_chop_gate)
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * _opp_div_relief * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
