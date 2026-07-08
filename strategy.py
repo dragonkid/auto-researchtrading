@@ -3016,12 +3016,7 @@ class Strategy:
                 _vc_l3 = bd.history["low"].values[-3:]
                 _vc_c3 = closes[-3:]
                 _vc_span3 = np.maximum(_vc_h3 - _vc_l3, 1e-10)
-                # 1-bar close position (current bar) -- the volume spike is on the current
-                # bar, so the current bar's close position is the most aligned exhaustion-vs-
-                # conviction signal. Step6 test: sharper alignment vs the 3-bar mean (the
-                # opener used 3-bar; testing whether the sharper 1-bar captures more gain at
-                # the cost of noise-robustness, monitored via min_stability).
-                _vc_close_loc = float((_vc_c3[-1] - _vc_l3[-1]) / _vc_span3[-1])  # [0,1], 1-bar current
+                _vc_close_loc = float(np.mean((_vc_c3 - _vc_l3) / _vc_span3))  # [0,1], 3-bar mean
                 # For a LONG (current_pos>0): exhaustion pole = close near LOW = _vc_close_loc~0.
                 # For a SHORT (current_pos<0): exhaustion pole = close near HIGH = _vc_close_loc~1.
                 _vc_exhaustion_loc = (1.0 - _vc_close_loc) if current_pos > 0 else _vc_close_loc  # [0,1], 1=exhaustion
