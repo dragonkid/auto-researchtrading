@@ -3145,7 +3145,27 @@ class Strategy:
                 # the exit-threshold logic already tolerates since _exit_pressure > 1.0
                 # triggers exit anyway).
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
+                # Exp1 (architectural, indep): LOSS-SIDE gate on the confirmation-amplified
+                # fusion. The kept fusion (654588e9) amplifies exit pressure symmetrically
+                # for winners AND losers when 2 sources agree in high-vol. The dominant
+                # crash gain (+0.083 Sharpe -0.143->-0.061) came from LOSS-side amplification
+                # (cutting crash losers faster when 2+ exit signals agree). But the
+                # symmetric winner-side amplification OVER-HARVESTS trend-aligned winners
+                # when 2 exit signals briefly agree during a pullback (slope-against + pp
+                # giveback co-fire on a winner facing a pullback -> amplified pressure ->
+                # premature exit -> cuts the winner before the trend resumes -> smaller
+                # realized gains -> lower PF). bull regressed -0.0006 Sharpe 0.465->0.407
+                # under the symmetric fusion (the only regime that regressed at the keep).
+                # Gating amplification to LOSERS only (pos_pnl<0): winners revert to pure
+                # MAX fusion (single-dominant-term, no amplification -> ride pullbacks
+                # without the 2nd-term boost -> bigger realized winners -> higher PF);
+                # losers keep the amplified cut (crash gain preserved). Continuous via
+                # max(0, -_pnl_scale) (tanh in [-1,1] -> 0 for winners, ramps to 1 for
+                # losers, no boundary). Byte-identical at pos_pnl=0 (gate 0 -> no amp).
+                # New cross-component data dep: the fusion's confirmation amplification
+                # magnitude now depends on position PnL sign (was vol-regime only).
+                _agree_loss_gate = max(0.0, -_pnl_scale)  # 0 winners, ->1 losers, smooth
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate * _agree_loss_gate
                 _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
