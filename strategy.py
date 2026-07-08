@@ -876,6 +876,28 @@ class Strategy:
             _baseline_vol = max(np.std(np.diff(np.log(closes[-_long_n - 1:-1]))), 1e-6)
             _target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _baseline_vol
             vol_ratio = realized_vol / _target_vol_dyn
+            # Exp3 (architectural, indep, this session): VOL-ACCELERATION detector -- a
+            # NEW vol-of-vol data dep. vol_ratio (above) is a LEVEL measure (24-bar vol vs
+            # 200-bar baseline); it cannot distinguish vol that is RISING into a climax
+            # from vol that is HIGH-but-STABLE (post-climax plateau). The sanctioned
+            # untested lead from the peak-conviction branch: "a multi-bar vol-CLIMAX
+            # detector distinct from instantaneous vol_ratio might separate crash's
+            # high-vol climax bars from sideways/rally's". Vol-ACCELERATION (short-window
+            # vol EXCEEDING medium-window vol) IS that distinct signal: it fires at the
+            # climax ONSET (vol rising into a spike) -- exactly where crash's dead-cat-
+            # bounce losers enter (the bounce happens as vol spikes) -- and is near-zero
+            # in stable-high-vol or falling-vol regimes. Uses VOL_SHORT_LOOKBACK (12) vs
+            # VOL_LOOKBACK (24): if 12-bar vol > 24-bar vol, vol is ACCELERATING. Combined
+            # with a vol_ratio LEVEL floor (only fires when vol is already elevated) so a
+            # calm-regime tiny-vol rise doesn't trigger. Continuous tanh, no boundary.
+            if len(closes) > VOL_SHORT_LOOKBACK + 1:
+                _vol_short = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6)
+                _vol_accel_ratio = _vol_short / max(realized_vol, 1e-6)  # >1 = 12-bar vol > 24-bar vol = rising
+            else:
+                _vol_accel_ratio = 1.0
+            # _vol_climax_gate: 0 calm/stable/falling, 1 elevated-and-accelerating.
+            # Level floor: vol_ratio > 1.0 (elevated). Accel: 12/24 ratio > 1.05 (rising).
+            _vol_climax_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.0) / 0.30))) * max(0.0, min(1.0, np.tanh((_vol_accel_ratio - 1.05) / 0.15)))
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
@@ -1106,6 +1128,24 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp3 (architectural, indep, this session): VOL-ACCELERATION admission
+            # tightener. NEW vol-of-vol data dep at the admission gate (distinct from
+            # every existing admission tightener, which keys on TREND/bear/weak-persist
+            # -- none keys on vol-ACCELERATION). Raise _strong_min up to 15pct when vol is
+            # ELEVATED AND ACCELERATING (the climax ONSET, where crash's dead-cat-bounce
+            # losers enter as vol spikes). This is the sanctioned untested lead: a multi-
+            # bar vol-climax detector (vol_short>vol_medium = rising) distinct from
+            # instantaneous vol_ratio. Byte-identical when _vol_climax_gate=0 (calm,
+            # stable-high-vol, or falling-vol regimes -- sideways/rally/mixed and crash's
+            # post-climax plateau). A THRESHOLD tighten (not a size shrink -- distinct
+            # from the reverted peak-conviction climax-shrink): raises the admission bar
+            # at climax-onset bars so the climax losers get filtered while non-climax
+            # entries (the trend-aligned winners in sideways/rally, where vol is not
+            # accelerating) pass unchanged. Composes multiplicatively with the deep-bear
+            # tighten above (independent signals: deep-bear is trend-magnitude, vol-climax
+            # is vol-acceleration). Max tighten 15pct (conservative; the deep-bear tighten
+            # is also 15pct).
+            _strong_min = _strong_min * (1.0 + 0.15 * _vol_climax_gate)
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
