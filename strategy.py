@@ -74,6 +74,20 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
+# Exp2 (architectural, indep): MTM-CHOP-CONDITIONED time-pressure onset. The time
+# subsystem (_max_hold, line ~2815) currently reads slope, counter-trend (ret_vlong),
+# vol_ratio, portfolio-DD, and trend-aligned hold-extension -- but NOT the position's
+# OWN PnL-path efficiency. A position whose 12-bar pos_pnl path is CHOPPY (low MTM
+# efficiency = oscillating dead-capital: sideways mean-reverters that whipsaw, mixed's
+# wrong-side oscillating longs) is structurally not progressing -> time-pressure should
+# fire EARLIER (shorter max_hold) to cut the dead-capital sooner. A smooth-climbing
+# winner (high MTM efficiency: bull/crash/sideways trend longs) keeps the baseline
+# max_hold byte-identical (chop~0 -> no change). NEW cross-component data dep: the time
+# subsystem reads the own-position MTM-path efficiency (currently consumed only at the
+# emission reduction throttle). Fast-saturating tanh on chop; max 2-bar shorter hold.
+# Byte-identical for smooth winners (chop 0) and for fresh positions (<4-bar path -> 0).
+# Continuous (no boundary), shrink-only (max_hold only shortens, never extends).
+MTM_CHOP_TIME_MAX = 2.0  # max bars to shorten max_hold at deep MTM-chop
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
@@ -2813,6 +2827,28 @@ class Strategy:
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
                 self._hold_ext_ema[symbol] = _ta_dd_hold_ext
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
+                # Exp2 (architectural, indep): MTM-CHOP-CONDITIONED time-pressure onset.
+                # The time subsystem reads slope/ct/vol/DD but NOT the position's OWN PnL-
+                # path efficiency. A CHOPPY pos_pnl path (low MTM efficiency = oscillating
+                # dead-capital: sideways mean-reverters, mixed's wrong-side longs) is
+                # structurally not progressing -> time-pressure fires EARLIER (shorter
+                # max_hold) to cut dead-capital sooner. Smooth-climbing winners (chop~0)
+                # keep the baseline max_hold byte-identical. NEW cross-component data dep:
+                # the time subsystem reads own-position MTM-path efficiency (currently
+                # consumed only at the emission reduction throttle). Fast-saturating tanh
+                # on chop; max MTM_CHOP_TIME_MAX bars shorter. Byte-identical for smooth
+                # winners (chop 0) and fresh positions (<4-bar path -> chop 0). Continuous,
+                # shrink-only. This BYPASSES the MAX-fusion exit wall (changes WHEN time
+                # pressure fires, not a new pressure term).
+                _pp_hist_tm = self._pnl_path.get(symbol, [])
+                _mtm_chop_tm = 0.0
+                if len(_pp_hist_tm) >= 4:
+                    _ppa_tm = np.array(_pp_hist_tm)
+                    _net_tm = abs(_ppa_tm[-1] - _ppa_tm[0])
+                    _tot_tm = float(np.sum(np.abs(np.diff(_ppa_tm))))
+                    _mtm_eff_tm = _net_tm / max(_tot_tm, 1e-10)
+                    _mtm_chop_tm = max(0.0, min(1.0, 1.0 - _mtm_eff_tm))
+                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
