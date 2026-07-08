@@ -1476,6 +1476,36 @@ class Strategy:
                 # first-bar size depends on conviction margin above floor.
                 _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
                 _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
+                # Exp1 (architectural, indep): PEAK-CONVICTION CONTRARIAN entry-size shrink.
+                # Prior session-summary documented an untested lead: bull's 12.88pct DD is
+                # created on RIDE bars after SHARP-REVERSAL entries, and "bull DD reduction
+                # via the ENTRY side -- a structural filter that avoids taking the specific
+                # trend-climax entries that become the sharp-reversal DD (the Exp2
+                # backwards-finding suggests entry-conviction PEAK predicts the reversal --
+                # a CONTRARIAN entry filter that AVOIDS peak-conviction entries might help,
+                # the inverse of Exp2)." Exp2 (failed) RAISED the exit threshold for high-
+                # conviction entries (gave more rope) -> collapsed (high conviction marks
+                # trend EXHAUSTION/climax, not durable-move start). The INVERSE here:
+                # SHRINK the first-bar SIZE of PEAK-conviction entries (margin well above the
+                # 0.40 saturation of _conv_atten, i.e. the most one-sided voter agreement) so
+                # the position that becomes the sharp-reversal DD is smaller -> smaller DD
+                # contribution. Non-monotone (inverted-U) size-vs-conviction curve: moderate
+                # conviction (the proven good entries) stays at full 1.0x; only the PEAK tail
+                # (margin > 0.6, climactic) is shrunk. Byte-identical for margin<=0.6 (the
+                # entire marginal->decisive range _conv_atten already covers; crash/sideways/
+                # rally margin distributions sit below 0.6 mostly), shrink-only above 0.6.
+                # Continuous tanh (no boundary), symmetric (both bull/bear), Sharpe-affecting
+                # (alters SIZE of climax entries, not admission count). New data dep: first-bar
+                # size is non-monotone in conviction margin (was monotone-increasing). Targets
+                # bull DD (the dd_gate-crushed regime; dd_gate at DD=12.88pct ~0.017, so any DD
+                # reduction is a large score lever -- NOT marginal DD shaving, escaping a
+                # catastrophic-DD regime).
+                _peak_thresh = 0.60  # margin above which the climax-shrink engages
+                _peak_shrink_max = 0.30  # max 0.70x size at extreme peak conviction
+                _bull_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
+                _bear_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
+                _bull_conv_atten = _bull_conv_atten * _bull_peak_shrink
+                _bear_conv_atten = _bear_conv_atten * _bear_peak_shrink
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
                 # don't block). The diagnostic (c265424d) proved fast re-entries are the
                 # entire rally instability; BLOCKING them (branch) gave PERFECT rally
