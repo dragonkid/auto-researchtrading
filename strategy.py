@@ -3118,33 +3118,8 @@ class Strategy:
                 # remaining untested axis on the exit side.
                 _sorted_terms = sorted(_soft_terms, reverse=True)
                 _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
-                # Exp1 (architectural, indep): DIRECTION-CONDITIONAL agreement ratio onset.
-                # Prior session PROVED (Exp5 short-favoring AGREE_MAX, byte-identical) the
-                # crash confirmation-amp gain is GATING-LIMITED (when/whether the amp fires),
-                # NOT magnitude-limited. The sanctioned UNTESTED lead: "a change to WHEN the
-                # amp fires (lower the _agree_gate 2nd/1st ratio onset) might amplify crash."
-                # The ratio onset was uniform 0.30 for all positions. Lowering it uniformly
-                # risks over-amplifying bull (longs in the same high-vol gate) and sideways
-                # (excluded by the vol_gate anyway, but a uniform change touches the
-                # semantics). NEW cross-component data dep: the agreement ratio onset now
-                # reads position DIRECTION -- lower for shorts (crash's winner-side harvest
-                # population) so the amp fires on moderately-agreeing crash short-exit bars
-                # (2nd/1st ratio in 0.18-0.30 range that the uniform 0.30 onset left
-                # un-amplified), while longs keep 0.30 (bull/rally long winners stay at the
-                # validated baseline onset, protecting bull from over-harvest -- the prior
-                # session's crash-gain/bull-loss decoupling proved the bull loss is 138x
-                # smaller than the crash gain so bull must NOT be amplified further).
-                # Direction-agnostic general principle (no regime label): a SHORT position's
-                # exit-pressure agreement is a different confirmation than a long's -- shorts
-                # are taken in downtrends where multi-source confirmation builds differently
-                # (slope-against + pp giveback agree on a down-leg differently than on an
-                # up-leg). Continuous tanh (no boundary); the onset shift is a scalar on a
-                # smooth gate. Sideways byte-identical via the _fusion_vol_gate (vol_ratio
-                # <1.15 -> _agree_amp 0 regardless of _agree_gate). AGREE_ONSET_LONG 0.30
-                # (baseline); AGREE_ONSET_SHORT 0.18 (more sensitive).
-                _agree_onset = 0.18 if current_pos < 0 else 0.30
                 # Confirmation strength: 0 at single-source, 1 at full agreement
-                _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / _agree_onset)))
+                _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
                 # Confirmation-amplified MAX: add a bounded fraction of the 2nd term.
                 # AGREE_MAX caps the added fraction (0.50 = up to 50% of 2nd term added).
                 SOFT_FUSION_AGREE_MAX = 0.50
