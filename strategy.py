@@ -3129,13 +3129,14 @@ class Strategy:
                 # directions (profit-side amplification over-harvests mean-reverters
                 # before their natural peak; loss-side amplification cuts dips that
                 # recover). The clean separator between sideways and the trending
-                # regimes is VOL_RATIO: sideways 2023 is calm chop (vol_ratio ~0.6-0.9);
-                # crash/rally have elevated vol (1.0-1.3+); bull has high vol (1.2+).
-                # Gate amplification on vol_ratio > 1.0 so it fires ONLY in elevated-vol
-                # regimes (crash/bull/rally) and is byte-identical in calm chop
-                # (sideways). No pnl-sign gate (both profit/loss amplification can help
-                # trending regimes). AGREE_MAX 0.50. Continuous tanh on (vol_ratio-1.0)/0.2.
-                _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.0) / 0.20)))
+                # regimes is VOL_RATIO: sideways 2023 has moderate vol (vol_ratio
+                # ~0.8-1.1); crash/bull have high vol (1.2-1.3+). Gate amplification on
+                # vol_ratio > 1.15 so it fires ONLY in HIGH-vol regimes (crash/bull)
+                # and is byte-identical in moderate-vol chop (sideways) + modest-vol
+                # rally. step5 onset 1.0 fixed crash (-0.145, byte-identical) but sideways
+                # still collapsed (-1.25) -> sideways vol_ratio passes 1.0 too often.
+                # Raise onset to 1.15 to exclude sideways. AGREE_MAX 0.50.
+                _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
                 _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
                 _soft_max = min(1.0, _soft_max + _agree_amp * _sorted_terms[1])
                 # Architectural: multi-source agreement attenuator on soft_max.
