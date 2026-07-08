@@ -3122,28 +3122,7 @@ class Strategy:
                 _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
                 # Confirmation-amplified MAX: add a bounded fraction of the 2nd term.
                 # AGREE_MAX caps the added fraction (0.50 = up to 50% of 2nd term added).
-                # Exp5 (this session): SHORT-FAVORING AGREE_MAX. The 654588e9 confirmation-amp
-                # gain is concentrated on crash trend-aligned SHORTS (prior session Exp1: the
-                # +0.083 crash gain is winner-side amp on shorts realizing bounces at onset).
-                # The amp magnitude (AGREE_MAX 0.50) was tuned UNIFORMLY during the structural-
-                # exploration branch (0.75 -> 0.50, settled to avoid sideways collapse, then
-                # vol-gated). It was never tuned DIRECTION-asymmetrically. The long/short risk
-                # asymmetry (codebase line ~2654: downtrend bounces are sharper and more-often-
-                # failing -> exiting shorts at bounces is GOOD; uptrend pullbacks resume ->
-                # cutting longs is BAD) implies the amp's VALUE is direction-asymmetric: more
-                # amp helps shorts (realize faster before the downtrend-resuming bounce fails),
-                # more amp hurts longs (cut before the uptrend resumes). So a SHORT-FAVORING
-                # AGREE_MAX (shorts 0.70, longs 0.50) boosts the crash gain mechanism WITHOUT
-                # touching longs -> bull byte-identical (no coupling regression, unlike Exp4
-                # which muted longs and only recovered the tiny bull loss). One-sided: only
-                # shorts get more amp, and only in high-vol regimes (vol-gate), so sideways/
-                # rally/mixed byte-identical (amp=0 there). The 0.70 magnitude is below the
-                # 0.75 that collapsed sideways pre-vol-gate, and the vol-gate now confines it
-                # to crash/bull only; longs capped at 0.50 keeps bull at baseline. Risk: over-
-                # exiting crash shorts at minor bounces -> but the agreement-gate (2-source
-                # confirmation) and vol-gate (high-vol only) already filter minor-bounce noise.
-                _agree_max_dir = 0.70 if current_pos < 0 else 0.50
-                SOFT_FUSION_AGREE_MAX = _agree_max_dir
+                SOFT_FUSION_AGREE_MAX = 0.50
                 # branch step5: VOL-REGIME gate (exclude sideways). steps 1-4 ALL
                 # collapsed sideways because sideways is a MEAN-REVERSION regime
                 # fundamentally sensitive to exit-pressure amplification in BOTH
