@@ -1945,70 +1945,22 @@ class Strategy:
                     _btcdvp_boost_bear = 1.0
                     _partnerdvp_boost_bull = 1.0
                     _partnerdvp_boost_bear = 1.0
-                # Exp (architectural, indep): close-POSITION-WITHIN-BAR conviction
-                # entry boost. NEW data dependency: where the close sits in the bar's
-                # own high-low range, close_loc = (close-low)/(high-low) in [0,1]. NO
-                # existing primitive reads this — HL2 uses the MIDPOINT (high+low)/2,
-                # ATR uses the SPAN (high-low), VWAP voter uses close vs a volume-
-                # weighted TYPICAL price (a level deviation, not bar-shape). close_loc
-                # is a pure intrabar CONVICTION signal: close near the high = buyers
-                # controlled the bar (bullish), close near the low = sellers controlled
-                # it (bearish). A trend-aligned entry whose entry bar closed strongly
-                # in the trade direction is a higher-conviction trend entry -> larger
-                # first-bar commitment captures more of the confirmed trend move ->
-                # higher Sharpe in the trend regimes (rally 1.283 binding, crash 1.265
-                # return-limited; both are sustained trends whose bars close in the
-                # trend direction). Distinct from the saturated volume-participation
-                # axis (this is PRICE bar-shape, not volume). 3-bar mean close_loc for
-                # noise-robustness (single-bar close position flips under AR(1) noise);
-                # deep-saturated gates (/0.15 -> near-constant where it fires, noise-free
-                # per the validated safe-family lesson), trend-ALIGNMENT gated (/0.04
-                # ret_long so only genuine trend entries boost -> spares sideways chop
-                # where close position is mean-reverting noise), first-bar-only, small
-                # +0.05 max, bilateral (boost on directional agreement). Direction-
-                # agnostic general principle (no regime label). New cross-data-type dep.
-                _cl_high = bd.history["high"].values[-3:]
-                _cl_low = bd.history["low"].values[-3:]
-                _cl_close = closes[-3:]
-                _cl_span = np.maximum(_cl_high - _cl_low, 1e-10)
-                _close_loc = float(np.mean((_cl_close - _cl_low) / _cl_span))  # [0,1], 3-bar mean
-                # Branch step4: revert to ret_long trend gate (step1 was the best composite
-                # -0.000003 vs step2 ret_vlong -0.000064) AND add a GRINDING-trend (low-vol)
-                # condition. The leak in step1 was into bull-2021 (high-vol uptrend: -0.000270)
-                # where sharp continuation bars are exhaustion-prone. close_loc continuation
-                # is a GRINDING-trend signal (low vol, persistent) not a sharp-trend signal.
-                # Gate on low vol_ratio (vol_ratio below ~1.2 = calm/grinding; rally grinds
-                # at low vol, bull-2021 is high-vol sharp). Continuous tanh so no boundary.
-                # This is a general bar-shape x vol-regime principle (no regime label): the
-                # close-loc continuation signal is weighted by how grinding vs sharp the
-                # recent regime is. Sideways (low vol, low trend) still gated off by the
-                # trend-alignment term; crash (bear side) gated off by direction.
-                _cl_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
-                _cl_bull_conv = max(0.0, np.tanh((_close_loc - 0.55) / 0.15))  # fires close near high
-                _cl_bear_conv = max(0.0, np.tanh((0.45 - _close_loc) / 0.15))  # fires close near low
-                # Branch step6: replace vol-based grind gate with EFFICIENCY-RATIO gate.
-                # Step4's vol gate (low vol_ratio) separated rally from bull-2021 (high vol)
-                # but NOT from sideways (also low vol) -> sideways leak -0.000199. ER
-                # (Kaufman, already computed) distinguishes DIRECTIONAL grind (rally, high
-                # ER) from CHOPPY mean-reversion (sideways, low ER) at equal low vol.
-                # close_loc continuation is a trending-market signal; gate it on path
-                # efficiency (high ER = price moved efficiently one way = continuation
-                # holds). rally grinding uptrend ER high; sideways chop ER low -> spared.
-                # Continuous tanh on _er (no boundary). _er in [0,1], saturate /0.25.
-                _cl_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
-                # Branch step7: multi-day direction gate on the BULL boost. Step6's crash
-                # leak (-0.000354) is the bull boost firing on crash dead-cat-bounce longs
-                # (sharp bounce: ret_long>0 trend, ER high directional, close near high ->
-                # bull boost over-commits to the losing bounce). Require the MULTI-DAY
-                # ret_vlong>0 for the bull boost (crash bounces have ret_vlong<0 -> excluded;
-                # rally grind has ret_vlong>0 -> kept). ret_vlong is the validated multi-day
-                # trend; tanh/0.03 fast-saturating (near-constant, noise-free). Bear boost
-                # left ungated by ret_vlong (it is near-inert anyway, and crash shorts are
-                # the trend-aligned crash trade). General principle: a close-loc LONG
-                # continuation boost requires multi-day uptrend confirmation.
-                _cl_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend confirmation
-                _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_conv
-                _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
+                # Exp5 (architectural simplification, this session): REMOVED the
+                # _close_conv_boost (close-position-within-bar conviction entry boost,
+                # max +0.05, gated by trend/ER/vlong). The close-position signal is now
+                # REDUNDANT with the 8th range/close efficiency voter (added in the
+                # 5a748c8a keep) which captures trend-continuation bar-shape quality on a
+                # DIFFERENT but related axis (interbar close movement / intrabar range),
+                # AND with the existing trend-alignment / ER gates. The 7-branch-step
+                # tuning history of _close_conv_boost suggests it was load-bearing BEFORE
+                # the 8th voter was added; the strategy has since evolved and the 8th voter
+                # may now subsume its contribution. Test: if score-neutral or positive, the
+                # boost is dead/redundant code (keep the simpler version, better OOS
+                # generalization per the 12b6bc63 byte-identical-simplification precedent);
+                # if negative, it remains load-bearing. Removed the computation block
+                # (63 lines + cross-data-type dep) and the two multiplicative uses below.
+                _close_conv_boost_bull = 1.0
+                _close_conv_boost_bear = 1.0
                 # Exp1 (architectural, indep): DIRECTIONAL VOLUME PRESSURE (normalized
                 # OBV) trend-aligned entry boost. NEW data axis genuinely orthogonal to
                 # every existing volume primitive: VWAP voter reads close vs a volume-
