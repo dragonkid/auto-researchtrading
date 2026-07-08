@@ -3021,7 +3021,20 @@ class Strategy:
                 # For a SHORT (current_pos<0): exhaustion pole = close near HIGH = _vc_close_loc~1.
                 _vc_exhaustion_loc = (1.0 - _vc_close_loc) if current_pos > 0 else _vc_close_loc  # [0,1], 1=exhaustion
                 _vc_close_gate = max(0.0, min(1.0, np.tanh((_vc_exhaustion_loc - 0.40) / 0.20)))
-                _vc_pressure = _vc_pressure * _vc_close_gate
+                # Exp2 step8: EXHAUSTION-BOOST direction. The opener gate only MUTES conviction
+                # (gate in [0,1], reducing harvest when close is with-position). Symmetric
+                # extension: when close is STRONGLY against-position (exhaustion_loc > 0.7, a
+                # deep-against climax bar), BOOST the harvest above baseline -- a deep-
+                # exhaustion close (close at the very low for a long, very high for a short)
+                # on a volume spike is the strongest climax signature -> harvest MORE
+                # aggressively (cut the winner before the full reversal plays out). The boost
+                # ramps above 1.0 as exhaustion_loc passes 0.7, max 1.5 at exhaustion_loc~1.0.
+                # Distinct from the mute direction (which protects conviction winners): this
+                # amplifies the harvest on the strongest exhaustion bars. Crash's capitulation
+                # bounces (close near high on shorts = exhaustion pole) get the boost -> faster
+                # crash short exits at capitulation tops -> higher crash Sharpe.
+                _vc_exhaustion_boost = 1.0 + 0.5 * max(0.0, min(1.0, np.tanh((_vc_exhaustion_loc - 0.70) / 0.15)))
+                _vc_pressure = _vc_pressure * _vc_close_gate * _vc_exhaustion_boost
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
