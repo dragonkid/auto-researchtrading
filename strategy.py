@@ -2533,41 +2533,11 @@ class Strategy:
                 # better than median in low-vol where all 3 slopes are small and noise-dominated.
                 # Median can flip on a single window; mean spreads the contribution.
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                # Exp1 (architectural, this session): DENOISED exit-slope via EMA-smoothed
-                # log-HL2 series. The prior mean-of-3-overlapping-raw-windows (12,16,22)
-                # shared the recent bars so its noise was CORRELATED -- the mean did not
-                # average it out (a noise flip in the last 12 bars flips all 3 windows'
-                # slopes in the same direction -> the mean flips too). Replacing with a
-                # single OLS slope over an EMA-smoothed log-HL2 series gives a denoised
-                # slope: the EMA averages noise across its effective span (~2*span bars)
-                # BEFORE the OLS, so the slope input is temporally smooth under the AR(1)
-                # close-perturbation ensemble -> fewer exit-decision sign-flips -> higher
-                # stability in the binding regime (bull sits at 0.8055, right at the 0.80
-                # stability_factor knee). NEW data dependency: exit-slope reads an EMA-
-                # smoothed log-HL2 series (was raw per-bar log-HL2 windows). The slope
-                # window (22) matches the longest prior raw window so the trend-detection
-                # lag is unchanged; only the NOISE content of the input differs. The EMA
-                # span (4) gives an effective averaging window (~8 bars) comparable to the
-                # shortest prior raw window (12) -- denoises without adding more lag than
-                # the prior 3-window stack. Stateless EMA computed over the available
-                # history each held bar (no per-bar state drift); falls back to the raw
-                # mean-of-3 when history is too short for the EMA warmup.
-                _es_log_hl2 = np.log(_hl2)
-                _es_w = 22
-                if len(_es_log_hl2) >= _es_w + 4:
-                    _es_span = 4
-                    _es_alpha = 2.0 / (_es_span + 1.0)
-                    _es_ema = np.empty(len(_es_log_hl2))
-                    _es_ema[0] = _es_log_hl2[0]
-                    for _i in range(1, len(_es_log_hl2)):
-                        _es_ema[_i] = (1.0 - _es_alpha) * _es_ema[_i - 1] + _es_alpha * _es_log_hl2[_i]
-                    _exit_slope = _fast_slope(_es_ema[-_es_w:])
-                else:
-                    _slopes = []
-                    for _w in (12, 16, 22):
-                        _ll = _fast_slope(np.log(_hl2[-_w:]))
-                        _slopes.append(_ll)
-                    _exit_slope = float(np.mean(_slopes))
+                _slopes = []
+                for _w in (12, 16, 22):
+                    _ll = _fast_slope(np.log(_hl2[-_w:]))
+                    _slopes.append(_ll)
+                _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
