@@ -1502,8 +1502,29 @@ class Strategy:
                 # catastrophic-DD regime).
                 _peak_thresh = 0.60  # margin above which the climax-shrink engages
                 _peak_shrink_max = 0.30  # max 0.70x size at extreme peak conviction
-                _bull_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
-                _bear_peak_shrink = 1.0 - _peak_shrink_max * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
+                # branch step2 (take 2): TREND-ALIGNED EXEMPTION (graduated, not hard gate).
+                # Step1 (ungated) helped crash (+0.013 via broad peak-conviction exposure
+                # reduction) but hurt sideways (-0.013) and rally (-0.023) -- the trend-
+                # ALIGNED peak-conviction entries (rally longs, sideways mean-reverters) are
+                # real winners that get shrunk. Step2 (hard counter-trend gate) recovered
+                # sideways/rally but CATASTROPHICALLY blew up crash (-999: removing the
+                # broad reduction put crash's winning shorts back to full climax size -> DD
+                # 20pct). The hard gate over-corrected. This graduated version REDUCES (not
+                # removes) the climax-shrink for trend-aligned entries: aligned entries get
+                # 40pct of the shrink, counter-trend get 100pct. So crash keeps ~70pct of
+                # the broad protection (shorts are aligned -> 40pct shrink + longs counter
+                # -> 100pct; weighted ~70pct of step1) while rally/sideways aligned winners
+                # get only 40pct of the shrink -> partial recovery. _trend_align in [0,1]:
+                # 1 = entry direction matches multi-day ret_vlong (bull long & ret_vlong>0,
+                # bear short & ret_vlong<0); 0 = counter-trend. Continuous tanh /0.04 (the
+                # validated multi-day trend scale, noise-robust). shrink_mag = max *
+                # (1 - 0.60 * _trend_align): aligned -> 0.40x max, counter -> 1.00x max.
+                _bull_trend_align = max(0.0, np.tanh(ret_vlong / 0.04))   # bull long aligned with uptrend
+                _bear_trend_align = max(0.0, np.tanh(-ret_vlong / 0.04))  # bear short aligned with downtrend
+                _bull_peak_mag = _peak_shrink_max * (1.0 - 0.60 * _bull_trend_align)
+                _bear_peak_mag = _peak_shrink_max * (1.0 - 0.60 * _bear_trend_align)
+                _bull_peak_shrink = 1.0 - _bull_peak_mag * max(0.0, min(1.0, np.tanh((_bull_margin - _peak_thresh) / 0.30)))
+                _bear_peak_shrink = 1.0 - _bear_peak_mag * max(0.0, min(1.0, np.tanh((_bear_margin - _peak_thresh) / 0.30)))
                 _bull_conv_atten = _bull_conv_atten * _bull_peak_shrink
                 _bear_conv_atten = _bear_conv_atten * _bear_peak_shrink
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
