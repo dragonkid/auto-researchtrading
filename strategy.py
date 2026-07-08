@@ -1216,7 +1216,23 @@ class Strategy:
             # loss-only outcome-conditioned stretch & first-bar size attenuator.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
             _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
-            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
+            # Exp4 (architectural, indep): CHOP-LOSS COOLDOWN EXTENSION. After a LOSING exit
+            # in CHOP (low trend), the same mean-reversion signal that triggered the entry
+            # is often still present one bar later (chop oscillates around the same level)
+            # -> immediate re-entry into the same losing setup -> exit again -> churn ->
+            # fee drag (sideways is fee-bound: 151 trades, gross PF 1.3, net -0.26pct = pure
+            # fee drag ~4.7pct/yr). Extend the cooldown window after a LOSS specifically in
+            # CHOP so the re-entry must wait for the cooldown to dissipate (the chop signal
+            # may have flipped or the level moved). In TRENDS the short cooldown is kept
+            # (trend re-entry is real signal, not churn). Byte-identical after a WIN
+            # (_loss_only=0 -> ext 0) and in TRENDS (cooldown_trend_strength->1 -> ext 0).
+            # Continuous, no boundary. Uses the existing cooldown_trend_strength (already
+            # the validated chop/trend separator) and _loss_only. New cross-component data
+            # dep: cooldown window depends on (trend strength, last-exit-loss) jointly
+            # (was trend strength x loss separately). Max +60pct cooldown in deep chop
+            # after a loss. Targets sideways (the 1:1 composite lever, score==bare Sharpe).
+            _chop_loss_cd_ext = 0.60 * _loss_only * (1.0 - cooldown_trend_strength)
+            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only) * (1.0 + _chop_loss_cd_ext)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
