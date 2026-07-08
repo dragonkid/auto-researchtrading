@@ -379,16 +379,6 @@ PORT_DEEP_BEAR_MAX_SHRINK = 0.25  # max shrink at full saturation (-> 0.75x)
 PORT_DEEP_BEAR_ADMIT_ONSET = 0.03   # same onset as Exp8 SIZE cap (deep bear magnitude)
 PORT_DEEP_BEAR_ADMIT_SCALE = 0.02
 PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
-# Exp2 (architectural, indep): CROSS-SYMBOL ENTRY-FREQUENCY admission tightener params.
-# Cross-symbol entry count over 30 bars above which admission tightens (chop churn); the
-# chop-gate (on _port_weak_persist_avg) restricts firing to sideways-like all-weak regimes
-# so correlated TREND pile-ups (crash) stay byte-identical. Max tighten 0.18 (cuts sideways
-# trade COUNT, the churn-cost drag at 151 trades / Sharpe -0.05).
-PORT_XFREQ_ONSET = 4.0     # cross-symbol entries in 30 bars above which tighten engages
-PORT_XFREQ_SCALE = 3.0     # ramp width (4.0 -> 7.0 saturates)
-PORT_XFREQ_MAX_TIGHTEN = 0.18
-PORT_XFREQ_CHOP_ONSET = 0.45  # portfolio weak_persist_avg above which chop-gate opens
-PORT_XFREQ_CHOP_SCALE = 0.10
 # Exp1 (architectural, indep): MAX-AGGREGATION portfolio VOL-SPIKE SIZE CAP. Extends the
 # validated max-aggregation portfolio-cap pattern (4 keeps on SIZE: avg down_persist, max
 # down_persist, max weak_persist, max |ret_vlong| -- all on the TREND/bear axis) to a NEW
@@ -767,45 +757,9 @@ class Strategy:
         _port_vol_spike_cap = 1.0 - PORT_VOL_SPIKE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ONSET) / PORT_VOL_SPIKE_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_spike_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
-        # Exp2 (architectural, indep): CROSS-SYMBOL ENTRY-FREQUENCY admission tightener,
-        # GATED ON PORTFOLIO WEAK-TREND. NEW cross-component data dep: the admission
-        # threshold now reads (cross-symbol entry density, portfolio weak-trend) jointly.
-        # The per-symbol _freq_factor (line ~1117) tightens admission on per-symbol churn
-        # (max 20%) but misses the PORTFOLIO churn pattern where ALL symbols churn
-        # together in chop (sideways: BTC/ETH/SOL all oscillating -> each symbol's own
-        # _freq_factor fires weakly, but the cross-symbol TOTAL entry density is high =
-        # a genuinely chop-specific signal). The prior _portfolio_freq_factor (removed)
-        # double-counted in correlated TREND regimes (crash legs pile up legitimately).
-        # This version GATES the cross-symbol freq signal on _port_weak_persist_avg
-        # (already computed line ~740): full effect when ALL symbols are weak-trend
-        # (chop/sideways, weak_persist_avg high), byte-identical in trends (crash/bull/
-        # rally where weak_persist_avg < ONSET -> gate 0) -- the double-count wall fixed.
-        # Cross-symbol entry count over 30 bars. Continuous tanh; max 0.18 tighten.
-        # NEW control flow: admission threshold reads a portfolio-level churn signal x
-        # portfolio weak-trend conjunction.
-        _port_xfreq_count = 0
-        for _sym_eh in self._entry_bar_history.values():
-            _port_xfreq_count += sum(1 for _b in _sym_eh if self.bar_count - _b <= 30)
-        _port_xfreq_chop_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - PORT_XFREQ_CHOP_ONSET) / PORT_XFREQ_CHOP_SCALE)))
-        _port_xfreq_admit_tighten = 1.0 + PORT_XFREQ_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_xfreq_count - PORT_XFREQ_ONSET) / PORT_XFREQ_SCALE))) * _port_xfreq_chop_gate
-        # Exp3 (architectural, indep): MAX-AGGREGATION portfolio DEEP-BEAR MAGNITUDE ADMISSION
-        # TIGHTENER. Extends the validated portfolio-cap pattern (4 keeps on SIZE: Exp1 avg
-        # down_persist, Exp5 max down_persist, Exp6 max weak_persist, Exp8 max |ret_vlong|)
-        # to ADMISSION: when the cross-symbol MAX |ret_vlong| is deep (ANY ONE symbol in a
-        # deep multi-day downtrend), tighten the admission threshold to filter noise-driven
-        # counter-trend entries. Uses the SAME signal as Exp8's SIZE cap (raw |ret_vlong|
-        # max-aggregated, NOT the duration count down_persist) -- the signal that separates
-        # crash (deep |ret_vlong| ~0.04) from sideways (|ret_vlong|~0), avoiding the Exp4
-        # leak (down_persist avg does NOT separate crash from sideways, both ~0.5-0.9 ->
-        # sideways stability collapsed). The magnitude signal IS the separator: sideways
-        # oscillates around 0 (|ret_vlong|<ONSET -> tighten 0 -> byte-identical); crash has
-        # deep negative ret_vlong (|ret_vlong|>ONSET -> tighten fires). Distinct from Exp2's
-        # weak_persist avg admission tightener (fires when ALL symbols choppy = sideways);
-        # this fires when ANY symbol is in deep bear = crash + mixed's down-legs. Composes
-        # multiplicatively with Exp2 (independent signals: avg-weak-chop vs max-deep-bear).
-        # Max tighten 0.15 (smaller than Exp2's 0.20 since the SIZE caps already dominate
-        # crash trade magnitude; admission is the COUNT lever). Byte-identical when no symbol
-        # has |ret_vlong| > ONSET (bull/rally/sideways). Continuous tanh ramp (no boundary).
+        # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
+        # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
+        # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
@@ -1152,12 +1106,6 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
-            # Exp2 (this session): apply CROSS-SYMBOL ENTRY-FREQUENCY admission tightener
-            # (computed at top level). Tightens admission when cross-symbol entry density is
-            # high AND portfolio is in all-weak (chop/sideways). Composes with Exp2-avg and
-            # Exp3-deep-bear (independent signal: portfolio churn x weak-trend). Byte-identical
-            # when chop-gate 0 (trends) or cross-symbol entry count < ONSET (low churn).
-            _strong_min = _strong_min * _port_xfreq_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
