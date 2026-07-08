@@ -2786,20 +2786,20 @@ class Strategy:
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
                 self._hold_ext_ema[symbol] = _ta_dd_hold_ext
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
-                # Exp3 (architectural, indep, simplification): REMOVED the _vol_hold_ext
-                # max_hold LEVEL extension (was: _max_hold *= 1.0 + 0.12*tanh((vol_ratio-1)/0.5)).
-                # The _tp_ramp_w (vol-normalized RAMP WIDTH, 4.0 calm -> 8.0 high-vol, line below)
-                # is the kept vol-normalization on time-pressure: it changes how GRADUALLY
-                # pressure ramps 0->1 past max_hold. The _vol_hold_ext here changed the max_hold
-                # LEVEL (+12pct), a SEPARATE vol-adaptation on the SAME axis (time-pressure onset).
-                # Two vol-adaptations on the same time-pressure activation may be redundant:
-                # the ramp width alone may suffice to vol-normalize the de-risk. Test: if the
-                # ramp width is sufficient, removing the level extension is score-neutral or
-                # positive (simpler, one fewer vol-coupling). If the level extension is
-                # load-bearing (the +12pct onset shift moves a distinct population from the ramp
-                # width), removing it regresses crash/rally (the high-vol trend regimes it was
-                # kept for). Byte-identical when vol_ratio<=1.0 (both terms floor at 0 in calm).
-                # Continues the byte-identical-simplification precedent (12b6bc63, etc.).
+                # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
+                # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
+                # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
+                # crash bars = a much larger REAL price move (high vol) than 6 sideways bars.
+                # So time-pressure fires "too fast" in real-move terms in high-vol regimes,
+                # cutting crash/rally winners before the bigger per-bar move fully plays out
+                # -> contributes to crash being return-limited (Sh1.26, 100pct WR, DD3.04pct
+                # headroom). Scale max_hold UP with vol_ratio so the hold window is
+                # vol-normalized (same amount of REAL price move before time-pressure fires).
+                # Continuous tanh on (vol_ratio-1)/0.5, max +12pct at vol_ratio>=1.5; calm
+                # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
+                # term in the time-pressure activation. No per-regime labels.
+                _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
+                _max_hold *= 1.0 + 0.12 * _vol_hold_ext
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
