@@ -1216,38 +1216,7 @@ class Strategy:
             # loss-only outcome-conditioned stretch & first-bar size attenuator.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
             _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
-            # Exp4 (architectural, this session): DIRECTION-AWARE sideways-chop cooldown
-            # extension. Prior session Exp4 (chop-loss cooldown extension) CATASTROPHICALLY
-            # crashed crash -999 because its direction-AGNOSTIC |ret_long| chop/trend
-            # separator CONFLATED crash's local bounces with sideways chop -> the cooldown
-            # was extended on crash bounce-driven losing exits -> delayed re-entry into
-            # the downtrend -> crash 143->57 trades, Sh -0.061->-1.74. The fix is a
-            # DIRECTION-AWARE true-chop separator that isolates TRUE sideways (oscillating,
-            # no persistent direction) from crash (persistent downtrend) AND from
-            # bull/rally (persistent uptrend):
-            #   _true_chop = _weak_persist * _up_persist_gate
-            # where _weak_persist = fraction of last PERSIST_WINDOW bars with |ret_vlong|<0.02
-            # (HIGH in sideways where the multi-day trend oscillates near zero; LOW in
-            # crash/bull/rally where |ret_vlong| is sustained >0.02), and _up_persist_gate
-            # = max(0, 1 - (down_persist-0.40)/0.20) (HIGH when down_persist<=0.40 = NOT a
-            # persistent downtrend = excludes crash's down_persist~0.9). The PRODUCT is high
-            # ONLY in true sideways (weak multi-day trend AND not persistent downtrend):
-            #   - sideways: weak_persist~0.9, down_persist~0.45 -> up_persist_gate~1.0 -> true_chop~0.9
-            #   - crash: weak_persist~0.2, down_persist~0.9 -> up_persist_gate~0.0 -> true_chop~0
-            #   - bull/rally: weak_persist~0.2 -> true_chop~0 (weak_persist low excludes them)
-            # So the cooldown extension fires ONLY in sideways (the binding negative-Sharpe
-            # regime with 151 trades ~4.7pct/yr fee drag from exit-re-entry churn) and is
-            # byte-identical in crash/bull/rally. Mechanism: after a LOSS in true chop, a
-            # longer cooldown delays the next re-entry into the same oscillating chop ->
-            # fewer churn trades -> lower fee drag -> higher sideways Sharpe (sideways score
-            # == bare Sharpe, 1:1 composite lever). Smooth (continuous tanh-style via the
-            # already-continuous _weak_persist and _up_persist_gate; no new boundary).
-            # Byte-identical when _loss_only=0 (no recent loss) or true_chop=0 (non-chop).
-            # NEW cross-component data dep: cooldown window depends on (loss outcome x
-            # weak-persist x down-persist) -- the prior cooldown read NONE of these.
-            _up_persist_gate_cd = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-            _true_chop = _weak_persist * _up_persist_gate_cd  # high only in true sideways
-            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only) * (1.0 + 0.50 * _true_chop * _loss_only)
+            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
