@@ -3145,29 +3145,7 @@ class Strategy:
                 # the exit-threshold logic already tolerates since _exit_pressure > 1.0
                 # triggers exit anyway).
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
-                # Exp5 (architectural, indep): GIVEBACK-MAGNITUDE gate on the confirmation-
-                # amplified fusion. Exp1 (this session) causally measured: the 654588e9
-                # crash +0.083 gain comes from WINER-side amplification on trend-aligned
-                # crash shorts (a bounce triggers 2-signal agreement (slope-against+pp) ->
-                # amplified exit -> realizes before more giveback), and the bull -0.0006
-                # regression comes from the SAME winner-side amp cutting bull longs on
-                # pullback 2-signal co-fires (misses the resume). The amp currently fires
-                # symmetrically whenever 2 sources agree, including on EARLY pullback
-                # (small giveback) where the "reversal" is more likely transient noise.
-                # Gate the amp on GIVEBACK MAGNITUDE so it fires only when the winner has
-                # given back a SUBSTANTIAL fraction of its peak (real reversal, not early
-                # pullback noise): _agree_gb_gate = tanh((_giveback_ratio-0.10)/0.15), 0
-                # below 10pct giveback, ->1 by ~25pct. For LOSERS (pos_pnl<0, giveback
-                # ratio >>1 from a small positive peak) the gate is ~1 -> full amp (loss-
-                # side amp preserved, though Exp1 measured it inert for crash). For WINNERS
-                # at peak (giveback 0) -> gate 0 -> no amp -> ride (recovers the bull
-                # over-harvest on early pullbacks). For crash shorts on a bounce: giveback
-                # grows as the bounce continues -> gate ramps -> amp fires -> cut (crash
-                # gain preserved once giveback is real). Continuous, no boundary. NEW cross-
-                # component data dep: the fusion's confirmation amp now depends on giveback
-                # magnitude (was vol-regime + agreement only). Byte-identical at giveback=0.
-                _agree_gb_gate = max(0.0, min(1.0, np.tanh((_giveback_ratio - 0.10) / 0.15)))
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate * _agree_gb_gate
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
                 _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
