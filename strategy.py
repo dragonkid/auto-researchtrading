@@ -3202,31 +3202,6 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                # Exp4 (architectural, indep, this session): COUNTER-TREND LOSER exit-threshold
-                # lowering. NEW cross-component data dep at the exit-threshold subsystem: the
-                # threshold reads (counter-trend alignment, pos_pnl sign) jointly via the
-                # existing _ct_pos_str (multi-day counter-trend indicator, line 3181). A
-                # position that is COUNTER-TREND at the multi-day scale AND currently LOSING
-                # (pos_pnl < 0) is a ct loser where the multi-day trend is RESUMING against it
-                # (rally pullback shorts in a sustained uptrend; mixed wrong-side longs in a
-                # multi-day downtrend) -- the LOSING population that produces rally/mixed's
-                # consecutive-loss STREAKS (rally streak_gate ~0.675, the dominant rally score
-                # penalty after dd_gate). Lower _exit_thresh up to 10pct so the existing exit
-                # pressure triggers the full exit ~1 bar sooner -> cuts the ct loser before it
-                # hits the stop -> smaller realized loss + shorter consecutive-loss run ->
-                # higher streak_gate -> higher rally/mixed score. DISTINCT from the existing
-                # ct SIZE shrink (_bear_ct_vlong/_bull_ct_vlong, which shrinks ENTRY size) and
-                # the ct scale-in FREEZE (_ct_si_gate): those keep the ct loser SMALL through
-                # scale-in; this CUTS it sooner once losing. Composes (freeze keeps small,
-                # exit cuts fast). Escapes the MAX-absorption wall (threshold path, the Exp4-
-                # keep mechanism that moves the exit BAR earlier). Gated ct AND loser so
-                # trend-aligned winners (the _ct_pos_str=0 population: bull/crash trend-aligned
-                # longs/shorts) are BYTE-IDENTICAL, and ct WINNERS (some ct entries profit on
-                # the mean-reversion) are NOT cut early (only the losing subset). Max
-                # lowering 10pct (conservative, below the 12pct portfolio-DD loser lower).
-                # Byte-identical when _ct_pos_str=0 (trend-aligned) or pos_pnl>=0 (winning).
-                if _ct_pos_str > 0.0 and pos_pnl < 0.0:
-                    _exit_thresh = _exit_thresh * (1.0 - 0.10 * _ct_pos_str * max(0.0, -_pnl_scale))
                 # Exp4 (architectural, indep): PORTFOLIO-DD lowering of the exit threshold for
                 # LOSERS. NEW cross-component data dep: the de-risk full-exit threshold
                 # (_exit_thresh, normally 1.0 = full exit when exit_pressure reaches 1.0) is
