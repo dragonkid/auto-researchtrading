@@ -2840,19 +2840,21 @@ class Strategy:
                 # winners (chop 0) and fresh positions (<4-bar path -> chop 0). Continuous,
                 # shrink-only. This BYPASSES the MAX-fusion exit wall (changes WHEN time
                 # pressure fires, not a new pressure term).
-                # BRANCH step2: COUNTER-TREND gate. Step1 (ungated) crashed crash (-999,
-                # DD breached 16pct) AND regressed bull (-0.037): trend-aligned WINNERS
-                # (crash trend shorts, bull pullback longs) have LEGITIMATELY choppy PnL
-                # paths (downtrend bounces oscillate the short PnL; bull pullbacks oscillate
-                # the long PnL) but are PROGRESSING (winning) -- shortening their hold cuts
-                # them prematurely. Gate the MTM-chop time-shortening on COUNTER-TREND (the
-                # multi-day ct indicator already computed as _ct_hold_sat line ~2746: ~0
-                # trend-aligned, ~1 ct-at-multi-day, fast-saturating /0.01 noise-free). Only
-                # COUNTER-TREND oscillating positions (sideways ct entries, mixed wrong-side
-                # longs) get the shorter hold; trend-aligned winners (crash shorts, bull/
-                # rally longs) keep baseline max_hold byte-identical. This is the SAME ct
-                # gate pattern used by _ct_hold_sat itself (the validated trend-aligned
-                # sparing). Byte-identical for trend-aligned (gate 0 -> no shortening).
+                # BRANCH step4: TREND-ALIGNED-WINNER SPARE gate (replaces steps2-3). Step2
+                # (ct-gate) regressed sideways (sideways dead-capital is trendless -> ct-gate
+                # off in sideways). Step3 (net-PnL gate) collapsed stability (net-PnL-over-
+                # window zero-crossing is a noisy boundary). The noise-robust winner-sparing
+                # pattern is the validated _ta_winner_gate (line ~2657): trend-aligned
+                # (ret_vlong*pos_dir, fast-saturating /0.01) x clearly-profitable
+                # (instantaneous pos_pnl/|stop| tanh, saturates AWAY from breakeven = no
+                # zero-crossing noise). SPARE a position (gate the time-shortening OFF) only
+                # when it is BOTH trend-aligned AND clearly in profit = a riding winner.
+                # Shorten the hold for everything else: sideways (trendless -> not trend-
+                # aligned -> shortened, the TARGET), ct losers (not trend-aligned -> shortened),
+                # trend-aligned losers (in a trend but currently underwater -> shortened; not
+                # yet confirmed winners). Byte-identical for trend-aligned winners (gate 1).
+                # Uses _pnl_scale (computed line ~2872) as the clearly-profitable signal
+                # (tanh(pos_pnl/|stop|), same as _ta_winner_gate). Continuous, no boundary.
                 _pp_hist_tm = self._pnl_path.get(symbol, [])
                 _mtm_chop_tm = 0.0
                 if len(_pp_hist_tm) >= 4:
@@ -2861,7 +2863,12 @@ class Strategy:
                     _tot_tm = float(np.sum(np.abs(np.diff(_ppa_tm))))
                     _mtm_eff_tm = _net_tm / max(_tot_tm, 1e-10)
                     _mtm_chop_tm = max(0.0, min(1.0, 1.0 - _mtm_eff_tm))
-                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _ct_hold_sat
+                _ta_dir_tm = 1.0 if current_pos > 0 else -1.0
+                _trend_aligned_tm = max(0.0, np.tanh(ret_vlong * _ta_dir_tm / 0.01))
+                _clearly_profit_tm = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _winner_spare = _trend_aligned_tm * _clearly_profit_tm
+                _dead_capital_gate = 1.0 - _winner_spare
+                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _dead_capital_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
