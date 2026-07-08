@@ -2347,23 +2347,7 @@ class Strategy:
                     # Byte-identical when own-side margin >= 0 (the winning-conviction
                     # population: trend-aligned entries whose voters stay positive).
                     _own_margin = _bull_margin if current_pos > 0 else _bear_margin
-                    # Exp7 (architectural, follow-up to Exp5 KEEP): use the EMA-SMOOTHED
-                    # conviction accumulator (_acc_b/_acc_s, ENTRY_ACCUM_RHO=0.5, the same
-                    # sustained-conviction signal used at the _bull_ready/_bear_ready
-                    # admission gate) instead of the instantaneous margin for the fade
-                    # slowdown. A SUSTAINED fade (EMA margin < 0 over ~2 bars) is more
-                    # noise-robust than a 1-bar instantaneous margin flicker -- the EMA
-                    # integrates out single-bar AR(1) noise. Hypothesis: the Exp5 crash
-                    # -0.0016 regression came from 1-bar margin flickers (dead-cat bounce
-                    # bars where bear_margin briefly dipped negative then recovered as the
-                    # downtrend resumed) shrinking trend-aligned crash shorts; a sustained
-                    # fade (EMA<0) does NOT fire on those 1-bar flickers -> crash recovered,
-                    # while sideways (sustained fades during chop oscillation) keeps the
-                    # gain. No new state (reuses the existing _entry_accum EMA). The EMA
-                    # is the admission-ready signal; using it here makes scale-in consistent
-                    # with the admission conviction definition.
-                    _own_acc = _acc_b if current_pos > 0 else _acc_s
-                    _fade_slowdown = max(0.0, np.tanh(-_own_acc / 0.30))  # 0 EMA>=0, ~1 deeply negative sustained
+                    _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
                     _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
