@@ -494,6 +494,19 @@ class Strategy:
         # at entry, deterministic). Keeps a trend-aligned counter-move entry smaller for
         # the whole hold. Pattern mirrors _conc_shrink_held / _vol_shrink_held.
         self._cv_shrink_held = {}
+        # Exp2 (this session): sustain the loss-streak counter-trend entry shrink through
+        # scale-in (cached at entry, deterministic). The _streak_ct_shrink (line ~1413) is a
+        # first-bar shrink on counter-trend entries after a portfolio loss streak (crash
+        # dead-cat bounce longs, rally pullback shorts -- the clustered losing re-entries).
+        # First-bar-only, it ramps back to full size over the 3-bar scale-in, undoing the
+        # loss-magnitude reduction. Sustaining it keeps the in-streak ct loser smaller for
+        # the whole hold -> smaller realized losses -> higher Sharpe in the regimes where
+        # streaks of ct losers cluster (crash ct-long bounces, rally ct-short pullbacks).
+        # Pattern mirrors the validated _conc_shrink_held / _vol_shrink_held / _cv_shrink_held
+        # sustain-through-scale-in keeps (the _cv_shrink_held keep gave 8x the first-bar-only
+        # gain when sustained). Deterministic (set once at entry, noise-robust via the
+        # fast-saturating /0.01 ret_vlong ct indicator the shrink reads). Reset on full exit.
+        self._streak_ct_shrink_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -2201,11 +2214,13 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
+                    self._streak_ct_shrink_held[symbol] = _streak_ct_shrink_bull  # Exp2: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
+                    self._streak_ct_shrink_held[symbol] = _streak_ct_shrink_bear  # Exp2: cache for scale-in sustain
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2423,6 +2438,10 @@ class Strategy:
                     # (cached at entry, deterministic). Keeps a trend-aligned counter-move
                     # entry smaller for the whole hold. Default 1.0 (no effect) if uncached.
                     _cv_held = self._cv_shrink_held.get(symbol, 1.0)
+                    # Exp2: sustain the loss-streak counter-trend entry shrink through scale-in
+                    # (cached at entry, deterministic). Keeps an in-streak ct loser smaller
+                    # for the whole hold. Default 1.0 (no effect) if uncached.
+                    _streak_ct_held = self._streak_ct_shrink_held.get(symbol, 1.0)
                     # Exp5 (architectural, indep, BRANCH CANDIDATE): DIRECTIONAL
                     # multi-day-downtrend-gated sustained persist_boost. Exp2 (this
                     # session, discarded) showed sustaining _persist_boost through scale-in
@@ -2480,7 +2499,7 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _persist_sustain
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _streak_ct_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -4255,7 +4274,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._streak_ct_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
