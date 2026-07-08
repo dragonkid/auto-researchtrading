@@ -3145,7 +3145,34 @@ class Strategy:
                 # the exit-threshold logic already tolerates since _exit_pressure > 1.0
                 # triggers exit anyway).
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
+                # Exp2 (this session): TREND-ALIGNED-WINNER gate on the confirmation
+                # amplification -- the structural decoupling of the 654588e9 crash-gain/
+                # bull-loss coupling. Exp1 (this session, inverse giveback gate) PROVED the
+                # giveback-magnitude axis at the 0.10 boundary does NOT separate crash-gain
+                # from bull-loss: the inverse gate (ON at <10pct) collapsed crash IDENTICALLY
+                # to the forward gate (Exp5 prior session) and the loss-side gate (Exp1 prior)
+                # -- all converge to pre-baseline crash -0.143. The two regimes' winning
+                # shorts overlap in giveback space. The correct separator is NOT giveback
+                # magnitude but the SAME validated trend-aligned-winner property already used
+                # to gate pp_pressure ATTENUATION (line ~2689): _ta_winner_gate is 1.0 ONLY
+                # for longs in a PERSISTENT uptrend (down_persist<0.40) on a GRADUAL pullback
+                # (giveback<0.15 AND slope_against<0.0004) that are past scale-in and in profit
+                # -- the canonical "let winners ride" bull-long scenario. It is 0.0 for shorts
+                # (long-only gate), for transient bounce uptrends in crashes (up_persist gate),
+                # and for sharp reversals (slope/giveback gates). So (1 - _ta_winner_gate)
+                # is 1.0 for crash trend-aligned SHORTS (amp full -> bounce-onset realization
+                # PRESERVED, the +0.083 crash gain) and 0.0 for bull longs on gradual pullbacks
+                # in persistent uptrends (amp MUTED -> the -0.0006 bull loss RECUPERATED).
+                # This is a position-level structural property (direction x trend-persistence
+                # x pullback-sharpness x hold-duration x profit), NOT a regime label; all
+                # constituents are smooth/continuous and already proven stability-robust (the
+                # pp_pressure path uses the identical gate with stability passing). NEW cross-
+                # component data dep: the fusion amp now reads the trend-aligned-winner gate
+                # from the pp_pressure subsystem (a joint position-life-cycle + trend-persistence
+                # signal). The vol-gate still confines amp to high-vol regimes, so sideways/
+                # rally/mixed remain byte-identical (amp=0 there regardless of this gate).
+                _agree_ta_winner_gate = 1.0 - _ta_winner_gate
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate * _agree_ta_winner_gate
                 _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
