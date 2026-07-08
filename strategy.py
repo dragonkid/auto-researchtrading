@@ -514,6 +514,9 @@ class Strategy:
         # (mixed_2025's 100pct-long-in-a-down-year book, eq-autocorr -0.427).
         # Drives the emission-layer reduction throttle. Reset on full exit.
         self._pnl_path = {}
+        # Exp3: per-symbol EMA of the MAE-deepening (fresh-low) flag. See use at exit
+        # threshold (bypasses MAX-fusion wall). Decays over ~3 bars.
+        self._mae_deep_ema = {}
         # Exp1 (architectural): per-symbol rolling history of the multi-day weak-
         # trend BOOLEAN (|ret_vlong| < PERSIST_WEAK_THRESH). Used to compute a
         # PERSISTENCE-COUNT weak-trend separator: the fraction of the last
@@ -2506,6 +2509,20 @@ class Strategy:
                 # Tracks lowest pos_pnl observed since entry; only updates downward.
                 _curr_mae = self._mae.get(symbol, 0.0)
                 self._mae[symbol] = min(_curr_mae, pos_pnl)
+                # Exp3 (architectural, indep): MAE-DEEPENING signal (fresh adverse low this
+                # bar). NEW per-bar signal derived from the existing MAE state: 1.0 when
+                # pos_pnl just made a new low (pos_pnl < _curr_mae, MAE updated downward),
+                # decaying smoothly via EMA over 3 bars. This is a POSITION LIFE-CYCLE
+                # trajectory signal -- a loser that is STILL MAKING NEW LOWS is extending
+                # (the adverse move is ongoing), vs a loser whose MAE is STALE (pos_pnl
+                # recovered from the low = the adverse move paused). Used at the exit
+                # THRESHOLD (bypasses the MAX-fusion absorption wall that absorbed the
+                # loss-velocity pressure in Exp1). Distinct from MAE-depth (how far under)
+                # -- this is MAE-direction (still deepening). New per-symbol state.
+                _mae_deepened = 1.0 if pos_pnl < _curr_mae - 1e-9 else 0.0
+                _prev_md = self._mae_deep_ema.get(symbol, 0.0)
+                _mae_deep_ema = 0.55 * _mae_deepened + 0.45 * _prev_md
+                self._mae_deep_ema[symbol] = _mae_deep_ema
 
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
@@ -3197,6 +3214,28 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # Exp3 (architectural, indep): MAE-DEEPENING exit threshold lowering.
+                    # A NEW position-level signal: when the MAE is STILL DEEPENING (pos_pnl
+                    # made a fresh low this bar, _mae_deep_ema high), the adverse move is
+                    # ACTIVE/ongoing -- the loser is extending, not pausing. Lower the exit
+                    # threshold so the full-exit (de-risk to 0) triggers at lower pressure,
+                    # cutting the extending loser ~1 bar earlier -> smaller realized losses
+                    # -> higher Sharpe in the negative-Sharpe regimes (crash PF 1.0 = losers
+                    # erase winners). DISTINGUISHED from the Exp4 sustained-loss gate (which
+                    # counts NEGATIVE bars = duration): a loser can be sustained-negative
+                    # while the MAE is STALE (recovered from the low, adverse move paused) --
+                    # that is NOT extending and should NOT trigger early exit (mean-reversion
+                    # recovery risk). MAE-deepening = DIRECTION (still making new lows),
+                    # orthogonal to sustained-loss = DURATION (how long negative). Both
+                    # compose multiplicatively. DD-INDEPENDENT (a position-level trajectory,
+                    # fires whenever deepening, not gated on portfolio state) -- extends the
+                    # threshold lowering to non-DD extending losers (crash's trend legs
+                    # before portfolio DD has built). Byte-identical for winners (loss-gate
+                    # 0) and for stale-MAE losers (deep_ema 0). Max 0.10 lowering; trend-
+                    # strength gate to spare sideways mean-reverters (a sideways fresh low
+                    # often mean-reverts). Continuous tanh, no boundary.
+                    _md_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                    _exit_thresh = _exit_thresh * (1.0 - 0.10 * _mae_deep_ema * _md_trend_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -4201,7 +4240,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._mae_deep_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
