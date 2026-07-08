@@ -2991,6 +2991,37 @@ class Strategy:
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
+                # Exp2 (architectural, indep): CLOSE-POSITION gate on the volume-climax
+                # harvest. NEW data dep on the _vc_pressure source: it reads the intrabar
+                # close position (close-low)/(high-low) in [0,1] jointly with the volume
+                # spike, distinguishing EXHAUSTION-volume from CONVICTION-volume. A volume
+                # spike where the close is AGAINST the position direction (close near the
+                # bar's LOW for a long, near the HIGH for a short) is a distribution/
+                # selling-climax bar -> the volume is OPPONENT-sided (exhaustion, the bar
+                # absorbed the opposing flow = a true climax) -> strong harvest signal. A
+                # volume spike where the close is WITH the position (close near high for a
+                # long) is a conviction-continuation bar (the volume is FRIEND-sided, a
+                # healthy trend bar) -> NOT a climax -> mute the harvest (let the trend
+                # winner run). The prior _vc_pressure fired on ANY volume spike in profit,
+                # conflating these two populations -> over-harvested conviction-continuation
+                # rally/crash winners (volume spikes are common in healthy trends, not just
+                # at tops). _vc_close_gate in [0,1]: 1.0 when close is fully against the
+                # position (exhaustion), 0.0 when fully with it (conviction). 3-bar mean for
+                # noise-robustness (single-bar close position flips under AR(1) noise; the
+                # entry-side close_loc boost uses the same 3-bar pattern). Continuous tanh
+                # on (0.5 - |close_loc - against_pole|) so the gate ramps smoothly as the
+                # close moves from the conviction pole toward the exhaustion pole, no
+                # boundary. Direction-agnostic via the position-sign pole selection.
+                _vc_h3 = bd.history["high"].values[-3:]
+                _vc_l3 = bd.history["low"].values[-3:]
+                _vc_c3 = closes[-3:]
+                _vc_span3 = np.maximum(_vc_h3 - _vc_l3, 1e-10)
+                _vc_close_loc = float(np.mean((_vc_c3 - _vc_l3) / _vc_span3))  # [0,1], 3-bar mean
+                # For a LONG (current_pos>0): exhaustion pole = close near LOW = _vc_close_loc~0.
+                # For a SHORT (current_pos<0): exhaustion pole = close near HIGH = _vc_close_loc~1.
+                _vc_exhaustion_loc = (1.0 - _vc_close_loc) if current_pos > 0 else _vc_close_loc  # [0,1], 1=exhaustion
+                _vc_close_gate = max(0.0, min(1.0, np.tanh((_vc_exhaustion_loc - 0.40) / 0.20)))
+                _vc_pressure = _vc_pressure * _vc_close_gate
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
