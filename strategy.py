@@ -3123,6 +3123,26 @@ class Strategy:
                 # Confirmation-amplified MAX: add a bounded fraction of the 2nd term.
                 # AGREE_MAX caps the added fraction (0.50 = up to 50% of 2nd term added).
                 SOFT_FUSION_AGREE_MAX = 0.50
+                # Exp1 (architectural, indep): BREADTH-OF-AGREEMENT 3rd-term extension.
+                # The 2nd-term amplification (the kept fusion) captures 2-SOURCE agreement.
+                # A 3rd elevated term (3-SOURCE broad agreement) is a strictly stronger
+                # multi-source reversal signal: a loser where slope-against + time +
+                # break-even ALL fire together is more certainly a real reversal than
+                # just 2 of them. This adds a bounded fraction of the 3rd-highest term,
+                # gated on a SEPARATE, STRICTER agreement criterion (3rd/1st ratio) so it
+                # fires ONLY on BROAD agreement (3 sources all near the dominant), not
+                # whenever the 2nd is near. The /0.20 scale (vs /0.30 for 2nd) requires the
+                # 3rd term to be closer to the 1st (broader confirmation) before it
+                # contributes. The 2nd-term contribution is byte-identical (separate gate,
+                # separate amp); this only ADDS when 3 sources agree. Vol-gate preserved
+                # (sideways byte-identical, the documented mean-reversion protection).
+                # Bounded: AGREE_MAX_3RD 0.30 * 3rd term (<1.0) -> _soft_max max ~1.85,
+                # within the exit-threshold tolerance. NEW control flow: the fusion form
+                # changes from (max + amp*2nd) to (max + amp*2nd + amp3*3rd), a structural
+                # extension of the confirmation mechanism to broader agreement.
+                _ratio_3rd = _sorted_terms[2] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
+                _agree_gate_3rd = max(0.0, min(1.0, np.tanh(_ratio_3rd / 0.20)))
+                SOFT_FUSION_AGREE_MAX_3RD = 0.30
                 # branch step5: VOL-REGIME gate (exclude sideways). steps 1-4 ALL
                 # collapsed sideways because sideways is a MEAN-REVERSION regime
                 # fundamentally sensitive to exit-pressure amplification in BOTH
@@ -3146,7 +3166,9 @@ class Strategy:
                 # triggers exit anyway).
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
                 _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
+                _agree_amp_3rd = SOFT_FUSION_AGREE_MAX_3RD * _agree_gate_3rd * _fusion_vol_gate
                 _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
+                _soft_max = _soft_max + _agree_amp_3rd * _sorted_terms[2]  # Exp1: 3rd-term broad-agreement
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
