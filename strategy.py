@@ -669,39 +669,6 @@ class Strategy:
             _consensus_strength = 0.0
             _consensus_dir = 0.0
 
-        # Exp2 (architectural, indep, this session): CROSS-SYMBOL SHORT-WINDOW
-        # ADVERSE-RETURN coherence -- a portfolio-level signal feeding the EXIT-THRESHOLD
-        # subsystem (NOT the soft-fusion, which MAX-absorbs new sources per Exp1 this
-        # session). The exit-THRESHOLD path (the Exp4-keep mechanism) bypasses the
-        # MAX-absorption wall: it changes the threshold that converts exit_pressure to
-        # action, moving the exit BAR earlier, which is the productive lever. Compute
-        # the cross-symbol AVERAGE signed SHORT_WINDOW (8-bar) return + a broad-agreement
-        # indicator (count of symbols whose 8-bar return sign-agrees with the average
-        # direction). The per-symbol exit-threshold block (line ~3226) signs the average
-        # against the position direction (adverse for that position) and lowers the exit
-        # threshold when the move is broad AND adverse AND high-vol. Uses the SAME 8-bar
-        # close window as SHORT_WINDOW; 8 bars of AR(1) noise (~1/sqrt(8)=0.35 attenuation)
-        # makes the SIGN robust. Falls to 0 if <2 symbols present. Direction-agnostic
-        # general principle (no regime label): a broad adverse move is a stronger reversal
-        # signal than a narrow one. DISTINCT from the entry-side _consensus_strength (20-
-        # bar sign-agreement used at admission): this is an 8-bar magnitude-aware adverse
-        # signal used at exit timing.
-        _xco_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > SHORT_WINDOW]
-        if len(_xco_syms) >= 2:
-            _xco_rets = []
-            for _xsym in _xco_syms:
-                _xc = bar_data[_xsym].history["close"].values
-                _xr = (_xc[-1] - _xc[-SHORT_WINDOW]) / _xc[-SHORT_WINDOW]
-                _xco_rets.append(_xr)
-            _xco_avg_ret = float(np.mean(_xco_rets))
-            _xco_avg_sign = 1.0 if _xco_avg_ret > 0 else (-1.0 if _xco_avg_ret < 0 else 0.0)
-            _xco_agree = sum(1 for _r in _xco_rets if (_r > 0 and _xco_avg_sign > 0) or (_r < 0 and _xco_avg_sign < 0))
-            # _xco_broad in [0,1]: 0 at <2 agreeing (idiosyncratic), 1 at all-agree (broad)
-            _xco_broad = max(0.0, min(1.0, np.tanh((_xco_agree - 1.0) / 1.0)))
-        else:
-            _xco_avg_ret = 0.0
-            _xco_broad = 0.0
-
         # Exp1 (architectural, indep): PORTFOLIO CROSS-SYMBOL DEEP-BEAR down_persist.
         # Compute each symbol's _down_persist (fraction of last PERSIST_WINDOW bars where
         # 96-bar ret_vlong<0) at the top level and average across symbols present. This is
@@ -3235,32 +3202,6 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                # Exp2 (architectural, indep, this session): CROSS-SYMBOL ADVERSE-RETURN
-                # exit-THRESHOLD lowering. NEW cross-symbol data dep at the exit-THRESHOLD
-                # subsystem (distinct from Exp1's soft-fusion source, which was MAX-absorbed
-                # byte-identical). This changes the THRESHOLD that converts exit_pressure to
-                # action -- the Exp4-keep mechanism proved threshold-lowering moves the exit
-                # BAR earlier (the productive lever, bypassing the MAX-absorption wall). When
-                # the broad market is moving AGAINST the position (cross-symbol avg 8-bar
-                # return adverse to the position direction, broad-agreement >=2 symbols,
-                # high-vol via the shared _fusion_vol_gate onset 1.15), lower _exit_thresh by
-                # up to 10pct -> the existing exit pressure triggers the full exit sooner ->
-                # realizes winning positions before the broad reversal giveback grows AND
-                # cuts losing positions ~1 bar earlier -> higher Sharpe. Direction-AGNOSTIC
-                # (a broad adverse reversal hits winners and losers alike; harvesting a
-                # winner into a broad reversal and cutting a loser are both Sharpe-positive).
-                # Vol-gated so sideways (moderate vol) is BYTE-IDENTICAL (the documented
-                # lesson that sideways mean-reversion is sensitive to exit amplification).
-                # Byte-identical when _xco_broad=0 (idiosyncratic, <2 symbols agree) or
-                # _fusion_vol_gate=0 (low/moderate vol) or no adverse move. Smooth tanh, no
-                # boundary. Max lowering 10pct (conservative, below Exp4's 12pct DD-lowering
-                # which is itself bounded; the cross-symbol signal is a CONFIRMATION of the
-                # existing per-symbol exit pressure, not a standalone source, so a smaller
-                # threshold shift compounds correctly with the Exp4 DD-lowering below).
-                _pos_dir_xt = 1.0 if current_pos > 0 else -1.0
-                _xco_adverse = -_xco_avg_ret * _pos_dir_xt  # >0 when broad market moves against position
-                _xco_thresh_gate = max(0.0, np.tanh(_xco_adverse / 0.012)) * _xco_broad * _fusion_vol_gate
-                _exit_thresh = _exit_thresh * (1.0 - 0.10 * _xco_thresh_gate)
                 # Exp4 (architectural, indep): PORTFOLIO-DD lowering of the exit threshold for
                 # LOSERS. NEW cross-component data dep: the de-risk full-exit threshold
                 # (_exit_thresh, normally 1.0 = full exit when exit_pressure reaches 1.0) is
