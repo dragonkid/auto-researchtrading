@@ -414,6 +414,25 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
 
+# Exp1 (architectural, indep): PORTFOLIO UNREALIZED-MAE admission tightener. NEW cross-
+# component data dependency: the entry admission gate reads the AGGREGATE unrealized MAE
+# state across all OPEN positions (self._mae per symbol = min pos_pnl over the hold). Prior
+# portfolio admission signals (weak_persist, deep_bear_mag, vol_spike) all read PRICE-only
+# market state (ret_vlong, vol_ratio, down_persist) — none reads the PORTFOLIO'S OWN open-
+# position adverse state. A portfolio where a significant FRACTION of open positions are
+# deep-MAE (underwater >= ~0.4*stop) is in a correlated adverse state — multiple positions
+# bleeding simultaneously — which is a LEADING indicator distinct from _port_dd_atten
+# (which reads REALIZED equity DD after losses are closed). Marginal new entries admitted
+# during a correlated adverse state are more likely to also go underwater -> tighten the
+# admission bar so only higher-conviction entries pass. Byte-identical when no positions
+# are open (frac=0) or all open positions are shallow-MAE. Continuous tanh on the deep-MAE
+# position fraction (no boundary). Direction-agnostic (no regime label): a portfolio in a
+# correlated adverse state is risky regardless of regime. Max tighten 0.12 (admission is
+# the COUNT lever; keeps the gate mild to avoid collapsing trade count in legitimate
+# multi-leg entries). Deep-MAE knee at 0.4*stop (same structural threshold as _be_mae_depth).
+PORT_MAE_ADMIT_ONSET = 0.40   # deep-MAE knee: |mae|/|stop| above which a position counts as "deep underwater"
+PORT_MAE_ADMIT_MAX_TIGHTEN = 0.12  # max admission threshold increase at full saturation (-> 1.12x harder to enter)
+
 
 class Strategy:
     def __init__(self):
@@ -761,6 +780,32 @@ class Strategy:
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
+        # Exp1 (architectural, indep): PORTFOLIO UNREALIZED-MAE admission tightener.
+        # Aggregate the per-symbol MAE (self._mae = min pos_pnl over the hold) across all
+        # OPEN positions into a portfolio-level "correlated adverse state" signal: the
+        # FRACTION of open positions that are deep-MAE (underwater >= PORT_MAE_ADMIT_ONSET
+        # * |stop|). Distinct from _port_dd_atten (reads REALIZED equity DD): unrealized MAE
+        # is a LEADING indicator (positions bleeding before they close as realized losses).
+        # Distinct from all other portfolio admission gates (weak_persist, deep_bear_mag,
+        # vol_spike) which read price-only market state: this reads the PORTFOLIO'S OWN open-
+        # position adverse state. Byte-identical when no positions open (frac=0) or all
+        # shallow-MAE. Composes with the other admission tighteners (independent signal:
+        # portfolio-position-state vs market-state). Continuous tanh on the deep-MAE
+        # fraction ramped over [0.30, 0.70] (tighten only when a substantial fraction of the
+        # book is deep-underwater, not on a single early leg).
+        _port_mae_deep_count = 0
+        _port_mae_open_count = 0
+        for _osym, _opos in portfolio.positions.items():
+            if _opos != 0:
+                _port_mae_open_count += 1
+                _omae = self._mae.get(_osym, 0.0)
+                if -_omae >= PORT_MAE_ADMIT_ONSET * abs(STOP_LOSS_PCT):
+                    _port_mae_deep_count += 1
+        if _port_mae_open_count > 0:
+            _port_mae_deep_frac = _port_mae_deep_count / _port_mae_open_count
+            _port_mae_admit_tighten = 1.0 + PORT_MAE_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_mae_deep_frac - 0.30) / 0.20)))
+        else:
+            _port_mae_admit_tighten = 1.0
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1106,6 +1151,12 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp1: apply portfolio unrealized-MAE admission tightener (computed at top
+            # level). Tightens admission when a substantial fraction of open positions are
+            # deep-MAE (correlated adverse state). Byte-identical when no positions open or
+            # all shallow-MAE (_port_mae_admit_tighten=1.0). Composes with the other admission
+            # tighteners (independent portfolio-position-state signal).
+            _strong_min = _strong_min * _port_mae_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
