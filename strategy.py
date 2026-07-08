@@ -2991,7 +2991,19 @@ class Strategy:
                 # Continuous (reuses the smooth _div_taper), no new boundary. Follows the prior-
                 # session hint (sideways +0.019 from _chop_amp drag) via the OPPOSITE side, which
                 # is untested (only the own-side _chop_amp removal was tested and walled bilateral).
-                _opp_div_relief = 1.0 - 1.00 * _div_taper  # branch step4: 80pct->100pct relief (natural ceiling: eliminate opp addition in full sideways divergence)
+                # branch step5: BROADEN the relief gate from divergence-only (_div_taper)
+                # to ALSO fire on portfolio-wide chop (_port_weak_persist_avg, all-symbols-
+                # choppy = sideways 2023). The divergence _div_taper captures only the bars
+                # where strong-sum diverges; sideways also has non-divergence oscillation bars
+                # where the opp-spike is equally noise but _div_taper=0 -> no relief. The
+                # portfolio AVG weak_persist fires when ALL symbols choppy together (sideways-
+                # specific: mixed's consolidation is one-symbol-at-a-time -> AVG low -> mixed
+                # spared). MAX-blend the two gates so the relief fires in EITHER full
+                # divergence OR portfolio-wide chop. Magnitude stays at the 100pct ceiling.
+                # Tests whether a broader sideways gate captures enough bars to jump the gain
+                # above the magnitude-axis ceiling (+0.000010).
+                _port_chop_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - PORT_WEAK_PERSIST_AVG_ONSET) / PORT_WEAK_PERSIST_AVG_SCALE)))
+                _opp_div_relief = 1.0 - 1.00 * max(_div_taper, _port_chop_gate)
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * _opp_div_relief * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
