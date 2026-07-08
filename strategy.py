@@ -221,30 +221,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
-# Exp1 (architectural, indep): PEAK-STALENESS fade of the trend-aligned-winner
-# pp_pressure attenuation. The kept attenuation (_ta_winner_gate, line ~2642) lets
-# trend-aligned persistent-uptrend LONG winners ride gradual pullbacks (the bull
-# raw lift, +0.30 Sharpe across the magnitude keeps). The attenuation is currently
-# UNCONDITIONAL on how long the pullback has persisted: a winner whose peak was
-# refreshed THIS bar (fresh peak, still developing) gets the SAME 0.95 attenuation as
-# a winner whose peak was 7 bars ago and has been giving back since (stale peak, real
-# reversal in progress). bull's DD accumulates on exactly those RIDE bars where the
-# trend-aligned winner attenuation keeps the position on through a pullback; the
-# deepest DD comes from the long rides where the peak was stale (the reversal ran
-# for many bars before pp_pressure overcame the 0.95 attenuation). Fading the
-# attenuation as the peak STALES harvests stale-peak winners faster -> cuts the deep
-# ride DD -> lowers bull's 12.88pct DD (the dd_gate ~0.017 is crushing bull's score
-# 0.004317; lowering DD is the dominant bull score lever, dd_gate rises ~linearly
-# in the 5-12pct band). NEW cross-component data dep: pp_pressure attenuation reads
-# peak-age (bars since the high-water mark last refreshed) jointly with trend-align.
-# Byte-identical for: counter-trend (gate 0), shorts (long-only gate 0), sharp
-# reversals (giveback/slope gates 0 -> attenuation 0 regardless of peak-age), and
-# fresh-peak winners (peak_age <= ONSET -> fade 1.0 -> full attenuation preserved).
-# Reduction-friendly (harvest faster = risk-reducing). Direction-agnostic on the
-# fade shape (applies to longs only via the existing long-only gate, but the peak-age
-# signal itself is direction-neutral). Continuous tanh-style ramp (no boundary).
-PEAK_STALE_ONSET = 3.0   # peak_age (bars since peak refresh) below which full attenuation is kept
-PEAK_STALE_SCALE = 4.0   # ramp width: fade to 0 by peak_age ~ ONSET+SCALE (~7 bars)
 
 
 def ema(values, span):
@@ -442,17 +418,6 @@ COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturate
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
-        # Exp1 (architectural, indep): per-symbol bar index of the last peak_pnl
-        # update (when the confirmed-peak high-water mark last moved up). Used to
-        # compute peak STALENESS (bars since the position's peak was refreshed) for
-        # the trend-aligned-winner pp_pressure attenuation fade. A fresh peak
-        # (peak_age small) = the winner is still developing -> keep let-winners-run
-        # attenuation ON; a STALE peak (peak_age large, peak was many bars ago and
-        # the position has been giving back since) = the pullback has persisted long
-        # enough to be a real reversal, not a transient dip -> fade the attenuation so
-        # pp_pressure harvests the stale-peak winner before it rides the DD deeper.
-        # New per-symbol state tracking the AGE of the high-water mark. Reset on full exit.
-        self._peak_bar = {}
         # Maximum adverse excursion (MAE): per-symbol low-water mark of pos_pnl since entry.
         # Used by adverse-recovery exit pressure (architectural): when current pos_pnl
         # has recovered from MAE but still in modest loss, position is "barely surviving"
@@ -2535,7 +2500,6 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
-                    self._peak_bar[symbol] = self.bar_count  # Exp1: record bar of peak refresh
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
@@ -2711,18 +2675,7 @@ class Strategy:
                 # attenuation gate. Crash (down_persist~0.9) byte-identical (gate 0); bull
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-                # Exp1 (architectural, indep): PEAK-STALENESS fade. _peak_bar tracks the
-                # bar index of the last confirmed-peak refresh (set on entry and on every
-                # rising-bar new high-water mark). peak_age = bars since the peak refreshed.
-                # Full attenuation while the peak is FRESH (peak_age <= ONSET, the winner is
-                # still developing -> keep let-winners-run); fades to 0 as the peak STALES
-                # (peak_age large, the giveback has persisted = a real reversal, not a
-                # transient dip -> let pp_pressure harvest before the ride deepens DD).
-                # Multiplies into _ta_winner_gate (a fade, shrink-friendly: stale-peak
-                # winners get LESS attenuation -> MORE pp_pressure -> earlier harvest).
-                _peak_age = max(0.0, float(self.bar_count - self._peak_bar.get(symbol, self.bar_count)))
-                _peak_stale_gate = max(0.0, 1.0 - max(0.0, (_peak_age - PEAK_STALE_ONSET) / PEAK_STALE_SCALE))
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate * _peak_stale_gate
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
@@ -4302,7 +4255,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._peak_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -4313,7 +4266,6 @@ class Strategy:
                     self._entry_accum[symbol] = (0.0, 0.0)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._peak_bar[symbol] = self.bar_count  # Exp1: peak refresh at entry
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
