@@ -2991,7 +2991,7 @@ class Strategy:
                 # Continuous (reuses the smooth _div_taper), no new boundary. Follows the prior-
                 # session hint (sideways +0.019 from _chop_amp drag) via the OPPOSITE side, which
                 # is untested (only the own-side _chop_amp removal was tested and walled bilateral).
-                _opp_div_relief = 1.0 - 0.50 * _div_taper  # branch step2: 30pct->50pct relief probe
+                _opp_div_relief = 1.0 - 0.80 * _div_taper  # branch step3: 50pct->80pct relief (probe scaling ceiling)
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * _opp_div_relief * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
