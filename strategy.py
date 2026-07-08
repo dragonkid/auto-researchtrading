@@ -2853,38 +2853,15 @@ class Strategy:
                 # rally longs) keep baseline max_hold byte-identical. This is the SAME ct
                 # gate pattern used by _ct_hold_sat itself (the validated trend-aligned
                 # sparing). Byte-identical for trend-aligned (gate 0 -> no shortening).
-                # BRANCH step3: PROFIT-PROGRESS gate (replaces ct-gate). Step2 (ct-gate)
-                # REGRESSED sideways -0.0135->-0.0435: sideways dead-capital is TRENDLESS
-                # (ret_vlong~0 -> _ct_hold_sat~0 -> the ct-gate is OFF in sideways), so the
-                # ct-gate gated OFF the very sideways dead-capital it was meant to target, and
-                # fired only on sideways brief-trending stretches (regressing those). The real
-                # separator between a choppy WINNER (crash short trending down through
-                # bounces) and choppy DEAD-CAPITAL (sideways mean-reverter) is the NET PnL
-                # over the window: the winner has a clearly FAVORABLE net (pos_pnl trending up
-                # for the short); the dead-capital has a ~FLAT/negative net. Gate the
-                # time-shortening on the position NOT being clearly profitable over the
-                # window: _no_progress_gate = 1 - tanh(net_pos_pnl / (0.5*|stop|)) -- 0 when
-                # net PnL is solidly favorable (winner spared), 1 when net PnL ~flat/negative
-                # (dead-capital shortened). This SPARES all winners (positive net) regardless
-                # of choppiness, targeting only the stagnant/losing oscillators (sideways
-                # dead-capital, mixed wrong-side). Byte-identical for clear winners. Uses
-                # the SAME 12-bar _pnl_path already read for MTM-chop. Continuous tanh.
                 _pp_hist_tm = self._pnl_path.get(symbol, [])
                 _mtm_chop_tm = 0.0
-                _net_pnl_tm = 0.0
                 if len(_pp_hist_tm) >= 4:
                     _ppa_tm = np.array(_pp_hist_tm)
-                    _net_pnl_tm = _ppa_tm[-1] - _ppa_tm[0]
-                    _net_tm = abs(_net_pnl_tm)
+                    _net_tm = abs(_ppa_tm[-1] - _ppa_tm[0])
                     _tot_tm = float(np.sum(np.abs(np.diff(_ppa_tm))))
                     _mtm_eff_tm = _net_tm / max(_tot_tm, 1e-10)
                     _mtm_chop_tm = max(0.0, min(1.0, 1.0 - _mtm_eff_tm))
-                # profit-progress gate: 0 when net PnL solidly favorable (winner spared),
-                # ~1 when net PnL flat/negative (dead-capital targeted). The net PnL sign is
-                # direction-agnostic: a winning short has pos_pnl rising (net>0), a winning
-                # long has pos_pnl rising (net>0) -- both spared by the same gate.
-                _no_progress_gate = 1.0 - max(0.0, np.tanh(_net_pnl_tm / (0.5 * abs(STOP_LOSS_PCT))))
-                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _no_progress_gate
+                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
