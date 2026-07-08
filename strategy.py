@@ -2970,7 +2970,29 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Exp3 (architectural, indep): DIVERGENCE-TAPER RELIEF on the opp-side
+                # voter_bias addition. The own-side subtraction is divergence-tapered via
+                # _chop_amp (tapers toward 1.0 in pure-sideways high-divergence holds, the
+                # validated _div_taper keep). The opp-side addition (_opp_atten * _opp_trend_amp)
+                # has NO divergence taper: in pure sideways (low |ret_long|, high strong-sum
+                # divergence, non-ct), opposite-side voter spikes are noise (the chop oscillates
+                # around 0, so an opp-voter spike is the chop flipping, not a reversal) -- yet
+                # the opp addition fires at full _opp_atten * _opp_trend_amp (0.5 in chop),
+                # adding exit pressure on sideways mean-reverters that would recover. Apply the
+                # SAME _div_taper (already computed for _chop_amp) as a RELIEF on the opp term:
+                # reduce the opp addition by up to 30% in full sideways divergence. The _div_taper
+                # requires low trend (|ret_long|<0.015) AND divergence AND trend-aligned -- a
+                # sideways-only conjunction -- so trend regimes (crash/rally, higher |ret_long|)
+                # have _div_taper~0 -> opp unchanged -> BYTE-IDENTICAL (the load-bearing opp_atten
+                # for rally/crash ct positions is preserved). NEW cross-component data dep: the
+                # opp-side voter_bias now reads the strong-sum divergence jointly (was trend-only
+                # via _opp_trend_amp). General principle (no regime label): in a low-trend high-
+                # divergence hold, an opposite-side voter spike is chop-noise, not reversal.
+                # Continuous (reuses the smooth _div_taper), no new boundary. Follows the prior-
+                # session hint (sideways +0.019 from _chop_amp drag) via the OPPOSITE side, which
+                # is untested (only the own-side _chop_amp removal was tested and walled bilateral).
+                _opp_div_relief = 1.0 - 0.30 * _div_taper
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * _opp_div_relief * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
