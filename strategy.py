@@ -2970,48 +2970,7 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                # Exp3 (architectural, indep): DIVERGENCE-TAPER RELIEF on the opp-side
-                # voter_bias addition. The own-side subtraction is divergence-tapered via
-                # _chop_amp (tapers toward 1.0 in pure-sideways high-divergence holds, the
-                # validated _div_taper keep). The opp-side addition (_opp_atten * _opp_trend_amp)
-                # has NO divergence taper: in pure sideways (low |ret_long|, high strong-sum
-                # divergence, non-ct), opposite-side voter spikes are noise (the chop oscillates
-                # around 0, so an opp-voter spike is the chop flipping, not a reversal) -- yet
-                # the opp addition fires at full _opp_atten * _opp_trend_amp (0.5 in chop),
-                # adding exit pressure on sideways mean-reverters that would recover. Apply the
-                # SAME _div_taper (already computed for _chop_amp) as a RELIEF on the opp term:
-                # reduce the opp addition by up to 30% in full sideways divergence. The _div_taper
-                # requires low trend (|ret_long|<0.015) AND divergence AND trend-aligned -- a
-                # sideways-only conjunction -- so trend regimes (crash/rally, higher |ret_long|)
-                # have _div_taper~0 -> opp unchanged -> BYTE-IDENTICAL (the load-bearing opp_atten
-                # for rally/crash ct positions is preserved). NEW cross-component data dep: the
-                # opp-side voter_bias now reads the strong-sum divergence jointly (was trend-only
-                # via _opp_trend_amp). General principle (no regime label): in a low-trend high-
-                # divergence hold, an opposite-side voter spike is chop-noise, not reversal.
-                # Continuous (reuses the smooth _div_taper), no new boundary. Follows the prior-
-                # session hint (sideways +0.019 from _chop_amp drag) via the OPPOSITE side, which
-                # is untested (only the own-side _chop_amp removal was tested and walled bilateral).
-                # branch step5: BROADEN the relief gate from divergence-only (_div_taper)
-                # to ALSO fire on portfolio-wide chop (_port_weak_persist_avg, all-symbols-
-                # choppy = sideways 2023). The divergence _div_taper captures only the bars
-                # where strong-sum diverges; sideways also has non-divergence oscillation bars
-                # where the opp-spike is equally noise but _div_taper=0 -> no relief. The
-                # portfolio AVG weak_persist fires when ALL symbols choppy together (sideways-
-                # specific: mixed's consolidation is one-symbol-at-a-time -> AVG low -> mixed
-                # spared). MAX-blend the two gates so the relief fires in EITHER full
-                # divergence OR portfolio-wide chop. Magnitude stays at the 100pct ceiling.
-                # Tests whether a broader sideways gate captures enough bars to jump the gain
-                # above the magnitude-axis ceiling (+0.000010).
-                # branch step9: revert to step6 config (onset 0.40, NO trend-align gate on
-                # port_chop -- step8 showed the TA gate made mixed WORSE, the relief on mixed's
-                # ct longs was net-positive not negative as hypothesized). Step6 was the best
-                # composite (+0.000204: sideways +0.001, mixed -0.000356). Lower the magnitude
-                # 100pct->80pct to lessen the mixed hurt while keeping most of the sideways
-                # gain (the sideways gain at 0.40 onset was driven by the onset/broaden, not
-                # the magnitude ceiling, so 80pct should retain most of it).
-                _port_chop_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - 0.45) / PORT_WEAK_PERSIST_AVG_SCALE)))  # branch step10: onset 0.40->0.45 (find optimum balance; 100pct mag restored)
-                _opp_div_relief = 1.0 - 1.00 * max(_div_taper, _port_chop_gate)
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * _opp_div_relief * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
