@@ -184,36 +184,6 @@ TREND_GATE_DEADZONE = 0.018
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
-# STRUCTURAL_EXPLORATION (voter-aggregation FORM replacement: quintic strong-sum ->
-# weighted soft-AND / geometric-mean). The quintic (c-0.5)^5 * 97.66 is at its
-# structural ceiling: prior sessions confirmed voter conviction is deep in the
-# saturated tail (admission threshold adjustments inert, voter sharpness inert),
-# and the quintic lets 2 strong voters pass the threshold regardless of whether
-# the OTHER 6 voters agree (a single-noise-voter entry can pass on 2 coincident
-# strong voters). The soft-AND (weighted geometric mean of per-voter evidence with
-# leakage L) makes a SINGLE weak voter DRAG the aggregation down, requiring
-# MULTI-voter agreement to pass -- a structurally different aggregation mechanism
-# that filters noise-driven single-voter entries more strictly. Evidence per voter
-# = max(0, (c-0.5)*2) in [0,1] (0 below conf 0.5, 1 at conf 1.0 -- same activation
-# boundary as the quintic). Factor_i = L + (1-L)*evidence_i (leakage so a 0-evidence
-# voter contributes L, not 0, avoiding a hard zero). strong = exp(weighted-mean of
-# log(factor_i)) * SCALE. The weighted geometric mean naturally incorporates the
-# per-voter weights; SCALE re-maps to the quintic's [~1.75, ~6.5] admission range so
-# the existing STRONG_WEIGHT_MIN threshold and downstream conviction-margin / EMA-
-# readiness gates stay calibrated (single THRESHOLD RE-SCALING via SCALE, not
-# iterative tuning -- part of the form-replacement rewrite). L=0.3 chosen so the
-# soft-AND is strict (a weak voter at factor 0.3 vs a strong at 0.86 = ~3x drag) but
-# not hard-zero (catastrophic-voter-change precedent: hard zeroing killed regimes).
-# SCALE=6.0 maps: all-8-strong (geo ~0.86) -> strong ~5.2; 3-strong+5-weak (geo
-# ~0.446) -> strong ~2.68 (margin ~0.53 vs threshold 1.75); 2-strong+6-weak (geo
-# ~0.39) -> strong ~2.34 (margin ~0.34). So 2-3 strong voters still pass (preserves
-# the quintic's admission count) BUT a single strong voter (geo ~0.34, strong
-# ~2.04, margin ~0.16) is now MARGINAL vs the quintic (where a single strong voter
-# at weight 1.25 gives strong 1.25 < 1.75 = already rejected). Net: the soft-AND
-# preserves multi-voter admissions while penalizing single-voter noise relatively
-# more. Direction-agnostic (same form both sides).
-SOFT_AND_LEAKAGE = 0.30   # per-voter factor floor: weak voter contributes this, not 0
-SOFT_AND_SCALE = 6.0      # maps weighted geo-mean [0,1] back to the quintic admission scale
 # Architectural (this session): portfolio same-direction gross-exposure governor.
 # Shrinks new-entry first-bar size when aggregate same-sign notional across the OTHER
 # symbols is already high (correlated-regime concentration risk). Shrink-only.
@@ -1121,31 +1091,8 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            # STRUCTURAL_EXPLORATION: voter-aggregation FORM replacement. The quintic
-            # strong-sum (sum of max(0, (c-0.5)^5 * 97.66) * w) is replaced by a weighted
-            # soft-AND (geometric mean with leakage) -- see SOFT_AND_LEAKAGE/SCALE comments
-            # at the constant definition. The quintic lets 2 strong voters pass the
-            # threshold regardless of the other 6 voters' agreement; the soft-AND makes a
-            # single weak voter drag the aggregation down, requiring MULTI-voter agreement
-            # to pass -> filters noise-driven single-voter entries more strictly. Evidence
-            # per voter = max(0, (c-0.5)*2) in [0,1] (same activation boundary as the
-            # quintic). factor_i = L + (1-L)*evidence_i (leakage). strong = exp(weighted
-            # mean of log(factor_i)) * SCALE. A single hard-AND (factor=0 for weak) would
-            # zero the product on any non-active voter -> catastrophic (the prior 9th-voter
-            # hard-zeroing precedent); the leakage L=0.3 keeps weak voters at factor 0.3
-            # (drag, not zero) so multi-voter agreement is rewarded but single-voter noise
-            # is not catastrophically excluded. SCALE re-maps to the quintic admission
-            # scale so STRONG_WEIGHT_MIN and the downstream margin/EMA-readiness gates stay
-            # calibrated (single threshold re-scaling, part of the rewrite).
-            _w_total = sum(_voter_weights)
-            _bull_evid = [max(0.0, (c - 0.5) * 2.0) for c in _bull_confs]
-            _bear_evid = [max(0.0, (c - 0.5) * 2.0) for c in _bear_confs]
-            _bull_log_strong = sum(w * np.log(SOFT_AND_LEAKAGE + (1.0 - SOFT_AND_LEAKAGE) * e)
-                                  for w, e in zip(_voter_weights, _bull_evid))
-            _bear_log_strong = sum(w * np.log(SOFT_AND_LEAKAGE + (1.0 - SOFT_AND_LEAKAGE) * e)
-                                  for w, e in zip(_voter_weights, _bear_evid))
-            _bull_strong = np.exp(_bull_log_strong / _w_total) * SOFT_AND_SCALE
-            _bear_strong = np.exp(_bear_log_strong / _w_total) * SOFT_AND_SCALE
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
