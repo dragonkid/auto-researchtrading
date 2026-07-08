@@ -3020,7 +3020,7 @@ class Strategy:
                 # For a LONG (current_pos>0): exhaustion pole = close near LOW = _vc_close_loc~0.
                 # For a SHORT (current_pos<0): exhaustion pole = close near HIGH = _vc_close_loc~1.
                 _vc_exhaustion_loc = (1.0 - _vc_close_loc) if current_pos > 0 else _vc_close_loc  # [0,1], 1=exhaustion
-                _vc_close_gate = max(0.0, min(1.0, np.tanh((_vc_exhaustion_loc - 0.50) / 0.15)))
+                _vc_close_gate = max(0.0, min(1.0, np.tanh((_vc_exhaustion_loc - 0.40) / 0.20)))
                 _vc_pressure = _vc_pressure * _vc_close_gate
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
