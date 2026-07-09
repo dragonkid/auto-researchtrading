@@ -208,6 +208,11 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Exp2 (this session): concave de-risk ramp exponent amp on LOSS side (symmetric
+# counterpart of DERISK_CONVEX_AMP). k<1 de-risks FASTER at low exit-pressure so a
+# deep loser cuts early (small realized loss) instead of holding near-full through a
+# gradual exit-pressure build toward the stop. See _dr_k below.
+DERISK_CONCAVE_LOSS_AMP = 0.30  # loss-side ramp exponent 1.0->0.70 (concave = fast cut)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -3627,6 +3632,33 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp2 (architectural, indep): CONCAVE de-risk ramp for DEEP LOSERS -- the
+                        # symmetric counterpart of the validated convex winner cushion. The
+                        # cushion (DERISK_CONVEX_AMP, k>1) holds trend-aligned WINNERS near full
+                        # size through moderate giveback (ride the pullback); the LOSS side has
+                        # k=1.0 (LINEAR de-risk) -- a deep loser de-risks proportionally to exit
+                        # pressure across the whole band, so it holds near-full size while
+                        # exit-pressure builds GRADUALLY (slow slope-against / pp), accumulating
+                        # loss toward the stop before de-risking meaningfully. NEW: a CONCAVE
+                        # ramp (k<1) for deep losers de-risks FASTER at low exit-pressure: cut
+                        # the position early when the loss is still small, before the gradual
+                        # exit-pressure build fully materializes. Mechanism: the convex cushion
+                        # rewards winners for withstanding pullback noise; the concave loser
+                        # ramp PENALIZES losers for persisting -- a deep loser facing rising
+                        # exit-pressure is more likely a real adverse move (the trend that made
+                        # it a loser continuing against it) than a winner facing the same
+                        # pressure (a pullback that may resume). New cross-component data dep on
+                        # the de-risk function SHAPE: _dr_k now reads pos_pnl sign+depth on the
+                        # LOSS side too (was profit-only). Continuous tanh on -pos_pnl/|stop|
+                        # (no boundary); max 30pct k reduction at deep loss (k=0.70); 0 at
+                        # breakeven/profit (winners byte-identical, cushion preserved by the
+                        # max(0,_pnl_scale) term above). Direction-agnostic (pos_pnl sign only).
+                        # Targets crash (PF 1.0 -- the 33pct losers are too big relative to the
+                        # 67pct winners; cutting deep losers' realized loss raises PF and Sharpe
+                        # 1:1 since crash score == bare Sharpe). Distinct from the _de_floor
+                        # lowering (lowers WHEN de-risk starts) -- this changes HOW FAST it
+                        # ramps once started. Reduction-only (safe family).
+                        _dr_k = _dr_k - DERISK_CONCAVE_LOSS_AMP * max(0.0, -_pnl_scale)  # k: 1.0->1.6 profit, 1.0->0.70 deep loss
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
