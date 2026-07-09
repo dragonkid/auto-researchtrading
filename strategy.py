@@ -3510,7 +3510,7 @@ class Strategy:
                     # reversal -> de-risk gradually, do not fast-exit.
                     _ta_de_align_vlong = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_loss = max(0.0, -_pnl_scale)
-                    _de_floor -= 0.10 * _ta_de_align_vlong * _ta_de_loss
+                    _de_floor -= 0.08 * _ta_de_align_vlong * _ta_de_loss
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
