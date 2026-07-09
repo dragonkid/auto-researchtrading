@@ -2606,6 +2606,42 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp2 (architectural, this session): TREND-ALIGNED ADVERSE-BOUNCE stop
+                # WIDENING. NEW data dep on the stop-loss: the stop distance reads the
+                # position's multi-day trend-alignment AND whether it is currently in an
+                # adverse move (a bounce against the position). The ATR stop is direction-
+                # symmetric: it widens with realized vol (ATR) regardless of WHY the vol
+                # expanded. But a vol expansion from a COUNTER-TREND bounce (short-term
+                # adverse move against a STILL-aligned multi-day trend) is structurally
+                # different from a vol expansion from a genuine TREND REVERSAL: the bounce
+                # is likely temporary (resumes down per the crash structural-exploration
+                # finding) -> the trend-aligned winner-in-a-bounce should survive the bounce
+                # rather than stop out. Widen the stop (give room) ONLY when BOTH hold:
+                # (a) strong multi-day trend-alignment: pos_dir*ret_vlong > 0 strongly
+                # (the multi-day trend has NOT reversed -- distinguishes a bounce from a
+                # real reversal; if ret_vlong itself is weakening toward 0 the trend is
+                # genuinely rolling over -> no widening -> stop stays tight); (b) the
+                # position is currently in an adverse move (pos_pnl < 0 = bouncing against
+                # the entry). A trend-aligned position at a NEW profit peak (pos_pnl > 0)
+                # is NOT bouncing -> no widening (stop stays tight, no unnecessary DD
+                # extension on winners). Small magnitude (+12pct max): converts only the
+                # bounces that JUST exceed the stop (the marginal stopped-out losers) into
+                # survivors; bounces deep enough to exceed the widened stop still exit (DD
+                # bounded). The 0.02 ret_vlong onset (strong trend) and tanh adverse gate
+                # (deepens with the bounce) are continuous, no decision boundary. Distinct
+                # from the walled exit-fusion amplification (that EXITED faster on losers,
+                # locking the loss before recovery per the structural-exploration step3
+                # catastrophe): this gives room to RECOVER, the inverse direction. Targets
+                # crash (Sh -0.051, PF 1.0, 33pct losers are bounce-stopped shorts): most
+                # bounces resume down -> widening converts stopped-losses into winners ->
+                # PF > 1 -> Sharpe up. Byte-identical for ct positions (gate 0), trend-
+                # aligned winners at peak (adverse gate 0), and weak-trend regimes where
+                # ret_vlong~0 (sideways gate 0).
+                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _stop_ta = max(0.0, np.tanh(_pos_dir_sl * ret_vlong / 0.02))  # 0 ct/weak, ~1 strong trend-aligned
+                _stop_adverse = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit/peak, ~1 deep adverse
+                _stop_widen = 1.0 + 0.12 * _stop_ta * _stop_adverse
+                _stop_abs = _stop_abs * _stop_widen
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
