@@ -3640,6 +3640,21 @@ class Strategy:
                     _broad_vol_floor_gate = 1.0 if current_pos > 0 else 0.0
                     _broad_vol_floor = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - 1.15) / PORT_VOL_AVG_SCALE)))
                     _de_floor += 0.06 * _broad_vol_floor_gate * _broad_vol_floor * _ta_de_profit
+                    # branch step17: extend the broad-vol floor-raise to SHORTS in profit.
+                    # Step1's WIDTH term hurt crash shorts (rode bounces LONGER = size-wall).
+                    # The floor-raise is the OPPOSITE: trims winners SOONER (smaller at the
+                    # peak = the crash-safe direction). For crash trend-aligned shorts in
+                    # profit during broad-vol (the bounce legs where crash's synchronized
+                    # bounces across all 3 symbols fire the 1.15 onset), raising the floor
+                    # trims the winning short sooner -> caps the giveback at the bounce peak
+                    # -> raises crash Sharpe (crash score = bare Sharpe, DD-irrelevant). The
+                    # trend-aligned relaxation (_ta_de_align, ret_long*pos_dir>0 for crash
+                    # shorts) already lets them ride; the floor-raise offsets that during the
+                    # deep-vol bounce -> net trim-sooner at the bounce. Profit-side only
+                    # (_ta_de_profit), trend-aligned via _ta_de_align (already computed for
+                    # both directions). Distinct from step1 width (rides longer): this trims
+                    # sooner. Crash-safe direction (smaller at peak).
+                    _de_floor += 0.06 * _broad_vol_floor * _ta_de_profit * _ta_de_align * (1.0 - _broad_vol_floor_gate)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
