@@ -3677,25 +3677,6 @@ class Strategy:
                         # (rare) cut faster. Continuous (no boundary); direction-agnostic via
                         # _dr_align.
                         _dr_k = _dr_k - DERISK_CONCAVE_LOSS_AMP * max(0.0, -_pnl_scale) * (1.0 - _dr_align)
-                        # BRANCH step7: INTERSECTION ct gate + raise amplitude 0.30->0.50. Step3
-                        # (amplitude 0.50 with 20-bar ct gate alone) catastrophically cut crash's
-                        # trend-aligned bouncing shorts (ret_long flips during bounces). Step4
-                        # (multi-day ct gate ALONE) was byte-identical (the multi-day gate is too
-                        # coarse -- catches none of step2's 20-bar ct-loser population). Here we
-                        # INTERSECT: gate the concave ramp on (1-_dr_align) [20-bar ct] AND
-                        # _dr_ct_md [multi-day ct]. Only positions that are ct at BOTH timescales
-                        # get fast-cut -- the most unambiguous ct-losers. A crash bouncing SHORT
-                        # is ct at 20-bar during the bounce BUT trend-aligned at multi-day
-                        # (ret_vlong<0, pos_dir=-1 -> _dr_ct_md~0) -> intersection ~0 -> spared
-                        # (the multi-day filter rejects the boundary-flip). A crash dead-cat
-                        # bounce LONG is ct at 20-bar AND multi-day (ret_vlong<0, pos_dir=+1 ->
-                        # _dr_ct_md~1) -> intersection ~1 -> fast-cut. The intersection lets the
-                        # amplitude rise to 0.50 safely because only the cleanest ct-losers
-                        # (multi-day-confirmed) get the stronger cut. _dr_ct_md uses the validated
-                        # ret_vlong (96-bar OLS, fast-saturating /0.04) -- the bull/crash separator
-                        # that stays stable through bounces. Continuous (no boundary); dir-agnostic.
-                        _dr_ct_md = max(0.0, np.tanh(-ret_vlong * _dr_pos_dir / 0.04))  # 0 trend-aligned-md, 1 ct-md
-                        _dr_k = _dr_k - 0.50 * max(0.0, -_pnl_scale) * (1.0 - _dr_align) * _dr_ct_md
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
