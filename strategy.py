@@ -413,6 +413,20 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
+# Exp1 (architectural, indep): PORTFOLIO AVG-VOL time-pressure RAMP WIDTH composition.
+# Untested lead (a) from keep ccca5148: the avg-vol cap (a SIZE cap on broad-vol-
+# synchronized entries) could compose with the time-pressure ramp width. The ramp width
+# (_tp_ramp_w) is currently vol-normalized via the SINGLE-symbol vol_ratio; adding the
+# CROSS-symbol portfolio avg-vol term is a NEW cross-component data dep (time-pressure
+# ramp reads the cross-symbol avg-vol aggregation, distinct from the single-symbol
+# vol_ratio already used). During broad-vol-synchronized periods (the same avg-vol signal
+# the SIZE cap keys on), widen the ramp so positions de-risk more gradually. Byte-
+# identical when avg vol < onset (sideways low broad vol = the validated clean separator).
+# Direction-agnostic general principle: the de-risk graduation width should reflect broad-
+# market vol co-movement, not just own-symbol vol.
+PORT_VOL_AVG_TP_ONSET = 0.95   # same onset as the SIZE cap (broad-vol synchronized)
+PORT_VOL_AVG_TP_SCALE = 0.20   # same ramp width
+PORT_VOL_AVG_TP_MAX_WIDEN = 0.50  # max +50% ramp width at full saturation (4.0->6.0 extra)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -2910,6 +2924,19 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
+                # Exp1 (architectural, indep): compose the ramp width with the CROSS-SYMBOL
+                # portfolio avg-vol signal. _tp_ramp_w above is single-symbol vol-normalized;
+                # this adds a SECOND, structurally distinct vol term: the portfolio AVERAGE
+                # vol_ratio (broad-vol synchronized co-movement across BTC/ETH/SOL). Untested
+                # lead (a) from keep ccca5148 -- the avg-vol SIZE cap keys on this same signal;
+                # composing it with the time-pressure ramp width tests whether trend-aligned
+                # winners in broad-vol regimes (crash shorts, bull/rally longs) de-risk
+                # better with a wider graduation. NEW cross-component data dep: the time-
+                # pressure ramp width reads the cross-symbol avg-vol aggregation (was single-
+                # symbol vol_ratio only). Byte-identical when avg vol < onset (sideways low
+                # broad vol = the validated clean separator). Continuous tanh, no boundary.
+                _port_vol_avg_tp_widen = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_TP_ONSET) / PORT_VOL_AVG_TP_SCALE)))
+                _tp_ramp_w = _tp_ramp_w * (1.0 + PORT_VOL_AVG_TP_MAX_WIDEN * _port_vol_avg_tp_widen)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
