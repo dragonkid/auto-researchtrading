@@ -2976,7 +2976,19 @@ class Strategy:
                 # depth. Byte-identical for shorts (crash trend shorts keep per-symbol ramp
                 # only, as in baseline).
                 _broad_vol_w_gate = 1.0 if current_pos > 0 else 0.0
-                _tp_ramp_w = _tp_ramp_w + 5.0 * _broad_vol_w_gate * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
+                # branch step10: concentrate the width term on the DEEPEST broad-vol too
+                # (mirror the step7 level-term concentration that recovered stability).
+                # Step3 width at onset 0.95 (broad firing) saturated at +0.000484; the
+                # level term showed concentrating on 1.15 (deepest spikes) is strictly
+                # better (stability preserved + higher Sharpe). Apply the SAME treatment to
+                # the width term: dedicated 1.15 onset, raise magnitude 5.0->7.0 to
+                # compensate the smaller firing population. Widens the ramp ONLY on the
+                # deepest synchronized broad-vol spikes -> the gradual de-risk is most
+                # beneficial where the real per-bar move is largest. Byte-identical for
+                # shorts + when avg-vol < 1.15.
+                _BROAD_VOL_W_ONSET_CONC = 1.15
+                _broad_vol_w = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - _BROAD_VOL_W_ONSET_CONC) / PORT_VOL_AVG_SCALE)))
+                _tp_ramp_w = _tp_ramp_w + 7.0 * _broad_vol_w_gate * _broad_vol_w
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
