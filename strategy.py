@@ -3667,8 +3667,24 @@ class Strategy:
                         # is INTACT (baseline) when fade=0 and FADED to linear when fade=1.
                         _dr_long = 1.0 if current_pos > 0 else 0.0
                         _port_dd_frac_fast_dr = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
-                        _dr_deep_dd_fade = _dr_long * max(0.0, min(1.0, (_port_dd_frac_fast_dr - DERISK_DEEP_DD_ONSET) / DERISK_DEEP_DD_SCALE))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * (1.0 - _dr_deep_dd_fade)  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+conf; fades to 1.0 for long winners in deep portfolio DD
+                        # Branch step4b: add UPTREND-PERSISTENCE gate (mirror _ta_winner_gate's
+                        # _up_persist_gate, line ~2762). Step4 (long-only) catastrophically
+                        # regressed crash (-1.506): crash's deep DD (17.8pct) saturates the
+                        # fast-fall fade for ALL crash longs through the 426-day regime, but
+                        # crash longs are dead-cat-bounce counter-trend entries whose cushion
+                        # riding is NOT the DD source (crash DD is from LOSING shorts, score
+                        # == bare Sharpe). The structural separator (the validated duration-
+                        # count principle): bull = PERSISTENT uptrend (_down_persist low ~0.3
+                        # -> the longs are trend-aligned riding pullbacks = the target);
+                        # crash = PERSISTENT downtrend (_down_persist high ~0.9 -> longs are
+                        # counter-trend bounces = spare). Gate the fade on _up_persist_gate
+                        # (full below _down_persist 0.40, fading to 0 by 0.60) so crash longs
+                        # (down_persist~0.9 -> gate 0) are byte-identical while bull longs
+                        # (down_persist~0.3 -> gate 1) get the fade. Same gate _ta_winner_gate
+                        # uses to separate bull/crash on the pp-attenuation path.
+                        _up_persist_gate_dr = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
+                        _dr_deep_dd_fade = _dr_long * _up_persist_gate_dr * max(0.0, min(1.0, (_port_dd_frac_fast_dr - DERISK_DEEP_DD_ONSET) / DERISK_DEEP_DD_SCALE))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * (1.0 - _dr_deep_dd_fade)  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+conf; fades to 1.0 for persistent-uptrend long winners in deep portfolio DD
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
