@@ -3099,6 +3099,25 @@ class Strategy:
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
+                # branch step8: TREND-ALIGN attenuation of break-even pressure. The
+                # _be_pressure fires for positions stuck near breakeven (the stall
+                # population); it is gated on trend-STRENGTH (_be_trend_gate, rsi_trend_str)
+                # and MAE-depth (_be_mae_gate) but NOT on trend-ALIGN (pos_dir vs ret_vlong).
+                # A position that is TREND-ALIGNED at the multi-day scale (ret_vlong*pos_dir>0)
+                # and stuck near BE is more likely a pullback pause within the trend that will
+                # resume than a genuine stall -> attenuate its BE exit so it rides the pause.
+                # DISTINCT from the trend-strength gate (which already fires in trends): this
+                # is a POSITION-LEVEL alignment (is THIS position aligned with the multi-day
+                # trend), not a regime-level strength. A ct position in a trend (mixed wrong-
+                # side longs in a down year) has trend-strength high but alignment NEGATIVE ->
+                # keep full BE exit (it is the genuine stall). crash trend-aligned shorts near
+                # BE during a bounce: aligned (ret_vlong<0,pos_dir=-1 -> product>0) -> BE
+                # attenuated -> ride the bounce-end; gated modest (0.40 max attenuation) so
+                # the bounce-top BE exit still partially fires. Uses multi-day ret_vlong*pos_dir
+                # (crash-safe: stays aligned through bounces for trend-aligned shorts). Smooth
+                # tanh. New cross-component data dep: _be_pressure reads position trend-align.
+                _be_ta_align = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                _be_pressure = _be_pressure * (1.0 - 0.40 * _be_ta_align)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
