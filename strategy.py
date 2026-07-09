@@ -2931,7 +2931,24 @@ class Strategy:
                 # grind; the per-symbol term still handles single-symbol vol). Direction-
                 # agnostic (no regime label): broad-vol widens the de-risk graduation. Max
                 # +3.0 bars additional width at deep broad-vol (total ramp up to ~11.0).
-                _tp_ramp_w = _tp_ramp_w + 3.0 * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
+                # branch step2: gate the broad-vol width term to the LONG side only.
+                # Exp1 showed the broad-vol widening helped bull trend longs ride
+                # pullbacks (+0.001575, Sh +0.128) but hurt crash trend shorts (-0.0021)
+                # which rode the high-vol bounce bars too long (the size-wall: shorts
+                # must be SMALL at bounce peaks, not ride them). The asymmetry is the
+                # documented bounce-survival wall: a long riding a pullback in an uptrend
+                # benefits (the trend resumes, pullback reverts UP); a short riding a
+                # bounce in a downtrend suffers (the bounce can be violent/deep, causing
+                # DD/stopout before the downtrend resumes). The per-symbol vol_ratio ramp
+                # (296762d8) is retained for BOTH sides (it handles single-symbol vol
+                # generally); the BROAD-MARKET extra widening is the long-only component
+                # (the broad-vol synchronized pullback is the long-favorable event).
+                # Direction-specific, justified by the measured size-wall asymmetry (not a
+                # regime label): longs survive pullback depth, shorts do not survive bounce
+                # depth. Byte-identical for shorts (crash trend shorts keep per-symbol ramp
+                # only, as in baseline).
+                _broad_vol_w_gate = 1.0 if current_pos > 0 else 0.0
+                _tp_ramp_w = _tp_ramp_w + 3.0 * _broad_vol_w_gate * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
