@@ -3463,27 +3463,6 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
-                    # BRANCH step6: COUNTER-TREND-LOSER de-risk floor lowering (composes with
-                    # step2's concave ramp). The concave ramp (step2) cuts ct-losers FASTER
-                    # once de-risk engages, but for losers the floor is 0.85 (de-risk only
-                    # starts when exit_pressure reaches 0.85 of the threshold -- LATE, after
-                    # most of the adverse move has already accumulated). Lower the floor for
-                    # COUNTER-TREND losers so the concave ramp engages EARLIER: a ct loser
-                    # (pos_dir opposes ret_long, _dr_align low) starts de-risking at a lower
-                    # exit-pressure threshold -> the concave fast-cut has a longer ramp to act
-                    # over -> more total size reduction before the full exit -> smaller realized
-                    # loss. Trend-aligned losers (crash bouncing shorts, _dr_align high) keep
-                    # the 0.85 floor (they ride the bounce back to profit). Max 0.15 floor
-                    # lowering at full ct. Continuous (no boundary); direction-agnostic via
-                    # _dr_align. Distinct from the portfolio-DD floor lowering (that fires for
-                    # ALL losers during DD; this fires for ct-losers regardless of DD state).
-                    # Byte-identical for winners (0.55 floor, max(0,-pnl_scale)=0) and
-                    # trend-aligned losers (_dr_align high -> lowering ~0).
-                    # (_dr_pos_dir / _dr_align are defined just below the fresh-entry exemption
-                    # gate and reused at the _dr_k concave ramp; hoisted here for the floor.)
-                    _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
-                    _de_floor -= 0.15 * (1.0 - _dr_align) * max(0.0, -_pnl_scale)
                     # Exp3 (architectural, indep): PORTFOLIO-DD-ADAPTIVE de-risk floor
                     # lowering for LOSERS. NEW cross-component data dep on the de-risk
                     # graduation ramp: _de_floor (the lower bound of the graduated partial-
@@ -3604,8 +3583,8 @@ class Strategy:
                         # shorts fast. General principle (no regime label): the cushion is
                         # earned by trading WITH the long-window trend, not by path shape.
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
-                        # (_dr_pos_dir / _dr_align hoisted above _de_floor for the step6 ct-loser
-                        # floor lowering; reused here.)
+                        _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
+                        _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
                         # Exp4 (architectural, indep): SLOPE-CONFIRMATION gate on the de-risk
                         # convex cushion. The cushion (k>1 -> hold near full size through
                         # moderate giveback, the validated stability lever) was gated only on
