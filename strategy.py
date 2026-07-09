@@ -3510,7 +3510,24 @@ class Strategy:
                     # reversal -> de-risk gradually, do not fast-exit.
                     _ta_de_align_vlong = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_loss = max(0.0, -_pnl_scale)
-                    _de_floor -= 0.08 * _ta_de_align_vlong * _ta_de_loss
+                    # branch step6: NARROW the trend-aligned-loser floor relaxation gate
+                    # to the strongest-recoverer subset AND raise magnitude. step3 (0.08,
+                    # ret_vlong*pos_dir alone) captured crash +0.0016 + rally +0.0018 but
+                    # 0.10 (step2) hurt crash (rode bounces into reversals). The crash-safe
+                    # fix is a TIGHTER gate: require BOTH the multi-day trend-align (ret_vlong
+                    # *pos_dir) AND the near-term 3-window slope STILL CONFIRMING the position
+                    # (_exit_slope*pos_dir>0). A trend-aligned loser whose near-term slope has
+                    # ALREADY turned against it is facing a real reversal (no relaxation); one
+                    # whose slope still confirms is in a transient pullback within the trend
+                    # (relax). This is the gate step5's convex cushion lacked (step5 used slope-
+                    # conf but on the RAMP SHAPE which holds near-full through mid-range = wrong
+                    # tool; here it gates the FLOOR start = crash-safe per step3/step4/step5
+                    # findings). The tighter gate allows a LARGER magnitude (0.12) crash-safe
+                    # because the slope-conf conjunction excludes the bounce-extending bars.
+                    # _exit_slope (3-window mean, line ~2567) is computed before this block.
+                    _ta_de_slope_conf = max(0.0, np.tanh(_exit_slope * (1.0 if current_pos > 0 else -1.0) / 0.0004))
+                    _ta_de_gate = _ta_de_align_vlong * _ta_de_slope_conf  # conjunction: both must hold
+                    _de_floor -= 0.12 * _ta_de_gate * _ta_de_loss
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
