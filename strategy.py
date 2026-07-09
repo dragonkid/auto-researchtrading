@@ -3660,12 +3660,22 @@ class Strategy:
                         # the 12.88% bull DD peak. Fade the cushion toward linear (k->1.0)
                         # when the per-position giveback is EXTREME (>0.45 of peak) so the
                         # position de-risks fast through the deep-giveback bars. Uses the
-                        # already-computed _giveback_ratio (line ~2647). Crash-safe: crash's
-                        # sharp bounces already zero the cushion via _dr_slope_conf (slope
-                        # stops confirming) -> this gate is redundant there (byte-identical).
-                        # Byte-identical when giveback_ratio < 0.45 (normal pullbacks keep
-                        # the cushion everywhere). New cross-component data dep at de-risk.
-                        _dr_deep_gb_gate = max(0.0, 1.0 - max(0.0, (_giveback_ratio - DERISK_DEEP_GB_ONSET) / DERISK_DEEP_GB_SCALE))
+                        # already-computed _giveback_ratio (line ~2647).
+                        # Branch step2: LONG-ONLY gate. Step1 (ungated) regressed crash -0.005:
+                        # crash trend-aligned SHORTS (downtrend, ret_long<0, pos_dir=-1 ->
+                        # _dr_align>0) use the convex cushion during MODERATE bounces where
+                        # slope still confirms (the winning-short rides); fading it at 0.45
+                        # giveback exited winning shorts too early -> missed downtrend
+                        # resumption -> lower crash Sharpe. Structural asymmetry (the validated
+                        # _long_only_gate pattern at line ~2748 / _ta_dd_hold_ext): LONGS in an
+                        # uptrend riding a pullback (bull) = canonical let-winners-run; SHORTS in
+                        # a downtrend riding a bounce (crash) face asymmetric upside risk. Gate
+                        # the deep-giveback fast-exit to LONG positions only -> crash shorts
+                        # byte-identical (the cushion stays on for crash's winning-short rides),
+                        # isolating the bull-DD effect. Direction-asymmetric structural property,
+                        # NOT a regime label.
+                        _dr_long_only = 1.0 if current_pos > 0 else 0.0
+                        _dr_deep_gb_gate = _dr_long_only * max(0.0, 1.0 - max(0.0, (_giveback_ratio - DERISK_DEEP_GB_ONSET) / DERISK_DEEP_GB_SCALE))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_deep_gb_gate  # 1.0 loss/ct/slope-weak/deep-giveback, up to ~1.6 trend-aligned+profit+conf+moderate-giveback
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
