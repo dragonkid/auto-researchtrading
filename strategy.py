@@ -410,7 +410,7 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 # shrink (smaller than MAX's 20% -- the broad-vol state is a context signal, the
 # single-symbol spike is the sharper risk). Byte-identical when avg vol_ratio < 1.15
 # (calm grind rally/sideways, and trend regimes where vol is concentrated not broad).
-PORT_VOL_AVG_ONSET = 0.85  # branch step8: 0.95->0.85 push lower (find ceiling / sideways spillover)
+PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.25  # branch step6: revert 35->25 bull sweet-spot (35 hurt bull Sh; lower onset tests more-bars at safe mag)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
