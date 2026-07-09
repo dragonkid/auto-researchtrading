@@ -3278,6 +3278,26 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # branch step4: TREND-ALIGNED LOSER exit-threshold RAISE (the
+                    # complementary UPPER-bound lever to step3's lower-bound _de_floor
+                    # relaxation). Step3 lowered the de-risk FLOOR for trend-aligned
+                    # losers (gradual de-risk instead of near-binary); this RAISES the
+                    # full-exit UPPER bound for the same population so a trend-aligned
+                    # loser riding a pullback/bounce hits full-exit at slightly higher
+                    # pressure (rides the noise longer before a full cut). Composes
+                    # with the Exp4 DD-lowering above (which fires for ALL losers during
+                    # DD); this fires specifically for TREND-ALIGNED losers (the
+                    # recoverers), partially offsetting the DD-lowering's fast-cut for
+                    # the recoverer sub-population. Distinct from step3: floor
+                    # (lower bound, graduation start) vs thresh (upper bound, full-exit
+                    # trigger). Same multi-day ret_vlong*pos_dir gate (crash-safe
+                    # through bounces). Max 0.06 raise (modest, smaller than the
+                    # 0.12 DD-lower so the DD protective cut still dominates during
+                    # deep DD; the raise is capped by the trend-align gate which is
+                    # <1 so net raise <0.06). Loss-side only. Smooth tanh.
+                    if _pnl_scale < 0.0:
+                        _ta_exit_align = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                        _exit_thresh = _exit_thresh * (1.0 + 0.06 * _ta_exit_align * (-_pnl_scale))
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
