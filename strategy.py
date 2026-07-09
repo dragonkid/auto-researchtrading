@@ -379,15 +379,6 @@ PORT_DEEP_BEAR_MAX_SHRINK = 0.25  # max shrink at full saturation (-> 0.75x)
 PORT_DEEP_BEAR_ADMIT_ONSET = 0.03   # same onset as Exp8 SIZE cap (deep bear magnitude)
 PORT_DEEP_BEAR_ADMIT_SCALE = 0.02
 PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
-# Exp2 (this session, architectural indep): CROSS-SYMBOL BOUNCE-BREADTH LONG-entry SIZE
-# shrink. Onset/scale for the bounce-breadth tanh (fraction of symbols with a positive
-# 8-bar return). ONSET 0.67 = 2 of 3 symbols bouncing (a broad bounce, not a single
-# idiosyncratic leg). SCALE 0.20 saturates at all-3-bouncing. The downtrend gate reuses
-# PORT_DOWN_PERSIST_ONSET/SCALE (crash ~0.9 fires; bull ~0.3 spared). Max SIZE shrink 0.25
-# (long-side only; bear/short entries byte-identical -> crash winning shorts spared).
-PORT_BOUNCE_BREADTH_ONSET = 0.67
-PORT_BOUNCE_BREADTH_SCALE = 0.20
-PORT_BOUNCE_SIZE_MAX_SHRINK = 0.25
 # Exp1 (architectural, indep): MAX-AGGREGATION portfolio VOL-SPIKE SIZE CAP. Extends the
 # validated max-aggregation portfolio-cap pattern (4 keeps on SIZE: avg down_persist, max
 # down_persist, max weak_persist, max |ret_vlong| -- all on the TREND/bear axis) to a NEW
@@ -720,28 +711,8 @@ class Strategy:
         _port_weak_persist_vals = []  # Exp6: per-symbol weak_persist for max-aggregation
         _port_rv_vals = []  # Exp8: per-symbol raw ret_vlong for max-aggregation deep-bear cap
         _port_vol_ratio_vals = []  # Exp1: per-symbol vol_ratio for max-aggregation vol-spike cap
-        _port_bounce_vals = []  # Exp2 (this session): per-symbol short-term bounce boolean for cross-symbol bounce-breadth
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
-            # Exp2 (this session, architectural): CROSS-SYMBOL BOUNCE-BREADTH. Per-symbol
-            # short-term (8-bar) close return SIGN lifted to the portfolio section so the
-            # FRACTION of symbols bouncing can gate LONG entry SIZE. A broad dead-cat bounce
-            # in a persistent downtrend lifts BTC/ETH/SOL TOGETHER for a few bars; the long
-            # entries taken on those bounce bars are crash's losing trades (PF=1.0 source:
-            # the 33pct losers exactly cancel the 67pct winners). Exp1 (this session) tested
-            # the SAME bounce-breadth signal at the ADMISSION gate and it was BYTE-IDENTICAL
-            # -- crash's bounce-long entries that DO enter are high-conviction (the bounce
-            # spikes bull-side voters -> _bull_margin well above any tightened threshold).
-            # So the lever is NOT admission (cutting COUNT) but SIZING (cutting MAGNITUDE of
-            # the high-conviction bounce-long entries so their stop-out losses are smaller).
-            # The FRACTION bouncing (cross-symbol coherence) identifies those bars; combined
-            # with the persistent-downtrend gate (crash ~0.9 vs bull ~0.3) it isolates crash's
-            # bounce longs. Distinct from avg-vol SIZE cap (fires on vol-ELEVATED broad bars;
-            # a slow drift-up bounce with FLAT vol is not caught -> bounce-breadth is
-            # orthogonal). Distinct from vd_ct_shrink (vol-DECLINE). 8-bar window averages ~8
-            # bars of AR(1) noise -> the SIGN is robust. NEW cross-symbol data dep at SIZING.
-            if len(_pc) > 8:
-                _port_bounce_vals.append(1.0 if _pc[-1] > _pc[-9] else 0.0)
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
             _phl2 = (bar_data[_psym].history["high"].values[-_pn:] + bar_data[_psym].history["low"].values[-_pn:]) / 2.0
             _p_rv = _fast_slope(np.log(_phl2)) * _pn
@@ -825,29 +796,6 @@ class Strategy:
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
-        # Exp2 (this session, architectural indep): CROSS-SYMBOL BOUNCE-BREADTH LONG-entry
-        # SIZE shrink. NEW cross-symbol data dep at the SIZING layer (every prior
-        # cross-symbol lever acts on the trend/bear/vol axis; this acts on the cross-symbol
-        # BOUNCE-COHERENCE axis x persistent-downtrend). Mechanism: a broad dead-cat bounce
-        # in a PERSISTENT downtrend lifts BTC/ETH/SOL together for a few bars; the long
-        # entries taken on those bounce bars are crash's losing trades (PF=1.0 source).
-        # Exp1 (this session) tested bounce-breadth at the ADMISSION gate -> byte-identical
-        # (crash bounce-longs enter high-conviction -> pass any tightened threshold). So the
-        # lever is SIZING: shrink the first-bar SIZE of high-conviction bounce-long entries
-        # so their stop-out LOSSES are smaller -> crash PF>1 -> crash Sharpe>0 (crash score
-        # == bare Sharpe, so +Sharpe is +score 1:1, the dominant mean lever). The bounce-
-        # breadth x downtrend gate isolates crash's bounce longs: bull/rally/sideways all
-        # have down_persist < ONSET -> _bounce_downtrend_gate ~0 -> no shrink -> byte-
-        # identical. Distinct from avg-vol SIZE cap (broad vol-ELEVATED bars; a slow drift-up
-        # bounce on flat vol is orthogonal) and from vd_ct_shrink (vol-DECLINE). Composes
-        # multiplicatively with the existing shrink stack. Shrink-only (caps at 1.0); long-
-        # side only (bear/short entries byte-identical -> crash winning trend-aligned shorts
-        # SPARED). Continuous tanh (no boundary); fast-saturating /0.10 near-constant
-        # noise-free per the validated ct-gate lesson. New control flow: long entry size
-        # reads portfolio bounce-breadth x portfolio down-persist.
-        _port_bounce_breadth = (sum(_port_bounce_vals) / len(_port_bounce_vals)) if _port_bounce_vals else 0.0
-        _bounce_downtrend_gate = max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
-        _port_bounce_size_shrink = 1.0 - PORT_BOUNCE_SIZE_MAX_SHRINK * _bounce_downtrend_gate * max(0.0, min(1.0, np.tanh((_port_bounce_breadth - PORT_BOUNCE_BREADTH_ONSET) / PORT_BOUNCE_BREADTH_SCALE)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -2284,7 +2232,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _port_bounce_size_shrink
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
