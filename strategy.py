@@ -2910,6 +2910,28 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
+                # Exp1 (architectural, indep): BROAD-VOL time-pressure ramp width
+                # composition. The per-symbol vol_ratio ramp above (Exp2/branch 296762d8)
+                # widens the de-risk graduation when THIS symbol's own vol is elevated. The
+                # portfolio avg-vol cap (ccca5148 keep) proved the AVERAGE of the 3 symbols'
+                # vol_ratios is a CLEAN broad-market-vol signal (high only when ALL symbols
+                # vol-elevated together = synchronized regime-transition vol; byte-identical
+                # for sideways where avg-vol is low). Composition: add a SECOND additive term
+                # to the ramp width gated on the SAME _port_vol_ratio_avg / onset 0.95, so
+                # the ramp widens FURTHER when the WHOLE MARKET is volatile (not just this
+                # symbol). Mechanism: in a broad-vol regime (crash, bull sharp pullbacks where
+                # all 3 symbols vol-elevated together) the real per-bar price move is large
+                # ACROSS THE BOARD, so the trend-aligned winner de-risk should be even more
+                # gradual (wider ramp) to ride the broad move without a premature first-
+                # time-pressure-bar cut. Distinct from _vol_hold_ext (LEVEL offset) and the
+                # per-symbol ramp width (own vol): this is a BROAD-MARKET width term. New
+                # cross-component data dep: time-pressure ramp shape reads the portfolio
+                # avg-vol aggregation (previously only the SIZE cap read it). Byte-identical
+                # when _port_vol_ratio_avg < PORT_VOL_AVG_ONSET (sideways/rally/mixed calm
+                # grind; the per-symbol term still handles single-symbol vol). Direction-
+                # agnostic (no regime label): broad-vol widens the de-risk graduation. Max
+                # +3.0 bars additional width at deep broad-vol (total ramp up to ~11.0).
+                _tp_ramp_w = _tp_ramp_w + 3.0 * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
