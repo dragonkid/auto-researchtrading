@@ -4242,7 +4242,39 @@ class Strategy:
                     _hold_dur_profile = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile
+                    # Exp3 (architectural, indep, this session): LOSS-STREAK emission
+                    # trim attenuation. NEW cross-component data dep at the emission
+                    # throttle: the trim MAGNITUDE reads the portfolio loss streak
+                    # (self._loss_streak, the consecutive-loss counter currently used
+                    # only at admission tightening + ct size shrink). After a loss
+                    # streak the strategy is OUT-OF-SYNC (recent exits were losers) ->
+                    # the dead-capital trim signal is less reliable: a modest-PnL
+                    # choppy position being trimmed in a losing streak may be a rally
+                    # pullback entry that would RECOVER (rally's longest loss streak ~4
+                    # clusters in pullback sequences where the trim cuts recovering
+                    # positions), not genuine dead capital. Attenuate the trim
+                    # magnitude by up to 30pct at a deep loss streak so positions are
+                    # held through the out-of-sync window to recover. After wins
+                    # (loss_streak=0) full trim (in-sync, realize dead capital fast).
+                    # Reduction-only-safe: attenuating a reduction never extends the
+                    # position past the raw target (the trim_mult is bounded >=1 by
+                    # construction since the attenuation subtracts from the AMPLIFIER
+                    # term, and the new_target clamp keeps it same-sign past full-close).
+                    # Distinct from the prior portfolio-win-streak entry boost (byte-
+                    # identical inert via grid-absorption): the emission trim AMPLIFIES
+                    # a reduction that already passes the grid -> NOT grid-absorbed
+                    # (the trim moves the target WITHIN the grid cell, affecting the
+                    # realized position value). Continuous tanh on (streak-1)/2 (same
+                    # scale as _streak_ct_admit), fast-saturating, noise-immune integer
+                    # counter (no AR(1) flip). Byte-identical when _loss_streak<=1
+                    # (streak_atten~0 -> no attenuation). Direction-agnostic; no regime
+                    # label. The existing _winner_fade (spares clear winners) +
+                    # _strong_trend_fade (spares strong-trend) already protect crash
+                    # winning shorts + bull/rally trend-aligned longs, so the loss-
+                    # streak attenuation acts only on the residual modest-PnL
+                    # dead-capital trim population.
+                    _streak_trim_atten = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile * (1.0 - 0.30 * _streak_trim_atten)
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
