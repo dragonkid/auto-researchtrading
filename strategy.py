@@ -3638,15 +3638,7 @@ class Strategy:
                     # byte-identical): this is a broad-vol-gated DE-RISK FLOOR raise, a
                     # new exit-graduation lever on the DD axis.
                     _broad_vol_floor_gate = 1.0 if current_pos > 0 else 0.0
-                    # branch step14: lower the floor-raise onset 1.15->1.05 to engage rally's
-                    # brief pullback spikes (rally DD 5.55pct just past the 5pct knee -> dd_gate
-                    # ~0.57; trimming rally longs at the pullback peak could drop DD below 5pct
-                    # -> dd_gate 0.95 -> big rally score gain) + more bull pullback bars. The
-                    # floor-raise is GENTLE (0.06) so the lower onset may not hit the bull
-                    # stability wall that step4's WIDTH-onset-lowering hit (width at 0.80
-                    # disrupted exit timing broadly). Floor-raise only nudges the graduation
-                    # start. Byte-identical for shorts + avg-vol<1.05.
-                    _broad_vol_floor = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - 1.05) / PORT_VOL_AVG_SCALE)))
+                    _broad_vol_floor = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - 1.15) / PORT_VOL_AVG_SCALE)))
                     _de_floor += 0.06 * _broad_vol_floor_gate * _broad_vol_floor * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
