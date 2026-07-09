@@ -2665,6 +2665,36 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                # branch step3 (architectural): DEEP-DD FAST-FALL giveback tightening boost.
+                # The existing _pp_tighten above reads the SYMMETRIC span-3 _equity_ema, which
+                # LAGS fast deep drops (prior session line-609 note: span-3 lags DD-detection ~1
+                # bar; the giveback "tolerates span-3 lag because it gates a SLOW exit-timing
+                # decision"). But bull's DD 12.88% forms during a FAST deep correction where the
+                # span-3 EMA UNDERSHOOTS the actual DD -> the tighten undershoots -> winners
+                # ride the deep pullback longer -> DD accumulates past what the saturated shallow
+                # tighten catches (it saturates at SCALE*LEVERAGE_K=0.048 fraction = 4.8pct equity
+                # drop at LK=4, so at bull's 12.88pct it is maxed at the 0.50 magnitude). The
+                # top-level _port_dd_atten (line 639) uses the ASYMMETRIC FAST-FALL
+                # _equity_ema_atten (alpha=1.0 on fall, ZERO lag) -- the breaker's validated
+                # fast-DD signal. Route a SECOND, DEEP-onset giveback tightening through the
+                # fast-fall signal so the giveback tightens FURTHER during the deep-DD phase
+                # (onset ~3pct price move = 12pct equity DD at LK=4, bull's DD range) that the
+                # shallow span-3 tighten cannot reach (saturated) and lags. NEW cross-component
+                # data dep: giveback tolerance now reads (span-3 level x fast-fall deep-DD) jointly.
+                # Leverage-coupled onset/scale (0.03*LEVERAGE_K, 0.01*LEVERAGE_K) keep activation
+                # price-move-invariant (same discipline as PORT_DD_GIVEBACK_SCALE). Byte-identical
+                # when _port_dd_frac_fast below the deep onset: rally (5.55pct DD = 0.055 fraction
+                # at LK=4 < onset 0.12) / mixed 4.99pct / sideways 4.29pct all byte-identical. Crash
+                # (17.8pct > onset): fires, but crash Sharpe<=0 so score==bare Sharpe (giveback
+                # timing is a Sharpe lever there, not DD) and crash is mostly losers (pp_pressure
+                # fires on winners giving back, rare for crash). Targets bull DD. Max boost 0.15
+                # ADDITIVE on the saturated 0.50 shallow (total 0.65, below the rally-stability-
+                # cliff; rally byte-identical so the cliff is moot). Fast-fall = ZERO-LAG so the
+                # boost fires the SAME bar deep DD arrives; _equity_ema_atten slow-rise releases
+                # smoothly as DD recovers (no exit-timing noise from a stale fast signal).
+                _port_dd_frac_fast = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
+                _pp_deep_boost = 0.15 * max(0.0, np.tanh((_port_dd_frac_fast - 0.03 * LEVERAGE_K) / (0.01 * LEVERAGE_K)))
+                _pp_tighten = max(0.0, _pp_tighten - _pp_deep_boost)
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
