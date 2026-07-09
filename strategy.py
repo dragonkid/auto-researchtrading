@@ -2948,7 +2948,19 @@ class Strategy:
                 # depth. Byte-identical for shorts (crash trend shorts keep per-symbol ramp
                 # only, as in baseline).
                 _broad_vol_w_gate = 1.0 if current_pos > 0 else 0.0
-                _tp_ramp_w = _tp_ramp_w + 5.0 * _broad_vol_w_gate * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
+                # branch step4: dedicated LOWER onset for the width term (0.80 vs 0.95 size
+                # cap onset). Step3 magnitude saturated at +0.000484; engaging MORE bull bars
+                # is the alternate axis. Bull's synchronized 2021 pullbacks have broad avg-vol
+                # that may sit ~0.85-1.1 (moderate, below the 0.95 size-cap onset -> currently
+                # the width term fires only on the deepest broad-vol bars). A dedicated 0.80
+                # onset engages the moderate broad-vol pullback bars too -> more total
+                # widening across bull's pullback sequence -> higher Sharpe. Sideways has
+                # the LOWEST avg-vol of all regimes (calm chop) -> stays byte-identical well
+                # below 0.80. Rally/mixed calm grind also below 0.80. Separate onset so the
+                # SIZE cap (0.95) is NOT changed (byte-identical size-cap behavior preserved).
+                _BROAD_VOL_W_ONSET = 0.80
+                _broad_vol_w = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - _BROAD_VOL_W_ONSET) / PORT_VOL_AVG_SCALE)))
+                _tp_ramp_w = _tp_ramp_w + 5.0 * _broad_vol_w_gate * _broad_vol_w
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
