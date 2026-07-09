@@ -3158,43 +3158,6 @@ class Strategy:
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
-                # Exp4 (architectural, this session): CROSS-SYMBOL LEADER SHORT-TERM ROLLOVER
-                # exit pressure (7th soft source). NEW cross-symbol x short-term-timescale data
-                # dep on the exit subsystem: the existing cross-symbol BTC signals feed SIZING
-                # (96-bar _btc_trend -> _xasset_bull/bear) or volume (6/18-bar _btc_vol_rise,
-                # 12-bar _btc_dvp); NONE feed a short-term BTC PRICE exit signal. BTC is the
-                # market leader and leads regime transitions: in bull-2021's sharp corrections
-                # BTC rolls over FIRST (short-term price weakens) while alts lag, then alts
-                # follow down -> the alt trend-aligned long gives back its gain into the
-                # leader-led drop (a documented bull-DD source). An EARLY exit signal keyed on
-                # BTC's OWN short-term rollover harvests the alt long BEFORE the alt drops ->
-                # cuts bull DD (the high-leverage +0.003 axis: bull DD 12.88pct -> dd_gate
-                # 0.017 crushes bull score; cutting DD toward 5pct = bull score +0.015). The 96-
-                # bar _btc_trend LAGS these corrections (stays positive through sharp pullbacks
-                # -> the _xasset shrink does not fire early enough); a 12-bar OLS BTC HL2 slope
-                # catches the short-term rollover an order of magnitude earlier. Distinct from
-                # _sl_slope_pressure (the OWN-symbol slope-against -- this is the LEADER's
-                # slope, a cross-symbol early-warning), and from the vol-expansion/volume-
-                # climax terms (price-slope not volume). Profit-side only (harvest winners
-                # before the leader-led drop; a losing alt long already exits via slope/stop).
-                # LONG-only (alt shorts in a BTC uptrend are not leader-rollover-exited; the
-                # symmetric short case is crash where BTC leads DOWN first then alts follow --
-                # but crash shorts are WINNERS that should NOT be exited on a BTC bounce-up, so
-                # long-only confine). Smooth OLS slope (12-bar HL2, ~1/sqrt(12) noise
-                # attenuation); continuous tanh activation; no boundary. Fires in the MAX
-                # fusion (a 7th soft source) so it DOMINATES only when the leader's short-term
-                # rollover is sharper than the alt's own slope/pp terms -- on the bull
-                # correction bar where the alt has not yet dropped (own slope still up, pp not
-                # triggered), the BTC-rollover term is the unique dominant exit -> early
-                # harvest. Byte-identical for shorts (long gate 0), BTC-absent, and when BTC
-                # 12-bar slope is not strongly negative (calm/rally grind).
-                _br_pressure = 0.0
-                if current_pos > 0 and "BTC" in bar_data and len(bar_data["BTC"].history) > 14:
-                    _br_hl2 = (bar_data["BTC"].history["high"].values[-12:] + bar_data["BTC"].history["low"].values[-12:]) / 2.0
-                    _br_slope = _fast_slope(np.log(_br_hl2))
-                    # activate when BTC 12-bar slope strongly negative (rolling over); /0.0006 onset ~ -0.06pct/bar, saturate ~-0.18pct/bar
-                    _br_pressure = 0.60 * max(0.0, min(1.0, np.tanh((-_br_slope - 0.0006) / 0.0006))) * max(0.0, _pnl_scale)
-                _w_br = 1.0  # profit-side (harvest winners before leader-led drop)
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -3209,7 +3172,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
-                    _w_br * _br_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
