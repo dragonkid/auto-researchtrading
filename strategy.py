@@ -3568,7 +3568,36 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp1 (architectural, indep): VOL-REGIME-STABILITY gate on the de-risk
+                        # convex cushion. NEW cross-component data dep: the cushion strength
+                        # (_dr_k exponent) now reads the vol-of-vol regime-stability signal
+                        # (_vol_expansion = vol_6/vol_18, already computed at line ~2984 for
+                        # _ve_pressure). The cushion holds near full size through moderate
+                        # mid-range exit pressure (k>1 -> 1 - x^k flatter near x=0), treating
+                        # that pressure as transient pullback noise to ride. But that is only
+                        # SAFE when the vol regime is STABLE: a steady vol regime's mid-range
+                        # pressure is most often pullback noise (regime intact -> cushion
+                        # correct). When the vol regime is EXPANDING (vol_6 >> vol_18 = the
+                        # regime is transitioning, _vol_expansion > 1.3), mid-range pressure
+                        # is more likely a genuine reversal starting, NOT noise -> the
+                        # cushion should WEAKEN (k -> 1, linear fast cut) so the position
+                        # de-risks through the regime-shift pressure instead of riding it.
+                        # Crash-safe by construction: weakening the cushion = FASTER exit =
+                        # SMALLER position through the pressure (the only safe direction per
+                        # the size-wall finding). Direction-agnostic general principle (no
+                        # regime label): the giveback-riding cushion is earned by a STABLE
+                        # vol regime; an expanding-vol regime is a regime-shift signal that
+                        # should cut the cushion. Continuous ramp: full cushion when
+                        # _vol_expansion <= 1.0 (calm/contracting), fading to 0 by
+                        # _vol_expansion >= 1.6 (sharply expanding). The gate multiplies the
+                        # cushion's k-amp, so loss/ct/slope-weak positions (cushion already 0
+                        # -> k=1) are byte-identical; only trend-aligned+profit+slope-conf
+                        # winners in a stable vol regime earn the full cushion. Uses the
+                        # SAME _vol_expansion the exit subsystem already reads (no new price
+                        # computation, just a new control-flow dependency at the de-risk
+                        # decision). Smooth, no decision boundary.
+                        _dr_vol_stable = max(0.0, min(1.0, 1.0 - max(0.0, (_vol_expansion - 1.0) / 0.6)))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vol_stable  # 1.0 loss/ct/slope-weak/vol-unstable, up to ~1.6 trend-aligned+profit+slope-conf+stable-vol
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
