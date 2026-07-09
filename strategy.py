@@ -395,6 +395,24 @@ PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
 PORT_VOL_SPIKE_ONSET = 1.30   # vol_ratio above which cap engages (calm<1.0, chop>1.2; 1.3 = elevated)
 PORT_VOL_SPIKE_SCALE = 0.30
 PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
+# Exp2 (architectural, indep): PORTFOLIO AVERAGE-VOL leverage cap. A NEW cross-symbol
+# aggregation DISTINCT from the existing MAX-aggregation _port_vol_spike_cap. MAX fires
+# when ANY single symbol vol-spikes (catches idiosyncratic single-symbol vol: crash BTC,
+# bull SOL); AVERAGE fires when ALL symbols are vol-elevated TOGETHER (a synchronized
+# broad-market vol expansion = regime transition / event vol that precedes portfolio
+# drawdowns: the 2021-11 crash onset, Luna/FTX). AVERAGE != MAX: average is high ONLY when
+# the broad market is uniformly vol-elevated (a portfolio-level risk-off), low when vol
+# is concentrated in one symbol (idiosyncratic, often a trend opportunity not a risk).
+# Composes multiplicatively with _port_vol_spike_cap (independent aggregation axes: max
+# catches single-symbol spikes, avg catches synchronized broad vol). Onset 1.15 (lower
+# than MAX's 1.30: the AVERAGE across 3 symbols is naturally lower than the MAX, and a
+# synchronized 1.15 avg = all three mildly elevated = a real broad-vol state). Max 15%
+# shrink (smaller than MAX's 20% -- the broad-vol state is a context signal, the
+# single-symbol spike is the sharper risk). Byte-identical when avg vol_ratio < 1.15
+# (calm grind rally/sideways, and trend regimes where vol is concentrated not broad).
+PORT_VOL_AVG_ONSET = 1.15
+PORT_VOL_AVG_SCALE = 0.20
+PORT_VOL_AVG_MAX_SHRINK = 0.15
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -756,6 +774,18 @@ class Strategy:
         _port_vol_ratio_max = max(_port_vol_ratio_vals) if _port_vol_ratio_vals else 0.0
         _port_vol_spike_cap = 1.0 - PORT_VOL_SPIKE_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_max - PORT_VOL_SPIKE_ONSET) / PORT_VOL_SPIKE_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_spike_cap
+        # Exp2 (architectural, indep): AVERAGE-aggregation vol SIZE cap (composes with
+        # the MAX cap above). NEW cross-symbol aggregation: the AVERAGE of the 3 symbols'
+        # vol_ratios (the MAX is already computed above). Average is high ONLY when ALL
+        # symbols are vol-elevated together (synchronized broad-market vol = regime-
+        # transition/event vol that precedes portfolio drawdowns); low when vol is
+        # concentrated in one symbol (idiosyncratic single-symbol spike, already caught
+        # by the MAX cap above). Distinct data dep: the average vs max of the same per-
+        # symbol vol_ratios. Byte-identical when avg vol_ratio < ONSET (calm grind, or
+        # trend regimes where vol is concentrated not broad). Max 15% shrink.
+        _port_vol_ratio_avg = (sum(_port_vol_ratio_vals) / len(_port_vol_ratio_vals)) if _port_vol_ratio_vals else 0.0
+        _port_vol_avg_cap = 1.0 - PORT_VOL_AVG_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
+        _port_weak_cap = _port_weak_cap * _port_vol_avg_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
