@@ -2885,6 +2885,22 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # branch step5: BROAD-VOL max_hold LEVEL extension for longs (companion to
+                # the step3 width term). The per-symbol _vol_hold_ext above raises the
+                # LEVEL when THIS symbol's own vol is high. Adding a broad-market avg-vol
+                # LEVEL term (gated long-only, 0.95 onset -- the validated deep-broad-vol)
+                # raises max_hold FURTHER when ALL symbols are volatile, so a long holds
+                # through the synchronized pullback longer before time-pressure begins.
+                # Distinct from the WIDTH term (controls gradualness ONCE pressure starts);
+                # this controls WHEN pressure starts (the level). Risk: longer hold through
+                # pullback could raise bull DD -- but if the post-pullback uptrend resumes
+                # (bull's pattern), the longer hold CAPTURES the resumption -> Sharpe up
+                # faster than DD. Long-only (crash shorts face the bounce-wall: holding
+                # longer through broad-vol = riding bounces = worse). Max +10pct level at
+                # deep broad-vol. Byte-identical for shorts + when avg-vol < 0.95.
+                _broad_vol_level_gate = 1.0 if current_pos > 0 else 0.0
+                _broad_vol_level = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
+                _max_hold *= 1.0 + 0.10 * _broad_vol_level_gate * _broad_vol_level
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
