@@ -2245,7 +2245,39 @@ class Strategy:
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
+                    # Exp3 (this session, architectural indep): BEAR-SIDE trend-aligned x
+                    # down-persist x DD-headroom entry-frac BOOST -- the MIRROR of the
+                    # validated bull-side boost (line ~2234) which was NEVER extended to the
+                    # bear side. The bull boost gates on _weak_persist (mixed's sustained
+                    # weak trend) x _frac_trend_align (bull long aligned with uptrend) x
+                    # _frac_dd_headroom (at peak equity). The bear-side counterpart gates on
+                    # _down_persist (crash's persistent downtrend, ~0.9 vs bull ~0.3 = the
+                    # validated crash/bear separator from the fe6acd4d keep) x BEAR trend-
+                    # alignment (short aligned with downtrend = ret_vlong<0) x DD-headroom.
+                    # Mechanism: crash trend-aligned shorts (ret_vlong<0, bear entry aligned
+                    # with the multi-month downtrend) are 100pct WR winners (per the validated
+                    # throttle comments); a larger first-bar commitment raises APY at PRESERVED
+                    # Sharpe (winners are scale-invariant: bigger winners raise both APY and
+                    # the win/loss PnL ratio -> PF>1 -> crash Sharpe>0, the dominant mean lever
+                    # since crash score == bare Sharpe). DD-headroom gate spares rally pullback
+                    # shorts (rally pullbacks DRIVE portfolio DD -> during pullback entries
+                    # dd_frac>0 -> _port_dd_atten<1 -> boost gated off -> rally short size
+                    # unchanged -> rally DD stays 5.55pct). Crash trend-aligned shorts mostly
+                    # enter at peak (crash low DD 17.81pct is from bounce LONGS not shorts, but
+                    # portfolio DD from the OTHER symbols' longs is what matters here -> crash
+                    # shorts enter when the portfolio is near peak after a bounce->down leg ->
+                    # dd_headroom ~1). Sideways (weak ret_vlong -> trend-align ~0) byte-
+                    # identical. The boost is a NEW multiplier on _entry_frac_dyn (bear side
+                    # had NO entry-frac boost; bull side has one). Gated on fast-saturating
+                    # /0.02 ret_vlong (near-constant noise-free per the validated ct-gate lesson)
+                    # x down_persist (already-noise-robust duration count) x the validated
+                    # _port_dd_frac EMA-smoothed signal. Direction-agnostic principle (broad-
+                    # market downtrend confirmation raises crash short entry quality) mirrors
+                    # the bull boost's uptrend principle. New cross-component data dep: bear
+                    # entry-frac depends on down_persist x trend-alignment x portfolio DD-headroom.
+                    _frac_trend_align_bear = max(0.0, np.tanh(-ret_vlong / 0.02))  # bear short aligned with downtrend
+                    _entry_frac_boost_bear = 1.0 + 0.15 * _frac_trend_align_bear * _down_persist * _frac_dd_headroom
+                    target = -size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bear) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
