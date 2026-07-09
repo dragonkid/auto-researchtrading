@@ -2948,7 +2948,7 @@ class Strategy:
                 # depth. Byte-identical for shorts (crash trend shorts keep per-symbol ramp
                 # only, as in baseline).
                 _broad_vol_w_gate = 1.0 if current_pos > 0 else 0.0
-                _tp_ramp_w = _tp_ramp_w + 3.0 * _broad_vol_w_gate * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
+                _tp_ramp_w = _tp_ramp_w + 5.0 * _broad_vol_w_gate * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
