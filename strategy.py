@@ -76,6 +76,33 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
+# Exp3 (architectural, indep): WEAK-DOWNTREND LONG-LOSER slope-against pressure boost.
+# Prior-session UNTESTED lead (a): mixed's DD (4.99pct, just under the 5pct knee) is from
+# a SHARP ADVERSE LEG on the entry/stop side (cushion proven NOT the source), and lead (b):
+# the |ret_vlong|>0.03 separator is clean for SIDEWAYS (Exp4 confirmed sideways byte-
+# identical) but leaks to RALLY at the per-symbol entry-frac path (Exp1 this session
+# confirmed the SIGNED ret_vlong<-0.03 deep-downtrend gate ALSO leaks to rally on the
+# entry-frac path -- deep rally pullbacks push ret_vlong negative). The untested axis is
+# EXIT-TIMING (lead b: admission/exit-timing, NOT entry-frac), and the SIGNED WEAK-
+# downtrend ret_vlong<-0.01 (NOT the deep -0.03) is the clean mixed/sideways separator:
+# mixed's down-phase wrong-side LONGS sit in a persistent weak downtrend (ret_vlong ~-0.01
+# to -0.02 for weeks during the chop/down legs) while sideways oscillates around 0
+# (ret_vlong ~0, rarely <-0.01 sustained) -> the SIGNED weak gate fires for mixed's wrong-
+# side longs, byte-identical for sideways. LONG-ONLY (current_pos>0): crash/rally trend
+# SHORTS (current_pos<0) are byte-identical (the gate is long-only, structural long/short
+# risk asymmetry NOT a regime label). LOSS-ONLY (pos_pnl<0): mixed's WINNING longs in the
+# rally phases are byte-identical (gate 0 in profit). Mechanism: a long losing in a weak
+# downtrend is the wrong-side mixed adverse leg -> lower the slope-against activation
+# threshold so the slope-against exit fires EARLIER (cut the wrong-side long before it
+# bleeds to the stop). DISTINCT from the walled trend-aligned slope-pressure attenuation
+# (line ~2630: that ATTENUATED slope-against for trend-aligned winners; this AMPLIFIES
+# slope-against for ct LOSERS in a downtrend, the opposite direction+population). New
+# cross-component data dep: slope-against threshold reads (position-direction x
+# loss-state x weak-downtrend) conjunction. Continuous tanh, no boundary. Byte-identical
+# when not (long AND losing AND weak-downtrend).
+WDT_LOSS_ONSET = 0.01    # signed weak-downtrend onset (ret_vlong < -0.01)
+WDT_LOSS_SCALE = 0.015   # ramp width over which the downtrend gate saturates
+WDT_LOSS_THRESH_BOOST = 0.35  # max fractional LOWERING of the slope-against activation threshold (-> fires earlier)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -2626,7 +2653,16 @@ class Strategy:
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp3: WEAK-DOWNTREND LONG-LOSER slope-against threshold boost. Lower the
+                # slope-against activation threshold (-> fires earlier) for a LONG position
+                # that is LOSING in a SIGNED weak multi-day downtrend (mixed's wrong-side
+                # longs). Long-only (gate 0 for shorts), loss-only (gate 0 in profit), weak-
+                # downtrend-signed (ret_vlong<-0.01, clean vs sideways~0). Byte-identical
+                # otherwise. Distinct from the removed trend-aligned slope-ATTENUATION (that
+                # protected trend-aligned WINNERS; this cuts ct LOSERS in a downtrend).
+                _wdt_loss_gate = (1.0 if current_pos > 0 else 0.0) * max(0.0, min(1.0, -pos_pnl / abs(STOP_LOSS_PCT))) * max(0.0, min(1.0, np.tanh((-ret_vlong - WDT_LOSS_ONSET) / WDT_LOSS_SCALE)))
+                _slope_thresh_eff = _slope_thresh * (1.0 - WDT_LOSS_THRESH_BOOST * _wdt_loss_gate)
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh_eff) / (_slope_band * _slope_thresh_eff)))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
