@@ -3480,37 +3480,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Exp2 (architectural, indep): TREND-ALIGNED LOSER partial de-risk floor
-                    # relaxation. The above relaxation (line ~3471) is PROFIT-side only
-                    # (_ta_de_profit=max(0,_pnl_scale) -> 0 for losers): a trend-aligned
-                    # LOSER keeps the near-binary 0.85 floor and fast-exits on mid-range
-                    # loss pressure. But a trend-aligned loser is structurally DIFFERENT
-                    # from a counter-trend loser: in a confirmed multi-day uptrend a
-                    # bull pullback-long that dips negative is more likely a PULLBACK
-                    # that recovers than a genuine reversal (the trend is intact); same
-                    # for a crash trend-aligned SHORT dipping negative during a dead-cat
-                    # bounce (the downtrend is intact, the short recovers when the bounce
-                    # ends). Fast-exiting these cuts RECOVERERS -> lower WR -> lower Sharpe
-                    # in bull/crash (bull PF 0.7 = losers too big, but also recoverers cut).
-                    # Give trend-aligned LOSERS a PARTIAL relaxation (max 0.06, smaller
-                    # than winners' 0.10 -- losers still de-risk faster than winners, but
-                    # not near-binary) so they de-risk gradually through the pullback
-                    # instead of fast-exiting, letting recoverers survive. Uses the
-                    # MULTI-DAY ret_vlong*pos_dir (the validated crash-safe trend-align:
-                    # ret_vlong stays signed through bounces for trend-aligned shorts,
-                    # so the gate does NOT flip during crash bounces -- distinct from
-                    # ret_long which the prior session found flips on sustained bounces).
-                    # Crash bounce LONGS are ct (ret_vlong*pos_dir<0) -> no relaxation ->
-                    # keep fast 0.85 floor (cut ct losers fast). Sideways mean-reverters
-                    # have ret_vlong~0 -> gate~0 -> byte-identical fast floor. Loss-side
-                    # only (gated on -_pnl_scale>0 -> fires for losers, 0 for winners who
-                    # already got the profit-side relaxation above). Smooth tanh, no
-                    # boundary. General principle (no regime label): a loser aligned with
-                    # a confirmed multi-day trend is more likely a pullback than a
-                    # reversal -> de-risk gradually, do not fast-exit.
-                    _ta_de_align_vlong = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
-                    _ta_de_loss = max(0.0, -_pnl_scale)
-                    _de_floor -= 0.08 * _ta_de_align_vlong * _ta_de_loss
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
