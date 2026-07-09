@@ -716,6 +716,19 @@ class Strategy:
                 _p_target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _p_baseline_vol
                 _port_vol_ratio_vals.append(_p_rv_short / max(_p_target_vol_dyn, 1e-6))
         _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
+        # Exp5 (architectural, indep): portfolio AVERAGE up-persist = 1 - avg down_persist.
+        # High when ALL symbols are in a persistent uptrend together (bull broad-bull);
+        # moderate when symbols diverge (sideways/mixed one-symbol-at-a-time uptrend legs);
+        # low in crash (persistent downtrend). The cross-symbol AVERAGE requires BROAD
+        # simultaneous uptrend -- the validated avg-vs-max separator pattern (same as
+        # _port_down_persist avg vs max). NOTE: the avg-up-persist gate leaks on crash's
+        # SYNCHRONIZED multi-week bounce phases (all symbols bounce together -> down_persist
+        # drops for all -> avg up_persist rises) -- this leak is EXPLOITED here (admission
+        # tightening on crash's synchronized bounces filters dead-cat-bounce long entries
+        # -> fewer losing bounce longs -> helps crash, distinct from Exp3's SIZE shrink
+        # which shrunk the WINNING bounce-catchers and deepened crash DD). Uses the already-
+        # computed _port_down_persist (no new state). In [0, 1].
+        _port_up_persist_avg = 1.0 - _port_down_persist
         # Exp1: portfolio-level deep-bear size cap (AVERAGE aggregation). Continuous tanh
         # ramp above ONSET; shrink-only (caps at 1.0; never amplifies size).
         _port_bear_cap = 1.0 - PORT_DOWN_PERSIST_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
@@ -1106,6 +1119,27 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp5 (architectural, indep): portfolio BROAD-UPTREND AVERAGE admission
+            # tightener. NEW cross-component data dep: admission threshold now reads the
+            # portfolio AVERAGE up-persist (all-symbols-up-together = broad bull). The
+            # existing tighteners fire on chop (weak avg, sideways) and deep-bear (max,
+            # crash); this fires on the ORTHOGONAL broad-uptrend axis. Mechanism: in a
+            # persistent BROAD uptrend, LATE-bull marginal entries (the pullback entries
+            # that become the stop/soft-pressure losers driving bull's 12.88pct DD) are
+            # more likely noise riding the top of an extended trend -> tighten admission
+            # 10pct so only higher-conviction entries pass -> fewer marginal late-bull
+            # losers -> lower bull DD (admission-side, crash-safe). CRASH LEAK EXPLOITED:
+            # the avg-up-persist gate leaks on crash's synchronized multi-week bounces (all
+            # symbols bounce together -> avg up_persist rises) -> tightens dead-cat-bounce
+            # LONG admission in crash -> fewer LOSING bounce longs -> HELPS crash (distinct
+            # from Exp3's SIZE shrink which shrank the WINNING bounce-catchers and deepened
+            # crash DD; admission filters the LOSING bounce longs before they enter). The
+            # admission axis cuts COUNT of marginal entries, not size of winners.
+            # Sideways/mixed: avg up_persist moderate (mixed directions) -> gate mostly off
+            # -> byte-identical-ish. Continuous tanh, no decision boundary. Max 10pct
+            # tighten. Composes multiplicatively with the existing tighteners.
+            _port_up_admit_tighten = 1.0 + 0.10 * max(0.0, min(1.0, np.tanh((_port_up_persist_avg - 0.55) / 0.15)))
+            _strong_min = _strong_min * _port_up_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
