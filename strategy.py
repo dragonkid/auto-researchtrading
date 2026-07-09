@@ -3382,33 +3382,6 @@ class Strategy:
                 # identical exit behavior via de-risk ramp (de_risk=0 at pressure=thresh).
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif target != 0 and bars_held < 2 and _pnl_scale < -0.30:
-                    # Exp5 (architectural, indep): FRESH-ENTRY MODERATE-LOSER graduated
-                    # de-risk for bars 0-1. The fresh-entry exemption (bars_held>=2 below)
-                    # is load-bearing for NOISE protection (keeps bars 0-1 binary-exit-only
-                    # so scale-in micro-wobble is not noise-killed). But a fresh entry that
-                    # goes MODERATELY adverse (pos_pnl between -0.3*stop and the SL band, too
-                    # shallow for the SL binary path but clearly adverse) in bars 0-1 sits
-                    # at FULL entry size through the early adverse move -> SIZE-WALL: a fresh
-                    # crash short admitted at a bounce top (bar 0-1 in the bounce) is full
-                    # size through the early bounce -> bigger loss. This is the SAFE
-                    # DIRECTION (smaller at the bounce, per the size-wall finding this
-                    # session): apply a HIGH-FLOOR (0.90, near-binary but slightly graduated)
-                    # de-risk ONLY for fresh entries that are moderately-to-deeply losing
-                    # (_pnl_scale < -0.30, past scale-in noise). A mildly-losing fresh
-                    # entry (_pnl_scale in [-0.30, 0]) keeps the full exemption (byte-
-                    # identical -- likely scale-in noise, not a bounce). A deeply-losing
-                    # fresh entry hits the SL binary path (already handled). The high 0.90
-                    # floor keeps the ramp near-binary (minimal scale-in conflict + minimal
-                    # stability risk: the floor only engages past -0.3*stop, a deep move
-                    # less likely to flip under AR(1) noise). Crash-safe (smaller at bounce).
-                    _fe_floor = 0.90
-                    if _exit_pressure >= _fe_floor * _exit_thresh:
-                        _fe_x = (_exit_pressure - _fe_floor * _exit_thresh) / ((1.0 - _fe_floor) * _exit_thresh)
-                        _fe_x = max(0.0, min(1.0, _fe_x))
-                        # near-linear fast cut (no convex cushion for fresh losers)
-                        _fe_de_risk = 1.0 - _fe_x
-                        target = target * _fe_de_risk
                 elif target != 0 and bars_held >= 2:
                     # Architectural: PnL-conditioned partial-exit floor (replaces
                     # vol-conditioning). New cross-subsystem data dep at exit
