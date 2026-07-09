@@ -3599,32 +3599,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # branch step5: TREND-ALIGNED-LOSS convex cushion. The convex
-                        # cushion above (k>1, hold near-full through mid-range pressure
-                        # before the sharp cut) is PROFIT-side only (max(0,_pnl_scale)=0
-                        # for losers -> k=1 -> linear fast cut). Step3 relaxed the de-risk
-                        # FLOOR (lower bound) for trend-aligned losers; this extends the
-                        # convex CUSHION (ramp SHAPE) to the same population: a trend-
-                        # aligned loser with a STILL-CONFIRMING near-term slope gets a
-                        # slightly convex ramp (k slightly >1) so it holds near-full
-                        # through mid-range loss-pressure noise (a transient pullback dip)
-                        # before cutting -- letting the pullback recover instead of
-                        # de-risking linearly 1:1 with the noise. CRITICAL crash-safety:
-                        # the slope-conf gate (_dr_slope_conf) means the cushion turns OFF
-                        # (k->1, linear fast cut) the moment the near-term slope weakens
-                        # (a real reversal) -- distinct from step4's exit_thresh RAISE
-                        # which kept the cushion on past the reversal -> crash -999. Here
-                        # the full-exit TRIGGER is unchanged (_de_risk=0 at pressure=thresh
-                        # regardless of k); only the mid-range curve shape changes. Uses
-                        # multi-day ret_vlong*pos_dir (crash-safe through bounces) AND the
-                        # 3-window _dr_slope_conf (only fires while ALL windows confirm).
-                        # Loss-side only (gated on -_pnl_scale>0); smaller AMP (0.5x the
-                        # profit-side DERISK_CONVEX_AMP) since losers still need a faster
-                        # cut than winners. Smooth tanh, no boundary.
-                        _dr_ta_loss_align = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.04))
-                        _dr_ta_loss = max(0.0, -_pnl_scale)
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # profit-side cushion (baseline)
-                        _dr_k = _dr_k + 0.5 * DERISK_CONVEX_AMP * _dr_ta_loss * _dr_ta_loss_align * _dr_slope_conf  # + trend-aligned-loss cushion (step5)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
