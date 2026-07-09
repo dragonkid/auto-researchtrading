@@ -208,7 +208,6 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
-DERISK_WEAK_CUSHION_ATTEN = 0.50  # Exp5: max fractional attenuation of the convex cushion in persistent weak-trend (mixed); 0.50 -> k-excess halved when _weak_persist=1 (cushion 1.6->1.3, still convex but milder); byte-identical when _weak_persist=0 (bull/rally/crash strong trends)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -3627,41 +3626,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp5 (this session, architectural indep): WEAK-TREND attenuator on the
-                        # convex de-risk cushion. The cushion (k>1 -> hold near-full size through
-                        # moderate giveback) is earned by trend-ALIGNMENT (_dr_align,
-                        # ret_long*pos_dir) + slope-conf. But in PERSISTENT WEAK multi-day trend
-                        # (mixed_2025, _weak_persist~1 = fraction of last 48 bars where
-                        # |ret_vlong|<0.02), the trend-ALIGNMENT signal is UNRELIABLE: mixed's
-                        # transient rally-phase longs pass the trend-align gate (ret_long>0
-                        # during a bounce) AND the slope-conf gate, so they earn the full
-                        # convex cushion -> they RIDE the cushion through the pullback that
-                        # follows -> dead-capital longs bleeding across many bars -> mixed's
-                        # 20pct losers + the DD source (mixed DD 4.99pct sits right at the 5pct
-                        # dd_gate knee -> a tiny DD reduction -> large dd_gate jump -> mixed
-                        # score up). Attenuate the cushion in persistent weak-trend: multiply
-                        # the cushion's k-excess by (1 - WEAK_TREND_CUSHION_ATTEN*_weak_persist)
-                        # -> in strong-trend regimes (bull/rally/crash, _weak_persist~0) the
-                        # attenuator is ~1.0 -> BYTE-IDENTICAL (cushion preserved); in mixed
-                        # (_weak_persist~1) the cushion weakens (k->1 -> LINEAR -> faster de-risk
-                        # through giveback) -> mixed's dead-capital longs de-risk faster ->
-                        # smaller losses + lower DD. Sideways (weak ret_vlong, _weak_persist
-                        # moderate) gets partial attenuation -- sideways mean-reverters SHOULD
-                        # ride pullbacks, but sideways DD is 4.29pct (well below knee) and the
-                        # cushion there is mild (sideways moves are small); a moderate attenuator
-                        # is safe. NEW cross-component data dep at the de-risk ramp: the cushion
-                        # magnitude reads _weak_persist (was trend-align x profit x slope-conf
-                        # only). Distinct from the walled VOL-REGIME / LOW-VOL cushion gates
-                        # (those used vol_ratio, not the duration-count weak-trend signal, and
-                        # both discarded; the weak_persist DURATION-COUNT is the validated
-                        # mixed/rally separator per the f6e19151 keep). Continuous (smooth
-                        # _weak_persist in [0,1], no boundary); direction-agnostic (applies to
-                        # longs AND shorts symmetrically); byte-identical when _weak_persist=0.
-                        # General principle (no regime label): the giveback-riding cushion is
-                        # earned by a RELIABLE trend; a persistently-weak trend is not reliable
-                        # -> less cushion.
-                        _dr_weak_atten = 1.0 - DERISK_WEAK_CUSHION_ATTEN * _weak_persist
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_weak_atten  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf (attenuated in weak-trend)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
