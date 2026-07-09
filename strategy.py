@@ -494,13 +494,6 @@ class Strategy:
         # at entry, deterministic). Keeps a trend-aligned counter-move entry smaller for
         # the whole hold. Pattern mirrors _conc_shrink_held / _vol_shrink_held.
         self._cv_shrink_held = {}
-        # Exp4: entry-time own-side conviction-margin cache, sustained through scale-in
-        # as a PACE FLOOR. High-conviction entries (own-side margin well above the
-        # admission threshold at entry) reach full size FASTER (lower _entry_full_bars_dyn
-        # floor). Frozen at entry (entry-context-cached -- does NOT oscillate during the
-        # hold, avoiding the crash-bounce-wall; NOT regime-dependent during hold, avoiding
-        # the crash-consolidation-wall). Default 0.0 (no floor adjustment).
-        self._entry_margin_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -2208,15 +2201,11 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
-                    # Exp4: cache entry-time own-side conviction margin (bull).
-                    self._entry_margin_held[symbol] = _bull_margin
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
-                    # Exp4: cache entry-time own-side conviction margin (bear).
-                    self._entry_margin_held[symbol] = _bear_margin
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2297,30 +2286,6 @@ class Strategy:
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
-                # Exp4 (architectural, indep): ENTRY-CONVICTION-CACHED scale-in PACE FLOOR.
-                # An entry admitted with HIGH own-side conviction margin (entry margin well
-                # above the admission threshold) is a high-conviction entry -> reach full
-                # size FASTER (lower the _entry_full_bars_dyn floor) so the position is full
-                # before transient pullback/bounce dynamics matter. CACHE the entry-time
-                # own-side margin (frozen at entry -- entry-context-cached, the sanctioned
-                # untested lead that avoids BOTH crash walls: it does NOT oscillate during
-                # the hold -> no crash-bounce-wall contamination; it is NOT regime-dependent
-                # during hold -> no crash-consolidation-wall). The live win-accelerator
-                # above keys on REALIZED pos_pnl (only accelerates EARLY WINNERS); this floor
-                # keys on ENTRY-TIME CONVICTION (accelerates high-conviction entries
-                # REGARDLESS of early pos_pnl -- a high-conviction entry that dips slightly
-                # adverse before the trend carries it still reaches full size fast).
-                # Distinct from _persist_boost (entry SIZE magnitude, weak-persist-gated):
-                # this is the scale-in PACE floor, conviction-gated. One-sided floor
-                # (max(_accel_floor, dyn - boost)): only LOWERS the pace (faster scale-in),
-                # never raises it. Saturating tanh on the entry margin (0 below 0.5 margin,
-                # full at 1.5+). Max 0.4 bars faster, floored at the adaptive _accel_floor.
-                # Crash trend shorts (high bear conviction at downtrend onset) -> faster
-                # scale-in -> full size before the leg -> more profit. Sideways marginal
-                # entries (low margin) -> no floor -> baseline pace (byte-identical).
-                _entry_mgn_held = self._entry_margin_held.get(symbol, 0.0)
-                _conv_pace_floor = max(0.0, min(1.0, (_entry_mgn_held - 0.5) / 1.0))
-                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 0.4 * _conv_pace_floor)
                 # Exp4 (architectural, indep): VOL-OF-VOL regime scale-in pace modulation,
                 # COUNTER-TREND-AT-MULTI-DAY GATED (refinement of Exp2 which applied to all
                 # positions and catastrophically regressed rally -0.369 by slowing rally's
@@ -4317,7 +4282,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._entry_margin_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
