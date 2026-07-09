@@ -424,9 +424,9 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 # identical when avg vol < onset (sideways low broad vol = the validated clean separator).
 # Direction-agnostic general principle: the de-risk graduation width should reflect broad-
 # market vol co-movement, not just own-symbol vol.
-PORT_VOL_AVG_TP_ONSET = 0.95   # same onset as the SIZE cap (broad-vol synchronized)
+PORT_VOL_AVG_TP_ONSET = 0.90   # branch step6: 0.95->0.90 engage more bull bars (test if sideways stays below 0.90)
 PORT_VOL_AVG_TP_SCALE = 0.20   # same ramp width
-PORT_VOL_AVG_TP_MAX_WIDEN = 2.00  # branch step5: 1.00->2.00 test scaling ceiling (bull Sh +0.19 at 1.0, check if gain caps out)
+PORT_VOL_AVG_TP_MAX_WIDEN = 1.00  # branch step4 PEAK (+0.000561); step5 mag 2.0 hit bull stability wall (stab<0.80)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
