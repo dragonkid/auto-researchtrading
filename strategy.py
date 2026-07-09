@@ -2548,6 +2548,31 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp4 (architectural, indep): LONG-ONLY PORTFOLIO-DD-ADAPTIVE stop
+                # tightening. NEW cross-component data dep at the stop subsystem: the
+                # ATR stop (_stop_abs) now reads (position direction, portfolio-DD state)
+                # jointly -- was ATR-only. Exp2/Exp3 diagnostic: bull's DD 12.88pct is NOT
+                # from giveback (tightening did not bind) and NOT from fresh entry size
+                # (entry shrink byte-identical) -- it is from HELD longs that entered
+                # BEFORE the pullback and ride it down. The de-risk floor for losers (0.85
+                # -> 0.65 during DD) handles gradual losers, but a SHARP pullback (the 2021
+                # corrections) hits the hard ATR stop before the de-risk ramp fully engages
+                # -> the stop is the binding exit for bull's sharp-pullback losses. Tighten
+                # the ATR stop for LONG-ONLY positions during portfolio DD so a sharp
+                # pullback exits the long at a SMALLER loss -> lower DD. CRASH-SAFE: crash
+                # trend SHORTS are long_only=0 -> _stop_abs byte-identical (the validated
+                # long/short risk asymmetry; shorts face sharper dead-cat bounces, NOT to
+                # be tightened). Sideways: portfolio DD rarely deep in sideways (4.3pct
+                # regime DD) -> gate mostly off -> byte-identical-ish. rally: DD 5.55pct
+                # at the knee -> modest tightening during DD -> acceptable (smaller rally
+                # pullback losses, DD has headroom). Max 25pct tightening at deep DD x
+                # long-only. Continuous tanh on the DD fraction (same leverage-coupled scale
+                # as _port_dd_atten), no decision boundary. The long-only gate is the ONE
+                # binary structural gate (long/short risk asymmetry, NOT a regime label --
+                # same _long_only_gate / _ta_long_gate pattern). Targets bull's sharp-
+                # pullback DD (the dominant bull DD source per the Exp2/Exp3 diagnostic).
+                _lo_dd_stop_tighten = 1.0 - 0.25 * (1.0 if current_pos > 0 else 0.0) * (1.0 - _port_dd_atten)
+                _stop_abs = _stop_abs * _lo_dd_stop_tighten
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
