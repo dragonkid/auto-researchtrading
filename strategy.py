@@ -2236,13 +2236,24 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
-                    self._avgvol_shrink_held[symbol] = _port_vol_avg_cap  # branch step9: cache avg-vol shrink for scale-in sustain
+                    # branch step16: gate the avg-vol SUSTAIN on counter-trend-at-multi-day.
+                    # bull entry ct-at-multi-day = ret_vlong<0 (long in downtrend = crash bounce
+                    # long). Sustain the shrink ONLY for ct entries (crash bounce longs); bull
+                    # trend-aligned longs (ret_vlong>0) get the first-bar cap only (no sustain)
+                    # -> their exit timing is NOT disrupted -> no bull stability penalty (the
+                    # step14/15 ceiling). The first-bar cap on size still applies to all.
+                    _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
+                    self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
-                    self._avgvol_shrink_held[symbol] = _port_vol_avg_cap  # branch step9: cache avg-vol shrink for scale-in sustain
+                    # branch step16: gate avg-vol sustain on ct-at-multi-day (bear entry ct =
+                    # ret_vlong>0 = short in uptrend = rally pullback short; crash trend-aligned
+                    # shorts ret_vlong<0 -> no sustain -> no exit-timing disruption).
+                    _avgvol_sustain_gate_bear = max(0.0, np.tanh(ret_vlong / 0.01))  # ~1 ct-short, ~0 trend-aligned-short
+                    self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
