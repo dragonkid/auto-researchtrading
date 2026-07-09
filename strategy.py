@@ -2910,7 +2910,7 @@ class Strategy:
                 # avg-vol widen factor is computed HERE (before _max_hold use) and reused at
                 # the ramp-width section below -- computing it below would use a stale value.
                 _port_vol_avg_tp_widen = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_TP_ONSET) / PORT_VOL_AVG_TP_SCALE)))
-                _max_hold *= 1.0 + 0.06 * _port_vol_avg_tp_widen * _ta_align * _ta_long_gate
+                _max_hold *= 1.0 + 0.10 * _port_vol_avg_tp_widen * _ta_align * _ta_long_gate
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
