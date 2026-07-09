@@ -2861,7 +2861,25 @@ class Strategy:
                     _tot_tm = float(np.sum(np.abs(np.diff(_ppa_tm))))
                     _mtm_eff_tm = _net_tm / max(_tot_tm, 1e-10)
                     _mtm_chop_tm = max(0.0, min(1.0, 1.0 - _mtm_eff_tm))
-                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _ct_hold_sat
+                # BRANCH step8: POSITION-OWN-MAE spare gate (replaces steps2-7). Steps 2-7
+                # ALL crashed crash: every TREND signal (ret_vlong, down_persist) flips/dips
+                # during sustained crash bounces -> crash shorts un-spared -> DD blow-up.
+                # The only signal that does NOT flip during crash bounces AND distinguishes
+                # crash trend shorts (deep MAE: went underwater during bounces, committed
+                # trend exposure) from sideways oscillators (shallow MAE: never went
+                # underwater, mean-reverting near BE) is the position's OWN MAE (the
+                # monotone low-water mark, noise-IMMUNE -- no zero-crossing noise). Spare
+                # (no shorten) when MAE is DEEP (the position has demonstrated trend
+                # commitment by going underwater); shorten when MAE is SHALLOW (sideways
+                # oscillator near BE). _mae_spare = tanh(-mae/(|stop|*0.25)): ~1 when mae
+                # < -0.25*stop (deep, committed), ~0 when mae ~ 0 (shallow, sideways). This
+                # is the INVERSE of _be_mae_depth (line 3098 fires be_pressure on deep MAE;
+                # here deep MAE SPARES the time-shortening). Byte-identical for deep-MAE
+                # trend positions (crash shorts, bull longs that went underwater then won).
+                # Sideways (shallow MAE per prior finding) -> shortened (the TARGET).
+                _mae_spare = max(0.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25)))
+                _dead_capital_gate = 1.0 - _mae_spare
+                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _dead_capital_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
