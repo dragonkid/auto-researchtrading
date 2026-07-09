@@ -549,24 +549,6 @@ class Strategy:
         # scale-in resizes of burst ct re-entries cascade most under AR(1) noise). Trend-
         # aligned positions (ct gate 0) byte-identical by construction. Reset on full exit.
         self._target_hist = {}
-        # Exp1 (architectural, indep): PORTFOLIO EQUITY-CURVE MOMENTUM history. Rolling
-        # window of EMA-smoothed equity values used to compute the equity-curve SLOPE
-        # (momentum). bull_2021's DD (12.88pct, the worst positive-regime DD, far past
-        # the dd_gate 5pct knee -> dd_gate~0.017 -> bull score~0.004 near-zero despite
-        # Sharpe 0.407) is confirmed by prior sessions to be an AGGREGATE of accumulated
-        # soft-pressure loss exits across the 157-trade pullback sequence, NOT a single-
-        # lever quantity (giveback/stop/entry-size/admission all inert on bull DD). The
-        # sanctioned untested lead (b): a MULTI-bar PORTFOLIO-TRAJECTORY lever (equity-
-        # curve-momentum entry filter) might move the aggregate where single-lever
-        # changes cannot. The prior equity-slope attempt (dccf0da1 era) was a SIZE
-        # SHRINK that was inert (EMA(0.3) slope rarely crossed); the sanctioned lead (a)
-        # says bull DD needs a CONVICTION-BASED ADMISSION BLOCK (prevent the climax entry
-        # entirely, not shrink it). This stores the trajectory; the BLOCK is applied at
-        # the admission gate (line ~1139) keyed on (equity-slope decelerating x broad-
-        # uptrend-intact x long-only). Distinct from the _equity_ema_atten (a LEVEL signal
-        # for the DD circuit-breaker); this is the DERIVATIVE (slope/momentum). New per-
-        # bar portfolio state (one shared window across symbols).
-        self._eq_hist = []
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -633,30 +615,6 @@ class Strategy:
             self._equity_ema_atten = 0.05 * equity + 0.95 * _prev_eq_atten  # step7: slow-rise 0.1->0.05 (test if more smoothing improves margin)
         _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(_port_dd_frac / (0.008 * LEVERAGE_K)))
-
-        # Exp1 (architectural, indep): PORTFOLIO EQUITY-CURVE MOMENTUM (the DERIVATIVE of
-        # the equity curve, distinct from the LEVEL signals _equity_ema/_port_dd_atten).
-        # Append the noise-robust asymmetric EMA (already filters AR(1) on the slow-rise
-        # side, instant on the fall side) to a rolling window and compute a smooth slope
-        # = (recent - older) / older over a 24-bar window. bull's DD is the AGGREGATE of
-        # pullback-sequence loss exits: during a bull pullback the equity DECELERATES
-        # (slope goes negative) while the broad market trend stays UP. A marginal-
-        # conviction long entry taken during this deceleration is a climax entry that
-        # extends the DD. Blocking it (raising the admission bar) targets the aggregate.
-        # The window (24 bars) is long enough to average AR(1) noise (~1/sqrt(24)) yet
-        # short enough to detect a multi-bar pullback (bull pullbacks last 3-10 bars;
-        # the slope turns negative within ~6 bars of pullback onset). Uses the EMA
-        # (not raw equity) so the slope is bar-to-bar stable under AR(1) perturbation
-        # (the stability-penalty guard rail). Computed once per bar (shared across all
-        # symbols); falls to 0 if insufficient history.
-        self._eq_hist.append(self._equity_ema_atten)
-        if len(self._eq_hist) > 24:
-            self._eq_hist = self._eq_hist[-24:]
-        _eq_mom = 0.0
-        if len(self._eq_hist) >= 12:
-            _eq_recent = self._eq_hist[-1]
-            _eq_older = self._eq_hist[-12]
-            _eq_mom = (_eq_recent - _eq_older) / max(_eq_older, 1e-10)
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -1196,42 +1154,6 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
-            # Exp1 (architectural, indep): EQUITY-CURVE-MOMENTUM LONG-SIDE ADMISSION BLOCK.
-            # The sanctioned untested lead (b): bull's DD is an aggregate of pullback-
-            # sequence climax entries; a multi-bar PORTFOLIO-TRAJECTORY lever (the equity
-            # curve's DERIVATIVE, not its level) targets the aggregate where single-lever
-            # changes (giveback/stop/entry-size) were all inert (prior session confirmed).
-            # When the equity curve is DECELERATING (_eq_mom < 0, equity falling from its
-            # recent trajectory) AND the symbol's own multi-day trend is still UP (ret_vlong
-            # > 0 -> down_persist low), the position is a LONG entry taken at a pullback
-            # CLIMAX within an intact uptrend -- the documented bull-DD source. Raise the
-            # long-side admission bar (block the MARGINAL-conviction climax entry, NOT a
-            # size shrink -- the prior equity-slope SHRINK was inert; the lead (a) says
-            # block the entry entirely). Strong-conviction entries (high margin) still
-            # pass (the block raises the threshold, it does not hard-gate), so genuine
-            # high-quality pullback longs are admitted; only the marginal climax entries
-            # that aggregate into the DD are filtered. SEPARATORS (avoid the prior walls):
-            # (1) LONG-only -- crash is a SHORT regime; crash's bounce entries are LONGS
-            # taken during crash's DOWNtrend (ret_vlong<0 -> uptrend-intact gate ~0 ->
-            # block OFF) so crash is byte-identical (avoids the crash-bounce-wall). (2)
-            # uptrend-intact gate on ret_vlong>0 with the symbol's OWN _down_persist LOW
-            # (the validated bull/crash separator used at line ~2704 for the pp gate):
-            # sideways (ret_vlong~0 -> gate ~0) is byte-identical (avoids the sideways
-            # mean-reversion backwards-direction wall -- a decelerating equity in sideways
-            # is a BUY signal per the prior-position-MTM finding, so the gate MUST be off
-            # there); crash (ret_vlong<0 -> gate 0) byte-identical. (3) gate OFF at portfolio
-            # PEAK (_eq_mom >= 0 -> no deceleration -> no block) so bull's peak-equity
-            # entries (the high-quality ones) are byte-identical -- only pullback-deceleration
-            # entries are filtered. Continuous tanh ramps (no boundary); max 12% admission
-            # tighten at deep deceleration in a persistent uptrend. Direction-agnostic
-            # general principle (no regime label): a long entry whose broad trajectory is
-            # decelerating against an intact uptrend is a climax entry -- filter it. NEW
-            # cross-component data dep: long-side admission depends on (portfolio equity
-            # momentum, multi-day uptrend direction). The equity momentum is a portfolio-
-            # level DERIVATIVE signal no existing admission component reads.
-            _eq_dec = max(0.0, np.tanh(-_eq_mom / 0.004))  # 0 flat/rising, ~1 decelerating (0.4pct/12bar)
-            _up_intact = max(0.0, np.tanh((ret_vlong - 0.005) / 0.01))  # 0 sideways/down, ~1 solid uptrend
-            _bull_strong_min *= 1.0 + 0.12 * _eq_dec * _up_intact
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
