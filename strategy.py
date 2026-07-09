@@ -3239,8 +3239,15 @@ class Strategy:
                 # (0.15) is small so a noise-flipped 3rd term contributes at most 0.15 (vs 0.50
                 # for the 2nd), bounding the added noise.
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.05) / 0.15)))
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate  # 2nd-term weight (0.50 max)
-                _third_amp = 0.40 * _agree_gate * _fusion_vol_gate  # step2: raise 3rd weight 0.30->0.40 to break absorption
+                # step3: LOSS-SIDE-ONLY gate on the added terms. step2 amplified exit on crash
+                # WINNERS too (the documented "winning shorts share the signal" wall) -> crash
+                # -0.0075. Gate the 2nd/3rd-term additions on a LOSS-state factor so the
+                # amplification cuts LOSERS faster (the goal) while leaving WINNERS at the
+                # baseline MAX (no premature winner exit). Continuous tanh on -pos_pnl/|stop|
+                # (1 in loss, 0 in profit) so winners byte-identical.
+                _loss_gate_fusion = max(0.0, min(1.0, -pos_pnl / abs(STOP_LOSS_PCT)))
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate * _loss_gate_fusion
+                _third_amp = 0.40 * _agree_gate * _fusion_vol_gate * _loss_gate_fusion
                 _soft_max = _sorted_terms[0] + _agree_amp * _sorted_terms[1] + _third_amp * _sorted_terms[2]
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
