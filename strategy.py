@@ -431,30 +431,6 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 # aligned entry chasing a sharp counter-move is lower quality.
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
-# Exp1 (architectural, this session): DEPTH-SCALED counter-velocity shrink extension. The base
-# tanh(COUNTER_VEL_SCALE) SATURATES at a flat 0.30 shrink for any 3-bar bounce >= ~0.5pct: a 0.5pct
-# bounce and a 5pct bounce get the SAME 0.30 shrink. But for a trend-aligned SHORT in a downtrend,
-# a DEEPER 3-bar up-bounce is a stronger signal the short is into a serious dead-cat bounce that
-# will continue to the stop (the losing bounce-short population, the 33pct losers driving crash
-# PF to 1.0). A SHALLOW bounce is more likely a minor counter-move before continuation (the 67pct
-# winning trend-aligned shorts). The flat saturation treats both identically. NEW data dep +
-# new control flow: a SECOND, SLOWER ramp keyed on the counter-move DEPTH BEYOND the base
-# saturation onset (counter > COUNTER_VEL_SCALE), adding up to COUNTER_VEL_DEEP_EXTRA extra
-# shrink on deep bounces. This is NOT a parameter tweak of COUNTER_VEL_SHRINK_MAX/onset/scale
-# (those shift WHERE saturation begins); it changes the FUNCTION SHAPE from flat-saturation to
-# depth-scaled-beyond-saturation, so a 5pct bounce shrinks more than a 0.5pct bounce. The base
-# tanh term is PRESERVED (shallow bounces byte-identical up to saturation); only the
-# beyond-saturation tail gets the extra depth-scaled shrink. Shrink-only (monotone down in
-# depth); continuous (slow tanh, no boundary); sustained through scale-in via the existing
-# _cv_held cache. Bilateral (same depth-scaling on bull pullback longs for symmetry; the bull
-# pullback-long winners are the shallow-bounce population, deep pullbacks are the losers).
-# Distinct from every prior crash lever (admission/entry-frac/exit-fusion/de-risk) -- this is
-# the ENTRY-SIZE of the bounce-short, depth-keyed, the SIZE-not-COUNT lever on the LOSING
-# population that the prior Exp3/Exp4 walled on the entry-frac-MAGNITUDE axis (those made shorts
-# BIGGER; this makes the deep-bounce losers SMALLER, the inverse direction).
-COUNTER_VEL_DEEP_ONSET = 0.005   # depth beyond which the slow second ramp engages (== COUNTER_VEL_SCALE: only fires once base saturates)
-COUNTER_VEL_DEEP_SCALE = 0.020    # slow ramp: extra shrink saturates ~3pct deep bounce (much deeper than base's 0.5pct)
-COUNTER_VEL_DEEP_EXTRA = 0.20     # max ADDITIONAL shrink at deep bounce (on top of base 0.30 -> up to 0.50 total)
 
 
 class Strategy:
@@ -1905,19 +1881,6 @@ class Strategy:
                 _cv_counter_bear = max(0.0, _cv_ret3)   # short entered after an up-move
                 _cv_shrink_bull = 1.0 - COUNTER_VEL_SHRINK_MAX * _cv_ta_bull * max(0.0, min(1.0, np.tanh(_cv_counter_bull / COUNTER_VEL_SCALE)))
                 _cv_shrink_bear = 1.0 - COUNTER_VEL_SHRINK_MAX * _cv_ta_bear * max(0.0, min(1.0, np.tanh(_cv_counter_bear / COUNTER_VEL_SCALE)))
-                # Exp1 (this session): DEPTH-SCALED extension -- a SECOND slow ramp keyed on
-                # counter-move depth BEYOND the base saturation onset. The base term above is
-                # flat (saturated) for any bounce past ~0.5pct; this adds extra shrink that GROWS
-                # with how deep the bounce is (a 5pct bounce shrinks more than a 0.5pct bounce).
-                # max(0, counter - DEEP_ONSET) makes the extension ~0 for shallow bounces
-                # (byte-identical to baseline below the base saturation) and only engages on the
-                # deep-bounce tail (the losing bounce-short population). Trend-align-gated by the
-                # same _cv_ta_* (fires only on trend-aligned shorts in downtrend / longs in
-                # uptrend -- the crash/rally population). Continuous slow tanh; shrink-only.
-                _cv_deep_bull = max(0.0, min(1.0, np.tanh(max(0.0, _cv_counter_bull - COUNTER_VEL_DEEP_ONSET) / COUNTER_VEL_DEEP_SCALE)))
-                _cv_deep_bear = max(0.0, min(1.0, np.tanh(max(0.0, _cv_counter_bear - COUNTER_VEL_DEEP_ONSET) / COUNTER_VEL_DEEP_SCALE)))
-                _cv_shrink_bull = _cv_shrink_bull - COUNTER_VEL_DEEP_EXTRA * _cv_ta_bull * _cv_deep_bull
-                _cv_shrink_bear = _cv_shrink_bear - COUNTER_VEL_DEEP_EXTRA * _cv_ta_bear * _cv_deep_bear
                 # Exp5 (architectural, indep): volume-RISING trend-ALIGNED entry boost —
                 # bilateral counterpart to the Exp3 decline shrink. A trend-aligned entry on
                 # RISING volume has strong participation confirming the trend (rally longs on
