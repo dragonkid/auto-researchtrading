@@ -3480,54 +3480,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Exp2 (architectural, indep): TREND-ALIGNED LOSER partial de-risk floor
-                    # relaxation (restored from prior-session branch step3, the documented
-                    # crash-safe optimum at 0.08 magnitude). A trend-aligned LOSER keeps the
-                    # near-binary 0.85 loss floor and fast-exits on mid-range loss pressure.
-                    # But a trend-aligned loser is structurally more likely a PULLBACK that
-                    # recovers than a genuine reversal (the multi-day trend is intact). Give
-                    # trend-aligned losers a PARTIAL relaxation (max 0.08, smaller than
-                    # winners' 0.10) so they de-risk gradually through the pullback instead
-                    # of fast-exiting -> recoverers survive -> higher Sharpe in crash/rally.
-                    # Uses the MULTI-DAY ret_vlong*pos_dir (crash-safe through bounces:
-                    # ret_vlong stays signed through bounces for trend-aligned shorts, so the
-                    # gate does NOT flip during crash bounces). Crash bounce LONGS are ct
-                    # (ret_vlong*pos_dir<0) -> no relaxation -> keep fast 0.85 floor. Sideways
-                    # ret_vlong~0 -> byte-identical. Loss-side only (gated on -_pnl_scale>0).
-                    # PRIOR SESSION (commit 9a9f02cd step3) validated this at +0.000677 sub-keep
-                    # (crash +0.001634, rally +0.001786, bull/sideways byte-identical); the
-                    # prior branch exhausted all loss-side AMPLIFICATIONS (steps4-8 walled by
-                    # crash-bounce-wall). This Exp2 COMBINES the loss-side floor with a fresh
-                    # orthogonal PROFIT-SIDE lever below (the sanctioned "additive crash-safe
-                    # lever on a DIFFERENT axis" path to cross +0.003).
-                    _ta_de_align_vlong = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
-                    _ta_de_loss = max(0.0, -_pnl_scale)
-                    _de_floor -= 0.08 * _ta_de_align_vlong * _ta_de_loss
-                    # Exp2 (architectural, indep): ORTHOGONAL crash-safe lever -- TREND-
-                    # ALIGNED DEEP-WINNER de-risk floor EXTRA relaxation TIER. The existing
-                    # profit-side relaxation (0.10 * _ta_de_align * _pnl_scale above) scales
-                    # linearly with profit but caps at 0.10 -- a trend-aligned position that
-                    # has run DEEP into profit (pnl_scale>0.6, a long trend leg: crash short
-                    # deep in a downtrend leg, rally long deep in a grinding uptrend) is a
-                    # HIGH-CONVICTION trend ride that has demonstrated the trend is real ->
-                    # let it ride EVEN MORE gradually through late pullback/giveback noise,
-                    # capturing more of the trend leg before the de-risk ramp fully engages
-                    # -> higher APY/Sharpe on the deep-winner population. CRASH-SAFE: only
-                    # fires for PROFITABLE trend-aligned positions (the bounce-exit
-                    # population is LOSING -> _pnl_scale<0 -> _deep_win=0 -> byte-identical
-                    # exit on bounces; the full-exit trigger and mid-range hold-shape are
-                    # untouched -- only the graduation LOWER bound widens for deep winners).
-                    # ORTHOGONAL to the loss-side floor above (different PnL sign, different
-                    # gate axis: profit-side trend-align via ret_long*pos_dir + deep-profit
-                    # tier via pnl_scale>0.6). Uses multi-day ret_vlong*pos_dir for the tier
-                    # gate (crash-safe, same as loss-side). New control flow: a second tiered
-                    # relaxation on the profit-side de-risk floor, keyed on deep-profit +
-                    # multi-day-trend-aligned. Max additional 0.05 (so deep winners get up to
-                    # 0.10+0.05=0.15 total floor relaxation, vs 0.10 baseline). Direction-
-                    # agnostic general principle (no regime label): a deep-winning position
-                    # aligned with a confirmed multi-day trend has earned extra ride-room.
-                    _deep_win = max(0.0, min(1.0, (_pnl_scale - 0.6) / 0.4))  # 0 below 0.6 profit, 1 at full
-                    _de_floor -= 0.05 * _ta_de_align_vlong * _deep_win
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
