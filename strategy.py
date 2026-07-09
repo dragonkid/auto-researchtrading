@@ -3238,9 +3238,9 @@ class Strategy:
                 # stop-loss floor (_exit_pressure = max(sl, soft_combined)). The 3rd weight
                 # (0.15) is small so a noise-flipped 3rd term contributes at most 0.15 (vs 0.50
                 # for the 2nd), bounding the added noise.
-                _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
+                _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.05) / 0.15)))
                 _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate  # 2nd-term weight (0.50 max)
-                _third_amp = 0.30 * _agree_gate * _fusion_vol_gate  # 3rd-term weight (0.30 max; smaller -- 3rd is weaker signal)
+                _third_amp = 0.40 * _agree_gate * _fusion_vol_gate  # step2: raise 3rd weight 0.30->0.40 to break absorption
                 _soft_max = _sorted_terms[0] + _agree_amp * _sorted_terms[1] + _third_amp * _sorted_terms[2]
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
