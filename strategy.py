@@ -3675,8 +3675,14 @@ class Strategy:
                         # isolating the bull-DD effect. Direction-asymmetric structural property,
                         # NOT a regime label.
                         _dr_long_only = 1.0 if current_pos > 0 else 0.0
-                        _dr_deep_gb_gate = _dr_long_only * max(0.0, 1.0 - max(0.0, (_giveback_ratio - DERISK_DEEP_GB_ONSET) / DERISK_DEEP_GB_SCALE))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_deep_gb_gate  # 1.0 loss/ct/slope-weak/deep-giveback, up to ~1.6 trend-aligned+profit+conf+moderate-giveback
+                        # Fade amount: 0 at moderate giveback (cushion intact = baseline),
+                        # up to 1 at extreme giveback (cushion -> linear). Structure:
+                        # _dr_k = 1 + AMP * profit * align * conf * (1 - fade*long_only).
+                        # At moderate giveback: (1 - 0) = 1 -> full cushion (baseline).
+                        # At extreme giveback + long: (1 - 1) = 0 -> linear fast cut.
+                        # For shorts: long_only=0 -> (1 - 0) = 1 -> full cushion (byte-identical).
+                        _dr_deep_gb_fade = _dr_long_only * max(0.0, min(1.0, (_giveback_ratio - DERISK_DEEP_GB_ONSET) / DERISK_DEEP_GB_SCALE))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * (1.0 - _dr_deep_gb_fade)  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+conf+moderate-giveback; fades to 1.0 at extreme giveback (longs only)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
