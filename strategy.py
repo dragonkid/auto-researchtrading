@@ -221,11 +221,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
-# STRUCTURAL_EXPLORATION: rank-weighted top-3 soft-pressure fusion. Max fraction of the
-# 2nd-ranked term added to the top-1 term (gated by agreement x vol-regime). The 3rd-ranked
-# term gets 0.30 (smaller -- a weaker signal). Both gated by _agree_gate x _fusion_vol_gate
-# so byte-identical at single-source / sideways (low vol).
-SOFT_FUSION_AGREE_MAX = 0.50
 
 
 def ema(values, span):
@@ -3210,49 +3205,33 @@ class Strategy:
                 _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
                 # Confirmation strength: 0 at single-source, 1 at full agreement
                 _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
-                # STRUCTURAL_EXPLORATION step1: subsystem rewrite of the soft-pressure FUSION
-                # core mechanism. Old (above): MAX + agreement-amplified 2nd term ONLY -- the
-                # 3rd-6th ranked terms are FULLY DISCARDED, so any new loss-side signal that
-                # ranks 3rd is absorbed by a slightly-larger dominant term (the documented
-                # absorption wall: Exp1 loss-velocity, Exp3 MAE-deepening, Exp3-this-session
-                # weak-downtrend slope boost ALL byte-identical inert because the new signal
-                # ranks below the dominant term and contributes nothing). New core
-                # mechanism: RANK-WEIGHTED TOP-3 SUM -- soft_combined = w1*top1 + w2*top2 +
-                # w3*top3, with geometric-decaying weights (1.0, 0.40, 0.15). Distinct from
-                # BOTH the OLD weighted-sum (removed line ~3076: ADDED ALL 6 terms
-                # unconditionally -> correlated noise summed) AND the current MAX+2nd (top
-                # 2 only -> 3rd+ fully absorbed): this sums ONLY the TOP 3 (the dominant
-                # signals) with rank-decaying weights, EXCLUDING the bottom 3 (pure noise).
-                # The 3rd-ranked term now contributes a bounded 0.15x fraction (vs 0 under
-                # MAX+2nd), breaking the absorption wall for 3-source-confirmed exit signals
-                # while keeping single-source noise rejected (a lone 0.9 spike -> 0.9 + 0 +
-                # 0 = 0.9, unchanged). The vol-gate (exclude sideways, the validated separator)
-                # and chop-attenuator (single-source noise filter) are PRESERVED on the
-                # ADDED terms (the 2nd+3rd contributions are gated by _agree_gate x
-                # _fusion_vol_gate, the SAME gates the 2nd-term was under). This means: in
-                # sideways (vol-gate 0) and at single-source (agree_gate 0), the rewrite is
-                # BYTE-IDENTICAL to the old MAX (only top1 contributes) -- the validated
-                # noise-rejection behavior is preserved exactly; the rewrite ONLY changes
-                # behavior when 2-3 sources AGREE in a HIGH-vol regime (crash/bull), which
-                # is exactly the population the absorption wall was blocking. Preserves the
-                # stop-loss floor (_exit_pressure = max(sl, soft_combined)). The 3rd weight
-                # (0.15) is small so a noise-flipped 3rd term contributes at most 0.15 (vs 0.50
-                # for the 2nd), bounding the added noise.
-                _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.05) / 0.15)))
-                # step4: COUNTER-TREND-AT-MULTI-DAY gate on the added terms. step3 loss-gate
-                # made crash WORSE (-0.094) -- crash's LOSING shorts are TEMPORARY (dead-cat
-                # bounces that resume down) so amplifying their exit locks the loss before
-                # recovery. The validated separator (avg-vol keep, ct_vlong): trend-aligned
-                # losers RECOVER (crash shorts in bounces, bull longs in pullbacks); COUNTER-
-                # TREND losers DON'T (rally pullback shorts, crash dead-cat-bounce longs).
-                # Gate the added terms on ct-at-multi-day (ret_vlong opposes pos_dir) so the
-                # amplification cuts only NON-RECOVERING ct losers. Trend-aligned (incl crash's
-                # temporary losers) byte-identical. Uses the fast-saturating /0.01 ret_vlong
-                # scale (near-constant, noise-free per the validated lesson).
-                _ct_fusion_gate = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate * _ct_fusion_gate
-                _third_amp = 0.40 * _agree_gate * _fusion_vol_gate * _ct_fusion_gate
-                _soft_max = _sorted_terms[0] + _agree_amp * _sorted_terms[1] + _third_amp * _sorted_terms[2]
+                # Confirmation-amplified MAX: add a bounded fraction of the 2nd term.
+                # AGREE_MAX caps the added fraction (0.50 = up to 50% of 2nd term added).
+                SOFT_FUSION_AGREE_MAX = 0.50
+                # branch step5: VOL-REGIME gate (exclude sideways). steps 1-4 ALL
+                # collapsed sideways because sideways is a MEAN-REVERSION regime
+                # fundamentally sensitive to exit-pressure amplification in BOTH
+                # directions (profit-side amplification over-harvests mean-reverters
+                # before their natural peak; loss-side amplification cuts dips that
+                # recover). The clean separator between sideways and the trending
+                # regimes is VOL_RATIO: sideways 2023 has moderate vol (vol_ratio
+                # ~0.8-1.1); crash/bull have high vol (1.2-1.3+). Gate amplification on
+                # vol_ratio > 1.15 so it fires ONLY in HIGH-vol regimes (crash/bull)
+                # and is byte-identical in moderate-vol chop (sideways) + modest-vol
+                # rally. step5 onset 1.0 fixed crash (-0.145, byte-identical) but sideways
+                # still collapsed (-1.25) -> sideways vol_ratio passes 1.0 too often.
+                # Raise onset to 1.15 to exclude sideways. AGREE_MAX 0.50.
+                # branch step6b DIAGNOSTIC FOUND: the min(1.0,...) CLAMP on _soft_max
+                # was changing behavior even when _agree_amp=0 -- the original code did
+                # NOT clamp _soft_max (weighted terms can exceed 1.0, e.g. weight 1.25 *
+                # pressure 0.9 = 1.125), so min(1.0, _soft_max+...) capped it = behavior
+                # change. REMOVE the clamp; cap via _agree_amp magnitude (AGREE_MAX 0.50
+                # bounds the added term to 0.50*1.0 = 0.50, so _soft_max max ~1.6, which
+                # the exit-threshold logic already tolerates since _exit_pressure > 1.0
+                # triggers exit anyway).
+                _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
+                _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
+                _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
