@@ -208,32 +208,6 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
-# Exp1 (this session): DEEP-GIVEBACK gate on the convex de-risk cushion. The cushion
-# (_dr_k up to 1.6) holds trend-aligned in-profit winners near full size through
-# MODERATE giveback (ride normal pullbacks), gated by trend-align x profit x slope-conf.
-# But slope STILL CONFIRMS during bull 2021's deep corrections (the 96-bar OLS slope
-# stays positive through multi-week pullbacks), so the cushion stays ON through the
-# DEEPEST giveback -> the winner rides the deep pullback -> the giveback accumulates
-# into the 12.88% bull DD peak. Prior session finding (the high-leverage +0.006
-# composite axis): bull DD is an aggregate wall robust to 5 spike-keyed levers
-# (giveback-tighten/entry-size/stop/admission/floor-raise) because they fire on the
-# synchronized-vol SPIKE bars, but the DD peak is from a DEEPER pullback. This gate
-# keys on the per-POSITION giveback DEPTH instead: when giveback_ratio exceeds a DEEP
-# threshold (0.45), drive the cushion back toward linear (k->1.0) so the position
-# de-risks fast through the extreme giveback -> caps the DD accumulation at the deep
-# pullback where spike-keyed levers cannot reach. NEW cross-component data dep at the
-# de-risk ramp: _dr_k now reads giveback depth (was profit x trend-align x slope-conf).
-# Distinct from _gb_mag_gate (fades the pp_pressure ATTENUATION at 0.30, a different
-# exit path -- the pp_pressure soft source, not the de-risk ramp shape). Crash-safe
-# by construction: crash's sharp bounces already turn the cushion off via _dr_slope_conf
-# (slope stops confirming -> k->1.0 -> linear fast cut), so the giveback gate is
-# redundant for crash (byte-identical); it fires ONLY for gradual-but-deep givebacks
-# where slope still confirms (bull's deep pullbacks). Byte-identical when giveback_ratio
-# < 0.45 (cushion intact for the normal-pullback population everywhere). Continuous
-# tanh ramp (no boundary). Direction-agnostic (no regime label): an extreme giveback
-# of a trend-aligned winner is structural dead-capital regardless of regime.
-DERISK_DEEP_GB_ONSET = 0.45  # giveback_ratio above which the cushion starts fading
-DERISK_DEEP_GB_SCALE = 0.15  # ramp width (0.45 -> 0.60 fully linear)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -3652,37 +3626,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp1 (architectural, indep): DEEP-GIVEBACK gate on the convex cushion.
-                        # See DERISK_DEEP_GB_ONSET header. The cushion (k up to 1.6) holds
-                        # trend-aligned in-profit winners through pullbacks; slope-conf keeps
-                        # it ON through bull's DEEP corrections (96-bar slope stays positive),
-                        # so the winner rides the deep pullback -> giveback accumulates into
-                        # the 12.88% bull DD peak. Fade the cushion toward linear (k->1.0)
-                        # when the per-position giveback is EXTREME (>0.45 of peak) so the
-                        # position de-risks fast through the deep-giveback bars. Uses the
-                        # already-computed _giveback_ratio (line ~2647).
-                        # Branch step2: LONG-ONLY gate. Step1 (ungated) regressed crash -0.005:
-                        # crash trend-aligned SHORTS (downtrend, ret_long<0, pos_dir=-1 ->
-                        # _dr_align>0) use the convex cushion during MODERATE bounces where
-                        # slope still confirms (the winning-short rides); fading it at 0.45
-                        # giveback exited winning shorts too early -> missed downtrend
-                        # resumption -> lower crash Sharpe. Structural asymmetry (the validated
-                        # _long_only_gate pattern at line ~2748 / _ta_dd_hold_ext): LONGS in an
-                        # uptrend riding a pullback (bull) = canonical let-winners-run; SHORTS in
-                        # a downtrend riding a bounce (crash) face asymmetric upside risk. Gate
-                        # the deep-giveback fast-exit to LONG positions only -> crash shorts
-                        # byte-identical (the cushion stays on for crash's winning-short rides),
-                        # isolating the bull-DD effect. Direction-asymmetric structural property,
-                        # NOT a regime label.
-                        _dr_long_only = 1.0 if current_pos > 0 else 0.0
-                        # Fade amount: 0 at moderate giveback (cushion intact = baseline),
-                        # up to 1 at extreme giveback (cushion -> linear). Structure:
-                        # _dr_k = 1 + AMP * profit * align * conf * (1 - fade*long_only).
-                        # At moderate giveback: (1 - 0) = 1 -> full cushion (baseline).
-                        # At extreme giveback + long: (1 - 1) = 0 -> linear fast cut.
-                        # For shorts: long_only=0 -> (1 - 0) = 1 -> full cushion (byte-identical).
-                        _dr_deep_gb_fade = _dr_long_only * max(0.0, min(1.0, (_giveback_ratio - DERISK_DEEP_GB_ONSET) / DERISK_DEEP_GB_SCALE))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * (1.0 - _dr_deep_gb_fade)  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+conf+moderate-giveback; fades to 1.0 at extreme giveback (longs only)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
