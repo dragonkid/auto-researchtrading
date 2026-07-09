@@ -248,39 +248,6 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # crossing level (0.0 == the old _strong_min admission boundary).
 ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
-# Exp3 (architectural, this session): SHORT-TERM COUNTER-MOVE bounce admission gate.
-# The bear admission threshold (_bear_strong_min) currently reads: trend direction
-# (ret_long), portfolio loss-streak x multi-day-ct (ret_vlong), weak-persist avg,
-# deep-bear max |ret_vlong|, portfolio-DD x strong-uptrend. NONE read the SHORT-TERM
-# (3-bar) return. A bear (short) entry taken during a short-term UP bounce in a
-# multi-day DOWNTREND is a bounce-short: crash's losing trade population (the 33pct
-# losers, PF 1.0). During the bounce, BEAR voters weaken (slope up, RSI up, ret_short
-# rises) -> _bear_strong drops -> the bounce-short enters on MODERATE conviction
-# (margin just above threshold), whereas a winning trend-aligned continuation short
-# (ret3<=0, downtrend continuing) enters on HIGH conviction. The cv_shrink (Exp1
-# this session) targeted this on the SIZE axis and was byte-identical on crash (the
-# bounce develops POST-entry, not as the pre-entry 3-bar ret3). The ADMISSION axis
-# cuts the COUNT -- filtering the low-conviction bounce-short at admission removes
-# it entirely (fewer losers) rather than shrinking it. NEW data dep: _bear_strong_min
-# reads the short-term 3-bar return (ret3) gated on the multi-day downtrend
-# (ret_vlong<0): raise the bear threshold when ret3>0 (bounce) so bounce-shorts need
-# higher conviction to enter; ret3<=0 (continuation) byte-identical. The multi-day
-# gate (ret_vlong<0) confines it to downtrends (crash) so rally pullback shorts
-# (ret_vlong>0, the rally losers) are byte-identical, and sideways (ret_vlong~0)
-# byte-identical. Bilateral: the bull side raises _bull_strong_min when ret3<0
-# (pullback) in a multi-day UPTREND (ret_vlong>0) -> pullback-longs need higher
-# conviction. The prior Exp1 admission-breadth found crash BOUNCE-LONGS enter high-
-# conviction (byte-identical under tightening) -- the bull side here is symmetric and
-# likely also byte-identical (pullback-longs in uptrend high-conviction), so the
-# gate's effect is concentrated on the BEAR bounce-shorts (the crash target). Max
-# 18% threshold raise; continuous tanh on ret3/0.008 (engages ~0.8pct 3-bar bounce);
-# fast-saturating by ~2pct. Shrink-only on admission (raise-only, never lowers the
-# bar). Distinct from the walled entry-frac/exit-fusion axes -- this is the ADMISSION
-# COUNT axis keyed on the short-term bounce, the one axis prior Exp1 admission-breadth
-# did NOT test (that used cross-symbol bounce-breadth x down_persist, not ret3).
-ADMIT_BOUNCE_MAX_TIGHTEN = 0.18
-ADMIT_BOUNCE_RET3_SCALE = 0.008   # 3-bar bounce magnitude at which tighten saturates (~0.8pct engage, ~2pct saturate)
-ADMIT_BOUNCE_VLONG_GATE = 0.02   # |ret_vlong| above which the multi-day-trend gate engages (confines to trend regimes)
 # Architectural (Exp1 this session): PORTFOLIO-DD-ADAPTIVE entry readiness threshold.
 # The conviction-margin EMA (_acc_b/_acc_s) crosses a fixed threshold (0.0 == the
 # strong_min boundary) to admit entries. This threshold was DD-BLIND: during a
@@ -1222,27 +1189,6 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
-            # Exp3 (this session): SHORT-TERM COUNTER-MOVE bounce admission gate. Raise
-            # the trend-aligned side's admission threshold when the SHORT-TERM 3-bar move
-            # is COUNTER to the position direction (a bounce/pullback within the multi-day
-            # trend), so low-conviction bounce-shorts / pullback-longs need higher
-            # conviction to enter. Confined to multi-day trend regimes via the |ret_vlong|
-            # gate so sideways (ret_vlong~0) and counter-trend entries (the opposite-side
-            # sign) are byte-identical. ret3 computed from closes (3-bar return); the gate
-            # raises _bear_strong_min when ret3>0 (up-bounce) in a downtrend (ret_vlong<0),
-            # and _bull_strong_min when ret3<0 (down-pullback) in an uptrend (ret_vlong>0).
-            # Raise-only (the max(0,...) one-sided terms); continuous tanh; no boundary.
-            _ab_n = 4  # 3-bar return = closes[-1] vs closes[-4]
-            if len(closes) > _ab_n:
-                _ab_ret3 = (closes[-1] - closes[-_ab_n]) / closes[-_ab_n]
-            else:
-                _ab_ret3 = 0.0
-            _ab_bear_trend = max(0.0, np.tanh(-ret_vlong / ADMIT_BOUNCE_VLONG_GATE))   # ~1 downtrend (crash), ~0 uptrend/sideways
-            _ab_bull_trend = max(0.0, np.tanh(ret_vlong / ADMIT_BOUNCE_VLONG_GATE))    # ~1 uptrend (bull/rally), ~0 downtrend/sideways
-            _ab_bounce_bear = max(0.0, np.tanh(_ab_ret3 / ADMIT_BOUNCE_RET3_SCALE))    # short-term UP bounce (shorts enter into it)
-            _ab_pullback_bull = max(0.0, np.tanh(-_ab_ret3 / ADMIT_BOUNCE_RET3_SCALE)) # short-term DOWN pullback (longs enter into it)
-            _bear_strong_min *= 1.0 + ADMIT_BOUNCE_MAX_TIGHTEN * _ab_bear_trend * _ab_bounce_bear
-            _bull_strong_min *= 1.0 + ADMIT_BOUNCE_MAX_TIGHTEN * _ab_bull_trend * _ab_pullback_bull
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
