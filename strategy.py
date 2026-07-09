@@ -3617,6 +3617,29 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # branch step11: BROAD-VOL de-risk floor RAISE for long winners. NEW
+                    # cross-component data dep: de-risk floor reads the portfolio avg-vol
+                    # aggregation (the deep-broad-vol signal). The level/width terms
+                    # (steps7-10) raised bull Sharpe at CONSTANT DD 12.88pct (dd_gate~0.017
+                    # crushes bull score). The high-leverage bull axis is DD reduction: a
+                    # 1.88pct DD cut -> 2.65x dd_gate -> +0.014 bull score potential even at
+                    # 10pct Sharpe loss (the scoring v3 incentive). Mechanism: during the
+                    # DEEPEST synchronized broad-vol (1.15 onset, the validated regime-
+                    # transition spikes = bull's sharp pullback bars where DD accumulates),
+                    # RAISE the de-risk floor for winning LONGS -> trim winning longs
+                    # SOONER at the pullback peak -> cap the DD contribution from the
+                    # climax-pullback longs. Long-only + profit-side only (losers already
+                    # fast-exit via the 0.85 floor; crash shorts byte-identical via long-
+                    # gate; sideways/rally/mixed avg-vol<1.15 byte-identical). Max raise
+                    # 0.12 (offsets the trend-aligned relaxation 0.10 at the deep-vol peak
+                    # -> winning longs trim sooner than baseline during the spike, then
+                    # resume normal graduation after). Smooth tanh, no boundary. Distinct
+                    # from prior bull-DD attempts (giveback/entry-size/stop/admission all
+                    # byte-identical): this is a broad-vol-gated DE-RISK FLOOR raise, a
+                    # new exit-graduation lever on the DD axis.
+                    _broad_vol_floor_gate = 1.0 if current_pos > 0 else 0.0
+                    _broad_vol_floor = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - 1.15) / PORT_VOL_AVG_SCALE)))
+                    _de_floor += 0.12 * _broad_vol_floor_gate * _broad_vol_floor * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
