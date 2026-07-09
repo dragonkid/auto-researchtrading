@@ -413,20 +413,6 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
-# Exp1 (architectural, indep): PORTFOLIO AVG-VOL time-pressure RAMP WIDTH composition.
-# Untested lead (a) from keep ccca5148: the avg-vol cap (a SIZE cap on broad-vol-
-# synchronized entries) could compose with the time-pressure ramp width. The ramp width
-# (_tp_ramp_w) is currently vol-normalized via the SINGLE-symbol vol_ratio; adding the
-# CROSS-symbol portfolio avg-vol term is a NEW cross-component data dep (time-pressure
-# ramp reads the cross-symbol avg-vol aggregation, distinct from the single-symbol
-# vol_ratio already used). During broad-vol-synchronized periods (the same avg-vol signal
-# the SIZE cap keys on), widen the ramp so positions de-risk more gradually. Byte-
-# identical when avg vol < onset (sideways low broad vol = the validated clean separator).
-# Direction-agnostic general principle: the de-risk graduation width should reflect broad-
-# market vol co-movement, not just own-symbol vol.
-PORT_VOL_AVG_TP_ONSET = 0.95   # branch step4 PEAK onset (step6 0.90 hit stability wall)
-PORT_VOL_AVG_TP_SCALE = 0.20   # same ramp width
-PORT_VOL_AVG_TP_MAX_WIDEN = 1.40  # branch step12: 1.20->1.40 + level 0.10 (push width further, stability-safe?)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -2899,18 +2885,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # branch step7: SMALL avg-vol LEVEL extension on _max_hold (complement to the
-                # width widening at step4). The width widening (step4) raised bull Sharpe
-                # +0.19 but is stability-capped at magnitude 1.0 (step5 mag 2.0 collapsed bull
-                # stab <0.80). A LEVEL extension (delays time-pressure onset) is a different
-                # phase (pre-ramp vs during-ramp) and may compose for additional bull gain.
-                # Kept SMALL (max +6pct, half the single-sym 0.12) and gated long-only x
-                # trend-aligned (same gates as the width widening) to stay stability-safe.
-                # Byte-identical when avg vol < onset OR ct/short positions. NOTE: the
-                # avg-vol widen factor is computed HERE (before _max_hold use) and reused at
-                # the ramp-width section below -- computing it below would use a stale value.
-                _port_vol_avg_tp_widen = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_TP_ONSET) / PORT_VOL_AVG_TP_SCALE)))
-                _max_hold *= 1.0 + 0.10 * _port_vol_avg_tp_widen * _ta_align * _ta_long_gate
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
@@ -2936,52 +2910,6 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
-                # Exp1 (architectural, indep): compose the ramp width with the CROSS-SYMBOL
-                # portfolio avg-vol signal. _tp_ramp_w above is single-symbol vol-normalized;
-                # this adds a SECOND, structurally distinct vol term: the portfolio AVERAGE
-                # vol_ratio (broad-vol synchronized co-movement across BTC/ETH/SOL). Untested
-                # lead (a) from keep ccca5148 -- the avg-vol SIZE cap keys on this same signal;
-                # composing it with the time-pressure ramp width tests whether trend-aligned
-                # winners in broad-vol regimes (crash shorts, bull/rally longs) de-risk
-                # better with a wider graduation. NEW cross-component data dep: the time-
-                # pressure ramp width reads the cross-symbol avg-vol aggregation (was single-
-                # symbol vol_ratio only). Byte-identical when avg vol < onset (sideways low
-                # broad vol = the validated clean separator). Continuous tanh, no boundary.
-                # (_port_vol_avg_tp_widen computed above at the _max_hold level section.)
-                # branch step2: TREND-ALIGNMENT gate on the avg-vol ramp widening. Exp1
-                # opener (direction-agnostic) regressed crash -0.0028: the wider ramp held
-                # crash's ct-bounce-long losers (and temporary-bounce shorts) longer. Gate
-                # the widening on _ta_align (trend-aligned, /0.01 ret_vlong*pos_dir near-
-                # constant noise-free per validated lesson) so only trend-aligned positions
-                # (crash winning shorts, bull/rally trend longs) get the wider ramp; ct
-                # positions keep the narrow ramp. Composes the avg-vol cross-symbol signal
-                # with the per-position trend-align gate (the SAME gate the avg-vol SUSTAIN
-                # ct-gate used, mirrored: sustain applies to ct, widening applies to trend-
-                # aligned). Crash trend-aligned shorts (ret_vlong<0, pos_dir=-1 -> product>0
-                # -> _ta_align~1) keep full widening; crash ct-bounce longs in bulk crash
-                # (ret_vlong<0, pos_dir=+1 -> product<0 -> _ta_align~0) get NO widening.
-                # During crash dead-cat bounces (ret_vlong>0) _ta_align rises for longs --
-                # the residual wall -- but the avg-vol SIZE cap already shrank those bounce
-                # longs at entry, so the marginal cost is small. Byte-identical when avg vol
-                # < onset (sideways) OR when _ta_align=0 (ct positions).
-                # branch step3: step2 was BYTE-IDENTICAL to step1 (the _ta_align gate had no
-                # effect -> the widening already only fires on trend-aligned positions).
-                # DIAGNOSIS: the crash -0.0028 regression is on TREND-ALIGNED crash SHORTS
-                # (the winning trades), NOT ct-bounce longs. The wider ramp holds crash
-                # winning shorts longer into dead-cat bounces -> they give back profit before
-                # time-pressure exits -> Sharpe drops. The asymmetry: bull long-in-uptrend
-                # pullbacks RECOVER (wider ramp helps hold through the pullback); crash short-
-                # in-downtrend bounces REVERSE (wider ramp holds the short into the bounce
-                # giving back profit before it resumes down). The NARROW ramp is better for
-                # crash shorts (exit near the bounce start, lock profit); the WIDER ramp is
-                # better for bull longs (ride the pullback). Gate the widening LONG-ONLY
-                # (the SAME _ta_long_gate structural-property pattern used by _ta_dd_hold_ext
-                # at line ~2841: long/short risk asymmetry, NOT a regime label -- longs in an
-                # uptrend during broad-vol face pullbacks that recover; shorts in a downtrend
-                # face asymmetric bounce risk). Crash shorts (_ta_long_gate=0) -> NO
-                # widening -> byte-identical to baseline for crash. Bull/rally trend longs
-                # -> widening preserved.
-                _tp_ramp_w = _tp_ramp_w * (1.0 + PORT_VOL_AVG_TP_MAX_WIDEN * _port_vol_avg_tp_widen * _ta_align * _ta_long_gate)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
