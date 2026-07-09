@@ -494,6 +494,14 @@ class Strategy:
         # at entry, deterministic). Keeps a trend-aligned counter-move entry smaller for
         # the whole hold. Pattern mirrors _conc_shrink_held / _vol_shrink_held.
         self._cv_shrink_held = {}
+        # Exp1: entry-time slope-confirmation cache, sustained through scale-in as a
+        # FLOOR on the live _slope_conf used by the win-accelerator. The live 16-bar
+        # slope-conf turns OFF during brief slope flickers (pullback/bounce 1-bar dips);
+        # an entry admitted with strong slope-confirmation should keep a fraction of
+        # that entry-time confirmation through scale-in so a momentary flicker does not
+        # zero the accelerator. Frozen at entry (does not oscillate during the hold ->
+        # avoids the live-position crash-bounce contamination). Default 0.0 (no floor).
+        self._entry_slope_conf_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -2201,11 +2209,16 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
+                    # Exp1: cache entry-time slope-confirmation (long: slope*+1).
+                    # Frozen at entry; sustained as a floor on live _slope_conf below.
+                    self._entry_slope_conf_held[symbol] = max(0.0, np.tanh(_lr_slope / 0.0004))
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
+                    # Exp1: cache entry-time slope-confirmation (short: slope*-1).
+                    self._entry_slope_conf_held[symbol] = max(0.0, np.tanh(-_lr_slope / 0.0004))
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2273,6 +2286,34 @@ class Strategy:
                 # slope reused), layered on the long-window trend gate.
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
+                # Exp1 (architectural, indep): entry-CONTEXT-CACHED slope-conf FLOOR on the
+                # win-accelerator. The live _slope_conf (16-bar OLS slope confirming the
+                # position) gates the scale-in accelerator OFF when the near-term slope
+                # weakens (Exp4 keep: protects bull from over-accelerating into corrections).
+                # But the live slope is a PER-BAR quantity that flickers to ~0 on any
+                # 1-bar pullback/bounce dip even when the entry trend is intact -> a momentary
+                # flicker zeros the accelerator for that bar -> the early-winning position
+                # under-accelerates on a transient dip that recovers. Prior session
+                # UNTESTED lead: an entry-CONTEXT signal (frozen at entry, NOT oscillating
+                # during the hold) avoids the live-position crash-bounce contamination that
+                # walls every live gate. Cache the entry-time _slope_conf and sustain a
+                # FLOOR (50% of the entry-time value) on the live _slope_conf used by the
+                # accelerator: a position admitted with strong slope-confirmation (entry
+                # slope_conf 0.9) keeps at least 0.45 through scale-in, so a 1-bar flicker
+                # to 0.2 uses 0.45 (sustained mild accel) instead of 0.2 (near-zero). When
+                # live slope_conf EXCEEDS the floor (trend still strongly confirming), the
+                # live value is used (no change to the Exp4 keep's bull-correction
+                # protection -- a genuine multi-bar slope weakening drops live below the
+                # floor within 1-2 bars as the entry-time value itself was only a 1-bar
+                # snapshot, so sustained reversals are NOT over-ridden; only 1-bar flickers
+                # are absorbed). One-sided floor (max(live, floor)) only RAISES accel,
+                # never lowers it below the Exp4-keep baseline. Distinct from the removed
+                # live-conviction ACCELERATOR (per-bar margin, noisy): this is a frozen
+                # entry-context cache sustained through scale-in, the sanctioned untested
+                # counterpart. New cross-temporal data dep at scale-in pace: the accelerator
+                # now reads an entry-time-cached slope signal in addition to the live one.
+                _entry_sc_held = self._entry_slope_conf_held.get(symbol, 0.0)
+                _slope_conf = max(_slope_conf, 0.5 * _entry_sc_held)
                 _win_accel = _win_accel * _slope_conf
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
@@ -4282,7 +4323,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._entry_slope_conf_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
