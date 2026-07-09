@@ -425,6 +425,17 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
+        # Exp1 (architectural, indep): per-symbol MTM-path EFFICIENCY of the most-recently
+        # closed position (cached at full exit before _pnl_path is cleared). |net|/sum|delta|
+        # over the closed position's 12-bar pos_pnl path: HIGH = smooth climber, LOW = whipsaw.
+        # Read at the NEXT entry to shrink first-bar size for a few bars after a CHOPPY prior
+        # exit (the regime that just whipsawed is likely to whipsaw again). Distinct from
+        # _last_exit_pnl (final signed pnl only): two paths with identical final pnl can have
+        # very different efficiency (a smooth +1% climber vs a whipsaw that hit +3% then -2%
+        # then +1%). The efficiency is a SHAPE metric of the realized prior trade, not a
+        # per-bar price-derived voter signal -- internally consistent within each noise
+        # realization. Scale-invariant ratio in [0,1].
+        self._last_exit_mtm_eff = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -1219,6 +1230,31 @@ class Strategy:
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
+            # Exp1 (architectural, indep): PRIOR-POSITION-CHOP first-bar size shrink.
+            # NEW cross-temporal data dep at the entry-SIZE layer: the first-bar size
+            # reads the MTM-path EFFICIENCY of the most-recently CLOSED position on
+            # this symbol (cached at exit above). A choppy prior exit (low efficiency =
+            # the prior position whipsawed, |net| << sum|delta|) signals the local
+            # regime is oscillating -> the NEXT entry is more likely to also whipsaw ->
+            # shrink first-bar commitment so a whipsawing new entry loses less. DISTINCT
+            # from _outcome_size_mult (which reads the prior exit's FINAL pnl sign+mag,
+            # loss-only): two prior trades with identical final pnl can have very
+            # different path shape -- a smooth small win (eff~1, no shrink) vs a
+            # whipsaw that ended flat (eff~0, shrink). The efficiency is a realized
+            # SHAPE signal orthogonal to the final-pnl outcome signal. DISTINCT from
+            # the live-position _mtm_chop (emission throttle, reads the CURRENT open
+            # position's path): this reads the PRIOR closed position's path. Decays
+            # with _bars_since_exit over 8 bars (same window as _outcome_size_mult):
+            # full effect on the bar after a choppy exit, fading to 0 by bar 8 -- the
+            # choppy-regime signal is LOCAL (a few bars after exit), not a permanent
+            # bias. Max 25% first-bar shrink at deep prior-chop; smooth tanh on
+            # (1-eff)/0.40 (saturates by eff~0.6); shrink-only (caps at 1.0, never
+            # amplifies). Byte-identical when no prior exit exists yet (eff defaults to
+            # 1.0 -> chop 0 -> shrink 1.0) or 8+ bars after the last exit.
+            _prior_eff = self._last_exit_mtm_eff.get(symbol, 1.0)
+            _prior_chop = max(0.0, min(1.0, 1.0 - _prior_eff))  # 0 smooth, 1 whipsaw
+            _prior_chop_decay = max(0.0, 1.0 - _bars_since_exit / 8.0)
+            _prior_chop_shrink = 1.0 - 0.25 * _prior_chop * _prior_chop_decay
             in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
@@ -2197,12 +2233,12 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _prior_chop_shrink
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _prior_chop_shrink
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
@@ -4276,6 +4312,20 @@ class Strategy:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         _exit_pnl_signed = -_ep if current_pos < 0 else _ep
                         self._last_exit_pnl[symbol] = _exit_pnl_signed
+                        # Exp1: cache the closed position's MTM-path EFFICIENCY before
+                        # _pnl_path is cleared below. Shape metric of the just-closed
+                        # trade (|net pos_pnl move| / sum of |bar-to-bar pos_pnl deltas|
+                        # over the 12-bar path): 1.0 = straight-line climber/drawer,
+                        # 0.0 = pure whipsaw. Read at the NEXT entry to shrink first-bar
+                        # size while the just-exited choppy regime is likely to persist.
+                        _ep_path = self._pnl_path.get(symbol, [])
+                        if len(_ep_path) >= 4:
+                            _epa = np.array(_ep_path)
+                            _ep_net = abs(_epa[-1] - _epa[0])
+                            _ep_tot = float(np.sum(np.abs(np.diff(_epa))))
+                            self._last_exit_mtm_eff[symbol] = _ep_net / max(_ep_tot, 1e-10)
+                        else:
+                            self._last_exit_mtm_eff[symbol] = self._last_exit_mtm_eff.get(symbol, 1.0)
                         # Exp3: update portfolio consecutive-loss streak (mirrors
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
