@@ -2936,7 +2936,23 @@ class Strategy:
                 # symbol vol_ratio only). Byte-identical when avg vol < onset (sideways low
                 # broad vol = the validated clean separator). Continuous tanh, no boundary.
                 _port_vol_avg_tp_widen = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_TP_ONSET) / PORT_VOL_AVG_TP_SCALE)))
-                _tp_ramp_w = _tp_ramp_w * (1.0 + PORT_VOL_AVG_TP_MAX_WIDEN * _port_vol_avg_tp_widen)
+                # branch step2: TREND-ALIGNMENT gate on the avg-vol ramp widening. Exp1
+                # opener (direction-agnostic) regressed crash -0.0028: the wider ramp held
+                # crash's ct-bounce-long losers (and temporary-bounce shorts) longer. Gate
+                # the widening on _ta_align (trend-aligned, /0.01 ret_vlong*pos_dir near-
+                # constant noise-free per validated lesson) so only trend-aligned positions
+                # (crash winning shorts, bull/rally trend longs) get the wider ramp; ct
+                # positions keep the narrow ramp. Composes the avg-vol cross-symbol signal
+                # with the per-position trend-align gate (the SAME gate the avg-vol SUSTAIN
+                # ct-gate used, mirrored: sustain applies to ct, widening applies to trend-
+                # aligned). Crash trend-aligned shorts (ret_vlong<0, pos_dir=-1 -> product>0
+                # -> _ta_align~1) keep full widening; crash ct-bounce longs in bulk crash
+                # (ret_vlong<0, pos_dir=+1 -> product<0 -> _ta_align~0) get NO widening.
+                # During crash dead-cat bounces (ret_vlong>0) _ta_align rises for longs --
+                # the residual wall -- but the avg-vol SIZE cap already shrank those bounce
+                # longs at entry, so the marginal cost is small. Byte-identical when avg vol
+                # < onset (sideways) OR when _ta_align=0 (ct positions).
+                _tp_ramp_w = _tp_ramp_w * (1.0 + PORT_VOL_AVG_TP_MAX_WIDEN * _port_vol_avg_tp_widen * _ta_align)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
