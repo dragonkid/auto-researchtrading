@@ -2626,29 +2626,6 @@ class Strategy:
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
-                # Exp1 (architectural, indep): PNL-CONDITIONED slope-against activation
-                # threshold. The slope-against pressure ACTIVATION point (_slope_thresh)
-                # is currently vol-only. The loss-side WEIGHT (_w_slope below = 1.0 +
-                # 0.15*loss) scales magnitude AFTER activation, but the activation point
-                # itself is PnL-blind: a deeply-losing position and a fresh breakeven
-                # position need the SAME slope-against magnitude to start exiting. NEW
-                # cross-component data dep: _sl_slope_pressure's activation threshold now
-                # reads pos_pnl (the position's own PnL state). For a losing position
-                # (pos_pnl<0), LOWER the threshold so slope-against fires SOONER (a
-                # smaller adverse slope triggers exit). Mechanism: a position already
-                # in loss facing slope-against is more likely a real reversal (the trend
-                # that made it a loser is continuing against it) than a winner facing
-                # slope-against (a pullback that may resume). Lowering the bar for
-                # losers cuts losers faster -> smaller realized losses -> higher Sharpe
-                # in the loss-prone regimes. Distinct from _w_slope (weight scaling
-                # post-activation): this shifts the ACTIVATION POINT itself. Continuous
-                # tanh on pos_pnl/|stop| (no boundary); max 30% threshold lowering at
-                # deep loss; 0 at breakeven/profit (winners byte-identical activation).
-                # Direction-agnostic (pos_pnl sign only, not position direction). Targets
-                # crash/sideways: scores == bare Sharpe, so cutting losers faster raises
-                # score 1:1 AND cuts std (double win).
-                _slope_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 deep loss
-                _slope_thresh = _slope_thresh * (1.0 - 0.30 * _slope_loss_gate)
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
