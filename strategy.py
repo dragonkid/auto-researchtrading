@@ -413,28 +413,6 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
-# Exp2 (architectural, indep): PORTFOLIO VOL-RATIO DISPERSION entry shrink. NEW cross-
-# symbol aggregation DISTINCT from the existing MAX (_port_vol_spike_cap, fires when ANY
-# symbol vol-elevated) and AVERAGE (_port_vol_avg_cap, fires when ALL symbols vol-elevated
-# together = synchronized broad vol). The DISPERSION (max-min across symbols' vol_ratios)
-# fires when symbols have DISPARATE vol regimes: one symbol spiking while others stay calm
-# = an idiosyncratic single-symbol vol event OR a regime transition in progress (one symbol
-# leading the vol shift while the others haven't followed). Neither MAX (which fires on
-# the spike regardless of the others) nor AVG (which is dragged down by the calm symbols
-# and stays low for a one-symbol spike) isolates the DISPARITY: a one-symbol spike with
-# the other two calm has HIGH dispersion (max-min large); a synchronized broad-vol event
-# has LOW dispersion (all elevated together -> max-min small, caught by AVG instead). So
-# dispersion is orthogonal to avg: avg catches synchronized broad vol, dispersion catches
-# UNSYNCHRONIZED vol disparity. Entries during vol disparity are lower quality (the vol
-# state is unsettled/transitional, not a clean regime) -> shrink first-bar commitment.
-# Continuous tanh ramp above ONSET; shrink-only (caps at 1.0). Byte-identical when the
-# vol_ratio spread is small (calm grind rally/sideways where all symbols similar vol, OR
-# synchronized broad-vol where all elevated together -> dispersion below onset). Composes
-# multiplicatively with the avg/max caps (independent aggregation axes). New cross-symbol
-# data dep at entry sizing (was avg/max only).
-PORT_VOL_DISP_ONSET = 0.35    # vol_ratio max-min spread above which cap engages (calm<0.2, synchronized<0.3; 0.35 = clear disparity)
-PORT_VOL_DISP_SCALE = 0.20   # ramp width (0.35->0.55 saturates)
-PORT_VOL_DISP_MAX_SHRINK = 0.18  # max first-bar shrink at full dispersion (-> 0.82x; smaller than avg's 0.55 -- dispersion is a context signal)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -813,14 +791,6 @@ class Strategy:
         _port_vol_ratio_avg = (sum(_port_vol_ratio_vals) / len(_port_vol_ratio_vals)) if _port_vol_ratio_vals else 0.0
         _port_vol_avg_cap = 1.0 - PORT_VOL_AVG_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_avg_cap
-        # Exp2: PORTFOLIO VOL-RATIO DISPERSION entry shrink (composes with avg/max caps).
-        # Fires when symbols have DISPARATE vol regimes (max-min spread large = one symbol
-        # spiking while others calm = unsynchronized vol / regime transition). Orthogonal to
-        # avg (synchronized broad vol) and max (any single spike). Byte-identical when the
-        # spread is small (calm grind, or synchronized broad vol where all elevated together).
-        _port_vol_ratio_disp = (max(_port_vol_ratio_vals) - min(_port_vol_ratio_vals)) if len(_port_vol_ratio_vals) >= 2 else 0.0
-        _port_vol_disp_cap = 1.0 - PORT_VOL_DISP_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_disp - PORT_VOL_DISP_ONSET) / PORT_VOL_DISP_SCALE)))
-        _port_weak_cap = _port_weak_cap * _port_vol_disp_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
