@@ -74,20 +74,6 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
-# Exp2 (architectural, indep): MTM-CHOP-CONDITIONED time-pressure onset. The time
-# subsystem (_max_hold, line ~2815) currently reads slope, counter-trend (ret_vlong),
-# vol_ratio, portfolio-DD, and trend-aligned hold-extension -- but NOT the position's
-# OWN PnL-path efficiency. A position whose 12-bar pos_pnl path is CHOPPY (low MTM
-# efficiency = oscillating dead-capital: sideways mean-reverters that whipsaw, mixed's
-# wrong-side oscillating longs) is structurally not progressing -> time-pressure should
-# fire EARLIER (shorter max_hold) to cut the dead-capital sooner. A smooth-climbing
-# winner (high MTM efficiency: bull/crash/sideways trend longs) keeps the baseline
-# max_hold byte-identical (chop~0 -> no change). NEW cross-component data dep: the time
-# subsystem reads the own-position MTM-path efficiency (currently consumed only at the
-# emission reduction throttle). Fast-saturating tanh on chop; max 2-bar shorter hold.
-# Byte-identical for smooth winners (chop 0) and for fresh positions (<4-bar path -> 0).
-# Continuous (no boundary), shrink-only (max_hold only shortens, never extends).
-MTM_CHOP_TIME_MAX = 2.0  # max bars to shorten max_hold at deep MTM-chop
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
@@ -2827,59 +2813,6 @@ class Strategy:
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
                 self._hold_ext_ema[symbol] = _ta_dd_hold_ext
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
-                # Exp2 (architectural, indep): MTM-CHOP-CONDITIONED time-pressure onset.
-                # The time subsystem reads slope/ct/vol/DD but NOT the position's OWN PnL-
-                # path efficiency. A CHOPPY pos_pnl path (low MTM efficiency = oscillating
-                # dead-capital: sideways ct mean-reverters, mixed's wrong-side longs) is
-                # structurally not progressing -> time-pressure fires EARLIER (shorter
-                # max_hold) to cut dead-capital sooner. Smooth-climbing winners (chop~0)
-                # keep the baseline max_hold byte-identical. NEW cross-component data dep:
-                # the time subsystem reads own-position MTM-path efficiency (currently
-                # consumed only at the emission reduction throttle). Fast-saturating tanh
-                # on chop; max MTM_CHOP_TIME_MAX bars shorter. Byte-identical for smooth
-                # winners (chop 0) and fresh positions (<4-bar path -> chop 0). Continuous,
-                # shrink-only. This BYPASSES the MAX-fusion exit wall (changes WHEN time
-                # pressure fires, not a new pressure term).
-                # BRANCH step2: COUNTER-TREND gate. Step1 (ungated) crashed crash (-999,
-                # DD breached 16pct) AND regressed bull (-0.037): trend-aligned WINNERS
-                # (crash trend shorts, bull pullback longs) have LEGITIMATELY choppy PnL
-                # paths (downtrend bounces oscillate the short PnL; bull pullbacks oscillate
-                # the long PnL) but are PROGRESSING (winning) -- shortening their hold cuts
-                # them prematurely. Gate the MTM-chop time-shortening on COUNTER-TREND (the
-                # multi-day ct indicator already computed as _ct_hold_sat line ~2746: ~0
-                # trend-aligned, ~1 ct-at-multi-day, fast-saturating /0.01 noise-free). Only
-                # COUNTER-TREND oscillating positions (sideways ct entries, mixed wrong-side
-                # longs) get the shorter hold; trend-aligned winners (crash shorts, bull/
-                # rally longs) keep baseline max_hold byte-identical. This is the SAME ct
-                # gate pattern used by _ct_hold_sat itself (the validated trend-aligned
-                # sparing). Byte-identical for trend-aligned (gate 0 -> no shortening).
-                _pp_hist_tm = self._pnl_path.get(symbol, [])
-                _mtm_chop_tm = 0.0
-                if len(_pp_hist_tm) >= 4:
-                    _ppa_tm = np.array(_pp_hist_tm)
-                    _net_tm = abs(_ppa_tm[-1] - _ppa_tm[0])
-                    _tot_tm = float(np.sum(np.abs(np.diff(_ppa_tm))))
-                    _mtm_eff_tm = _net_tm / max(_tot_tm, 1e-10)
-                    _mtm_chop_tm = max(0.0, min(1.0, 1.0 - _mtm_eff_tm))
-                # BRANCH step8: POSITION-OWN-MAE spare gate (replaces steps2-7). Steps 2-7
-                # ALL crashed crash: every TREND signal (ret_vlong, down_persist) flips/dips
-                # during sustained crash bounces -> crash shorts un-spared -> DD blow-up.
-                # The only signal that does NOT flip during crash bounces AND distinguishes
-                # crash trend shorts (deep MAE: went underwater during bounces, committed
-                # trend exposure) from sideways oscillators (shallow MAE: never went
-                # underwater, mean-reverting near BE) is the position's OWN MAE (the
-                # monotone low-water mark, noise-IMMUNE -- no zero-crossing noise). Spare
-                # (no shorten) when MAE is DEEP (the position has demonstrated trend
-                # commitment by going underwater); shorten when MAE is SHALLOW (sideways
-                # oscillator near BE). _mae_spare = tanh(-mae/(|stop|*0.25)): ~1 when mae
-                # < -0.25*stop (deep, committed), ~0 when mae ~ 0 (shallow, sideways). This
-                # is the INVERSE of _be_mae_depth (line 3098 fires be_pressure on deep MAE;
-                # here deep MAE SPARES the time-shortening). Byte-identical for deep-MAE
-                # trend positions (crash shorts, bull longs that went underwater then won).
-                # Sideways (shallow MAE per prior finding) -> shortened (the TARGET).
-                _mae_spare = max(0.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25)))
-                _dead_capital_gate = 1.0 - _mae_spare
-                _max_hold = _max_hold - MTM_CHOP_TIME_MAX * _mtm_chop_tm * _dead_capital_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
