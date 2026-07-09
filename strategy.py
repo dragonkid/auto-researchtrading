@@ -2899,8 +2899,20 @@ class Strategy:
                 # longer through broad-vol = riding bounces = worse). Max +10pct level at
                 # deep broad-vol. Byte-identical for shorts + when avg-vol < 0.95.
                 _broad_vol_level_gate = 1.0 if current_pos > 0 else 0.0
-                _broad_vol_level = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
-                _max_hold *= 1.0 + 0.10 * _broad_vol_level_gate * _broad_vol_level
+                # branch step7: concentrate the level term on the DEEPEST broad-vol to
+                # recover bull stability. Step5 (onset 0.95, mag 0.10) dropped bull stability
+                # below the 0.80 knee (penalty). The 0.95 onset fires on many moderate-broad-
+                # vol bars -> frequent hold extension -> exit-timing disruption -> stability
+                # wall. A HIGHER dedicated onset (1.15, the fusion vol-gate knee) fires ONLY
+                # on the deepest synchronized broad-vol spikes (genuine regime-transition
+                # pullbacks, fewer bars -> less timing disruption -> stability preserved).
+                # Raise magnitude 0.10->0.16 to compensate the smaller firing population.
+                # Concentrates the hold extension where it is most justified (deepest vol =
+                # largest real move = most gradual de-risk benefit). Byte-identical for
+                # shorts + when avg-vol < 1.15 (sideways/rally/mixed + moderate bull bars).
+                _BROAD_VOL_LEVEL_ONSET = 1.15
+                _broad_vol_level = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - _BROAD_VOL_LEVEL_ONSET) / PORT_VOL_AVG_SCALE)))
+                _max_hold *= 1.0 + 0.16 * _broad_vol_level_gate * _broad_vol_level
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
