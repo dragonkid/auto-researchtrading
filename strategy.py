@@ -2607,41 +2607,6 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp2 (architectural, indep): LONG-ONLY UPTREND-PERSISTENT ADDITIONAL
-                # giveback tightening during portfolio DD. NEW cross-component data dep:
-                # the giveback tolerance (_pp_giveback_eff) now reads (position direction,
-                # up-persist duration, portfolio-DD state) jointly -- was DD-state only.
-                # bull_2021 has the WORST positive-regime DD (12.88pct, far past the dd_gate
-                # 5pct knee -> dd_gate ~0.017 -> bull score ~0.004 nearly-zero despite
-                # Sharpe 0.407). bull's DD comes from pullback longs riding giveback DURING
-                # the persistent uptrend (the 2021 corrections). The baseline _pp_tighten
-                # (above) tightens giveback for ALL positions during DD; here add a
-                # STRUCTURAL complement that fires ONLY for LONG-ONLY positions in a
-                # PERSISTENT uptrend (bull's pullback-long population), tightening the
-                # giveback tolerance FURTHER so bull locks gains faster on pullback
-                # giveback -> smaller giveback -> lower DD. CRASH-SAFE by construction:
-                # crash trend SHORTS are long_only_gate=0 -> byte-identical (the validated
-                # long/short risk asymmetry: shorts in a downtrend face sharper dead-cat
-                # bounces = NOT to be tightened, only longs in an uptrend face pullbacks
-                # that recover). The up-persist gate (1 - down_persist transform, the SAME
-                # _up_persist_gate used at line ~2705 for _ta_winner_gate) spares sideways
-                # (down_persist high -> up_persist 0) and crash (down_persist ~0.9 ->
-                # up_persist 0); fires only for persistent-uptrend longs (bull down_persist
-                # ~0.3 -> up_persist ~1; rally longs similar). rally DD is 5.55pct (at the
-                # knee) so an extra tighten there is acceptable (it locks gains, DD has
-                # headroom below the knee). The tighten composes multiplicatively with
-                # the baseline _pp_tighten (both shrink _pp_giveback_eff; max additional
-                # 25pct at deep DD x full up-persist x long-only). Continuous, no decision
-                # boundary (long_only is the one binary structural gate, mirroring the
-                # validated _ta_long_gate / _long_only_gate pattern -- long/short is a
-                # structural property not a regime label). Uses the per-symbol _down_persist
-                # already computed at line ~959 (no new state). Targets bull DD (the
-                # highest-leverage score axis: bull dd_gate 0.017 -> ~0.075 if DD 12.88 ->
-                # ~10pct = +0.015 bull score = +0.003 composite, the keep threshold).
-                _lo_up_persist = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))  # ~1 persistent uptrend (bull/rally longs), ~0 sideways/crash
-                _lo_long_only = 1.0 if current_pos > 0 else 0.0
-                _pp_tighten_lo = 1.0 - 0.25 * _lo_long_only * _lo_up_persist * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                _pp_tighten = _pp_tighten * _pp_tighten_lo
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
