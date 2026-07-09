@@ -426,7 +426,7 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 # market vol co-movement, not just own-symbol vol.
 PORT_VOL_AVG_TP_ONSET = 0.95   # branch step4 PEAK onset (step6 0.90 hit stability wall)
 PORT_VOL_AVG_TP_SCALE = 0.20   # same ramp width
-PORT_VOL_AVG_TP_MAX_WIDEN = 1.00  # branch step4 PEAK (+0.000561); step5 mag 2.0 hit bull stability wall (stab<0.80)
+PORT_VOL_AVG_TP_MAX_WIDEN = 1.20  # branch step11: 1.00->1.20 + level 0.10 (stability-safe combo probe)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -2910,7 +2910,7 @@ class Strategy:
                 # avg-vol widen factor is computed HERE (before _max_hold use) and reused at
                 # the ramp-width section below -- computing it below would use a stale value.
                 _port_vol_avg_tp_widen = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_TP_ONSET) / PORT_VOL_AVG_TP_SCALE)))
-                _max_hold *= 1.0 + 0.12 * _port_vol_avg_tp_widen * _ta_align * _ta_long_gate
+                _max_hold *= 1.0 + 0.10 * _port_vol_avg_tp_widen * _ta_align * _ta_long_gate
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
