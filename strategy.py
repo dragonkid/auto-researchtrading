@@ -716,6 +716,19 @@ class Strategy:
                 _p_target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _p_baseline_vol
                 _port_vol_ratio_vals.append(_p_rv_short / max(_p_target_vol_dyn, 1e-6))
         _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
+        # Exp3 (architectural, indep): portfolio AVERAGE up-persist = 1 - avg down_persist.
+        # Cross-symbol AVERAGE: high when ALL symbols are in a persistent uptrend together
+        # (bull_2021 broad bull: every symbol down_persist low -> avg high) and LOWER when
+        # symbols diverge (sideways 2023 recovery: ETH/SOL up while BTC choppy -> avg
+        # moderate; mixed 2025: one symbol up at a time -> avg low). This is the AVERAGE-vs-
+        # per-symbol separator that Exp2's per-symbol _lo_up_persist gate LACKED: Exp2 fired
+        # on sideways/mixed INDIVIDUAL-symbol uptrend-leg longs (each symbol's down_persist
+        # was low during its own uptrend leg) -> over-tightened sideways/mixed winners. The
+        # portfolio AVERAGE requires BROAD simultaneous uptrend (bull's pattern) to be high,
+        # excluding sideways/mixed's one-symbol-at-a-time uptrend legs. Same AVERAGE
+        # pattern as _port_down_persist (avg) vs _port_down_persist_max (max). Uses the
+        # already-computed _port_down_persist_vals (no new state). In [0, 1].
+        _port_up_persist_avg = 1.0 - _port_down_persist
         # Exp1: portfolio-level deep-bear size cap (AVERAGE aggregation). Continuous tanh
         # ramp above ONSET; shrink-only (caps at 1.0; never amplifies size).
         _port_bear_cap = 1.0 - PORT_DOWN_PERSIST_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
@@ -2197,7 +2210,29 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
+                    # Exp3 (architectural, indep): PORTFOLIO-DD + BROAD-UPTREND long-only
+                    # ENTRY size shrink (additional to _port_dd_atten). NEW cross-component
+                    # data dep: bull entry size now reads (portfolio-DD state, portfolio
+                    # AVERAGE up-persist) jointly. Exp2's giveback-tighten diagnostic showed
+                    # bull's DD 12.88pct is NOT from giveback (tightening did not bind) -> it
+                    # is from the pullback ENTRIES that go straight to the stop (loss-side,
+                    # not giveback-side). _port_dd_atten already shrinks entries during DD,
+                    # but uniformly across all regimes; the structural complement fires
+                    # ADDITIONALLY when the portfolio is in DD AND in a BROAD uptrend (all
+                    # symbols up together = bull's pullback-DD pattern, where the next entry
+                    # is most likely a stop-hit loser because the pullback is ongoing). The
+                    # broad-uptrend gate (_port_up_persist_avg, computed top-level) is the
+                    # AVERAGE-vs-per-symbol separator Exp2 lacked: requires ALL symbols up
+                    # simultaneously (bull) -> excludes sideways/mixed one-symbol-at-a-time
+                    # uptrend legs (avg up_persist moderate there). Crash-safe: bear entries
+                    # are NOT touched (this multiplier is on the bull/long path only; crash
+                    # shorts byte-identical). Long-only by construction (the _bull_ready
+                    # path IS the long-entry path). Max additional 30pct shrink at deep DD
+                    # x full broad-uptrend. Continuous tanh, no decision boundary. Targets
+                    # bull's stop-hit DD source (smaller pullback entries -> smaller per-
+                    # trade loss -> lower DD -> higher bull dd_gate -> higher bull score).
+                    _port_dd_lo_shrink = 1.0 - 0.30 * (1.0 - _port_dd_atten) * max(0.0, min(1.0, np.tanh((_port_up_persist_avg - 0.55) / 0.15)))
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _port_dd_lo_shrink * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
