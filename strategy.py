@@ -426,7 +426,7 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 # market vol co-movement, not just own-symbol vol.
 PORT_VOL_AVG_TP_ONSET = 0.95   # branch step4 PEAK onset (step6 0.90 hit stability wall)
 PORT_VOL_AVG_TP_SCALE = 0.20   # same ramp width
-PORT_VOL_AVG_TP_MAX_WIDEN = 1.20  # branch step11: 1.00->1.20 + level 0.10 (stability-safe combo probe)
+PORT_VOL_AVG_TP_MAX_WIDEN = 1.40  # branch step12: 1.20->1.40 + level 0.10 (push width further, stability-safe?)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
