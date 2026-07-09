@@ -2912,7 +2912,7 @@ class Strategy:
                 # shorts + when avg-vol < 1.15 (sideways/rally/mixed + moderate bull bars).
                 _BROAD_VOL_LEVEL_ONSET = 1.15
                 _broad_vol_level = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - _BROAD_VOL_LEVEL_ONSET) / PORT_VOL_AVG_SCALE)))
-                _max_hold *= 1.0 + 0.32 * _broad_vol_level_gate * _broad_vol_level
+                _max_hold *= 1.0 + 0.40 * _broad_vol_level_gate * _broad_vol_level
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
