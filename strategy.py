@@ -379,6 +379,17 @@ PORT_DEEP_BEAR_MAX_SHRINK = 0.25  # max shrink at full saturation (-> 0.75x)
 PORT_DEEP_BEAR_ADMIT_ONSET = 0.03   # same onset as Exp8 SIZE cap (deep bear magnitude)
 PORT_DEEP_BEAR_ADMIT_SCALE = 0.02
 PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
+# Exp1 (this session, architectural indep): CROSS-SYMBOL BOUNCE-BREADTH LONG-entry
+# admission tighten. Onset/scale for the bounce-breadth tanh (fraction of symbols with a
+# positive 8-bar return). ONSET 0.67 = 2 of 3 symbols bouncing (a broad bounce, not a
+# single idiosyncratic leg). SCALE 0.20 saturates at all-3-bouncing. The downtrend gate
+# reuses PORT_DOWN_PERSIST_ONSET/SCALE (crash ~0.9 fires; bull ~0.3 spared). Max tighten
+# 0.20 (mirrors PORT_WEAK_PERSIST_AVG_MAX_TIGHTEN admission magnitude) -> a marginal long
+# must clear up to 1.20x the strong-sum threshold to enter during a broad bounce in a
+# persistent downtrend. Long-side only; short-side byte-identical.
+PORT_BOUNCE_BREADTH_ONSET = 0.67
+PORT_BOUNCE_BREADTH_SCALE = 0.20
+PORT_BOUNCE_ADMIT_MAX_TIGHTEN = 0.20
 # Exp1 (architectural, indep): MAX-AGGREGATION portfolio VOL-SPIKE SIZE CAP. Extends the
 # validated max-aggregation portfolio-cap pattern (4 keeps on SIZE: avg down_persist, max
 # down_persist, max weak_persist, max |ret_vlong| -- all on the TREND/bear axis) to a NEW
@@ -711,8 +722,23 @@ class Strategy:
         _port_weak_persist_vals = []  # Exp6: per-symbol weak_persist for max-aggregation
         _port_rv_vals = []  # Exp8: per-symbol raw ret_vlong for max-aggregation deep-bear cap
         _port_vol_ratio_vals = []  # Exp1: per-symbol vol_ratio for max-aggregation vol-spike cap
+        _port_bounce_vals = []  # Exp1 (this session): per-symbol short-term bounce boolean for cross-symbol bounce-breadth
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
+            # Exp1 (this session, architectural): CROSS-SYMBOL BOUNCE-BREADTH. Per-symbol
+            # short-term (8-bar) close return SIGN, lifted to the portfolio section so the
+            # FRACTION of bouncing symbols can gate LONG entry admission. A broad dead-cat
+            # bounce during a persistent downtrend lifts BTC/ETH/SOL TOGETHER for a few bars;
+            # long entries taken on those bars are crash's losing trades (PF=1.0 source). The
+            # FRACTION bouncing (not the magnitude) is the cross-symbol coherence signal the
+            # prior session flagged untested ("crash's bad entries may correlate across
+            # BTC/ETH/SOL bounces"). Uses a smooth 8-bar window (averages ~8 bars of AR(1)
+            # noise -> the SIGN is robust; flipping it needs a perturbation large enough to
+            # move the 8-bar return across 0, deep in the flat tail). Falls to 0 (no bounce)
+            # if a symbol has <8 bars. NEW cross-symbol data dep: portfolio-level bounce
+            # breadth, orthogonal to the trend/duration/vol primitives already here.
+            if len(_pc) > 8:
+                _port_bounce_vals.append(1.0 if _pc[-1] > _pc[-9] else 0.0)
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
             _phl2 = (bar_data[_psym].history["high"].values[-_pn:] + bar_data[_psym].history["low"].values[-_pn:]) / 2.0
             _p_rv = _fast_slope(np.log(_phl2)) * _pn
@@ -796,6 +822,32 @@ class Strategy:
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
+        # Exp1 (this session, architectural indep): CROSS-SYMBOL BOUNCE-BREADTH LONG-entry
+        # admission tighten. NEW cross-symbol data dep at the ADMISSION gate (every prior
+        # cross-symbol lever acts on SIZE; this acts on the conviction-margin crossing
+        # threshold -> cuts TRADE COUNT, the fee/Shrape axis). Mechanism: a broad dead-cat
+        # bounce in a PERSISTENT downtrend lifts BTC/ETH/SOL together for a few bars; the
+        # long entries taken on those bounce bars are crash's losing trades (PF=1.0 source:
+        # the 33pct losers exactly cancel the 67pct winners). The FRACTION of symbols
+        # bouncing (cross-symbol coherence) identifies those bars; combined with the
+        # portfolio persistent-downtrend signal (crash ~0.9 vs bull ~0.3) it isolates
+        # crash's bounce longs without touching bull/rally/sideways (all low down_persist ->
+        # the downtrend gate ~0 -> no tighten). Distinct from the avg-vol SIZE cap (shrinks
+        # ct bounce-long SIZE; this cuts the COUNT of marginal bounce-bar long entries at
+        # the admission gate, raising the strong-sum margin a long must clear to enter
+        # during a broad bounce). The tighten raises _entry_thresh_dd for BULL entries
+        # only (long-side); bear/short entries byte-identical (crash's winning trend-aligned
+        # shorts are SPARED -- the lever for crash PF is cutting the losing longs, not the
+        # winning shorts). Continuous tanh on (bounce_breadth - 0.67)/0.20 x down_persist
+        # gate (fast-saturating /0.10 near-constant noise-free per the validated ct-gate
+        # lesson); byte-identical when down_persist < ONSET (bull/rally/sideways) OR <2
+        # symbols bouncing. General principle (no regime label): filter marginal long
+        # entries taken during a synchronized short-term bounce against a persistent
+        # downtrend. New control flow: admission threshold reads portfolio bounce-breadth
+        # x portfolio down-persist (was DD x strong-uptrend only).
+        _port_bounce_breadth = (sum(_port_bounce_vals) / len(_port_bounce_vals)) if _port_bounce_vals else 0.0
+        _bounce_downtrend_gate = max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
+        _port_bounce_admit_tighten = 1.0 + PORT_BOUNCE_ADMIT_MAX_TIGHTEN * _bounce_downtrend_gate * max(0.0, min(1.0, np.tanh((_port_bounce_breadth - PORT_BOUNCE_BREADTH_ONSET) / PORT_BOUNCE_BREADTH_SCALE)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1239,7 +1291,14 @@ class Strategy:
             # positive), all other regimes byte-identical.
             _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
-            _bull_ready = _acc_b >= _entry_thresh_dd
+            # Exp1 (this session): apply the cross-symbol bounce-breadth LONG-entry admission
+            # tighten to the BULL (long) threshold ONLY. Bear/short entries keep the base
+            # _entry_thresh_dd (crash's winning trend-aligned shorts are spared). The tighten
+            # raises the strong-sum margin a long must clear during a broad bounce in a
+            # persistent downtrend (crash dead-cat bounces); byte-identical elsewhere
+            # (down_persist < ONSET -> _port_bounce_admit_tighten=1.0).
+            _entry_thresh_bull = _entry_thresh_dd * _port_bounce_admit_tighten
+            _bull_ready = _acc_b >= _entry_thresh_bull
             _bear_ready = _acc_s >= _entry_thresh_dd
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
