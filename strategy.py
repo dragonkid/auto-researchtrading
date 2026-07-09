@@ -2885,34 +2885,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # branch step5: BROAD-VOL max_hold LEVEL extension for longs (companion to
-                # the step3 width term). The per-symbol _vol_hold_ext above raises the
-                # LEVEL when THIS symbol's own vol is high. Adding a broad-market avg-vol
-                # LEVEL term (gated long-only, 0.95 onset -- the validated deep-broad-vol)
-                # raises max_hold FURTHER when ALL symbols are volatile, so a long holds
-                # through the synchronized pullback longer before time-pressure begins.
-                # Distinct from the WIDTH term (controls gradualness ONCE pressure starts);
-                # this controls WHEN pressure starts (the level). Risk: longer hold through
-                # pullback could raise bull DD -- but if the post-pullback uptrend resumes
-                # (bull's pattern), the longer hold CAPTURES the resumption -> Sharpe up
-                # faster than DD. Long-only (crash shorts face the bounce-wall: holding
-                # longer through broad-vol = riding bounces = worse). Max +10pct level at
-                # deep broad-vol. Byte-identical for shorts + when avg-vol < 0.95.
-                _broad_vol_level_gate = 1.0 if current_pos > 0 else 0.0
-                # branch step7: concentrate the level term on the DEEPEST broad-vol to
-                # recover bull stability. Step5 (onset 0.95, mag 0.10) dropped bull stability
-                # below the 0.80 knee (penalty). The 0.95 onset fires on many moderate-broad-
-                # vol bars -> frequent hold extension -> exit-timing disruption -> stability
-                # wall. A HIGHER dedicated onset (1.15, the fusion vol-gate knee) fires ONLY
-                # on the deepest synchronized broad-vol spikes (genuine regime-transition
-                # pullbacks, fewer bars -> less timing disruption -> stability preserved).
-                # Raise magnitude 0.10->0.16 to compensate the smaller firing population.
-                # Concentrates the hold extension where it is most justified (deepest vol =
-                # largest real move = most gradual de-risk benefit). Byte-identical for
-                # shorts + when avg-vol < 1.15 (sideways/rally/mixed + moderate bull bars).
-                _BROAD_VOL_LEVEL_ONSET = 1.15
-                _broad_vol_level = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - _BROAD_VOL_LEVEL_ONSET) / PORT_VOL_AVG_SCALE)))
-                _max_hold *= 1.0 + 0.40 * _broad_vol_level_gate * _broad_vol_level
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
@@ -2938,57 +2910,6 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
-                # Exp1 (architectural, indep): BROAD-VOL time-pressure ramp width
-                # composition. The per-symbol vol_ratio ramp above (Exp2/branch 296762d8)
-                # widens the de-risk graduation when THIS symbol's own vol is elevated. The
-                # portfolio avg-vol cap (ccca5148 keep) proved the AVERAGE of the 3 symbols'
-                # vol_ratios is a CLEAN broad-market-vol signal (high only when ALL symbols
-                # vol-elevated together = synchronized regime-transition vol; byte-identical
-                # for sideways where avg-vol is low). Composition: add a SECOND additive term
-                # to the ramp width gated on the SAME _port_vol_ratio_avg / onset 0.95, so
-                # the ramp widens FURTHER when the WHOLE MARKET is volatile (not just this
-                # symbol). Mechanism: in a broad-vol regime (crash, bull sharp pullbacks where
-                # all 3 symbols vol-elevated together) the real per-bar price move is large
-                # ACROSS THE BOARD, so the trend-aligned winner de-risk should be even more
-                # gradual (wider ramp) to ride the broad move without a premature first-
-                # time-pressure-bar cut. Distinct from _vol_hold_ext (LEVEL offset) and the
-                # per-symbol ramp width (own vol): this is a BROAD-MARKET width term. New
-                # cross-component data dep: time-pressure ramp shape reads the portfolio
-                # avg-vol aggregation (previously only the SIZE cap read it). Byte-identical
-                # when _port_vol_ratio_avg < PORT_VOL_AVG_ONSET (sideways/rally/mixed calm
-                # grind; the per-symbol term still handles single-symbol vol). Direction-
-                # agnostic (no regime label): broad-vol widens the de-risk graduation. Max
-                # +3.0 bars additional width at deep broad-vol (total ramp up to ~11.0).
-                # branch step2: gate the broad-vol width term to the LONG side only.
-                # Exp1 showed the broad-vol widening helped bull trend longs ride
-                # pullbacks (+0.001575, Sh +0.128) but hurt crash trend shorts (-0.0021)
-                # which rode the high-vol bounce bars too long (the size-wall: shorts
-                # must be SMALL at bounce peaks, not ride them). The asymmetry is the
-                # documented bounce-survival wall: a long riding a pullback in an uptrend
-                # benefits (the trend resumes, pullback reverts UP); a short riding a
-                # bounce in a downtrend suffers (the bounce can be violent/deep, causing
-                # DD/stopout before the downtrend resumes). The per-symbol vol_ratio ramp
-                # (296762d8) is retained for BOTH sides (it handles single-symbol vol
-                # generally); the BROAD-MARKET extra widening is the long-only component
-                # (the broad-vol synchronized pullback is the long-favorable event).
-                # Direction-specific, justified by the measured size-wall asymmetry (not a
-                # regime label): longs survive pullback depth, shorts do not survive bounce
-                # depth. Byte-identical for shorts (crash trend shorts keep per-symbol ramp
-                # only, as in baseline).
-                _broad_vol_w_gate = 1.0 if current_pos > 0 else 0.0
-                # branch step10: concentrate the width term on the DEEPEST broad-vol too
-                # (mirror the step7 level-term concentration that recovered stability).
-                # Step3 width at onset 0.95 (broad firing) saturated at +0.000484; the
-                # level term showed concentrating on 1.15 (deepest spikes) is strictly
-                # better (stability preserved + higher Sharpe). Apply the SAME treatment to
-                # the width term: dedicated 1.15 onset, raise magnitude 5.0->7.0 to
-                # compensate the smaller firing population. Widens the ramp ONLY on the
-                # deepest synchronized broad-vol spikes -> the gradual de-risk is most
-                # beneficial where the real per-bar move is largest. Byte-identical for
-                # shorts + when avg-vol < 1.15.
-                _BROAD_VOL_W_ONSET_CONC = 1.15
-                _broad_vol_w = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - _BROAD_VOL_W_ONSET_CONC) / PORT_VOL_AVG_SCALE)))
-                _tp_ramp_w = _tp_ramp_w + 7.0 * _broad_vol_w_gate * _broad_vol_w
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
@@ -3617,29 +3538,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # branch step11: BROAD-VOL de-risk floor RAISE for long winners. NEW
-                    # cross-component data dep: de-risk floor reads the portfolio avg-vol
-                    # aggregation (the deep-broad-vol signal). The level/width terms
-                    # (steps7-10) raised bull Sharpe at CONSTANT DD 12.88pct (dd_gate~0.017
-                    # crushes bull score). The high-leverage bull axis is DD reduction: a
-                    # 1.88pct DD cut -> 2.65x dd_gate -> +0.014 bull score potential even at
-                    # 10pct Sharpe loss (the scoring v3 incentive). Mechanism: during the
-                    # DEEPEST synchronized broad-vol (1.15 onset, the validated regime-
-                    # transition spikes = bull's sharp pullback bars where DD accumulates),
-                    # RAISE the de-risk floor for winning LONGS -> trim winning longs
-                    # SOONER at the pullback peak -> cap the DD contribution from the
-                    # climax-pullback longs. Long-only + profit-side only (losers already
-                    # fast-exit via the 0.85 floor; crash shorts byte-identical via long-
-                    # gate; sideways/rally/mixed avg-vol<1.15 byte-identical). Max raise
-                    # 0.12 (offsets the trend-aligned relaxation 0.10 at the deep-vol peak
-                    # -> winning longs trim sooner than baseline during the spike, then
-                    # resume normal graduation after). Smooth tanh, no boundary. Distinct
-                    # from prior bull-DD attempts (giveback/entry-size/stop/admission all
-                    # byte-identical): this is a broad-vol-gated DE-RISK FLOOR raise, a
-                    # new exit-graduation lever on the DD axis.
-                    _broad_vol_floor_gate = 1.0 if current_pos > 0 else 0.0
-                    _broad_vol_floor = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - 1.15) / PORT_VOL_AVG_SCALE)))
-                    _de_floor += 0.06 * _broad_vol_floor_gate * _broad_vol_floor * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
