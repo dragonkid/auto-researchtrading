@@ -208,6 +208,30 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# branch step4: DEEP-PORTFOLIO-DD long-only convex cushion fade. Diagnostic finding: bull's
+# 12.88% DD forms during ~16-20 deep-DD bars (fast-fall portfolio DD fraction > 0.12) where
+# ~70% of held positions are WINNERS in profit (pos_pnl>0) riding the convex de-risk cushion
+# (k=1.6, holds near-full size through mid-range exit pressure). pp_pressure barely fires
+# (giveback_ratio below the 0.22 threshold -- the winners give back SLOWLY via the gradual
+# convex ramp, NOT a sharp giveback). The loser-side DD levers (exit_thresh/de_floor lowering,
+# Exp4/Exp3) do NOT fire during bull's deep DD (loser_ex_low=0, loser_de_low=0 -- the losers
+# exit via the binary stop path before the sustained-loss/trend gates engage). So bull DD
+# accumulates from WINNERS riding the cushion through the deep pullback, giving back paper
+# profit slowly. Fading the cushion (k->1.0 linear) for LONG winners during the deep-portfolio-
+# DD phase makes them de-risk FAST through the deep pullback -> less slow giveback -> smaller
+# DD. Gated on the FAST-FALL portfolio DD signal (asymmetric _equity_ema_atten, zero-lag --
+# the same signal _port_dd_atten uses, distinct from the lagging span-3 giveback EMA): catches
+# the deep-DD phase the SAME bar it arrives. LONG-ONLY (mirror _long_only_gate / _ta_dd_hold_ext):
+# crash's deep DD (17.8pct) is mostly LOSING shorts (score==bare Sharpe, no dd_gate) and crash's
+# winning shorts use the cushion during bounces (the load-bearing crash-safety constraint);
+# sparing shorts keeps crash byte-identical. Byte-identical when fast-fall DD fraction below
+# onset (rally 5.55pct / mixed 4.99pct / sideways 4.29pct all < onset ~12pct at LK=4) AND for
+# shorts AND for losers (cushion already 1.0 for losers via profit gate). Leverage-coupled
+# onset/scale (price-move-invariant, same discipline as PORT_DD_GIVEBACK_SCALE). Continuous
+# tanh (no boundary). New cross-component data dep at the de-risk ramp: _dr_k now reads the
+# fast-fall portfolio-DD state x position direction (was profit x trend-align x slope-conf).
+DERISK_DEEP_DD_ONSET = 0.03 * LEVERAGE_K   # fast-fall DD fraction above which cushion fades (3pct price move = 12pct equity DD at LK=4, bull's DD range)
+DERISK_DEEP_DD_SCALE = 0.01 * LEVERAGE_K   # ramp width
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -3626,7 +3650,25 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # branch step4: DEEP-PORTFOLIO-DD long-only convex cushion fade. See
+                        # DERISK_DEEP_DD_ONSET header. During bull's deep DD, ~70% of held
+                        # positions are WINNERS riding the convex cushion (k=1.6) through the
+                        # pullback, giving back paper profit slowly -> the slow giveback IS the
+                        # DD accumulation (pp_pressure barely fires; losers exit via stop).
+                        # Fade the cushion toward linear (k->1.0) for LONG winners during the
+                        # fast-fall deep-portfolio-DD phase so they de-risk fast through the
+                        # deep pullback -> less slow giveback -> smaller DD. Uses the top-level
+                        # _equity_ema_atten (fast-fall, zero-lag) -- the same signal as
+                        # _port_dd_atten, NOT the lagging span-3 giveback EMA. LONG-ONLY: spares
+                        # crash's winning shorts (the load-bearing crash-safety constraint).
+                        # Byte-identical when fast-fall DD below onset (rally/mixed/sideways),
+                        # for shorts, and for losers (cushion already 1.0 via profit gate).
+                        # Structure: _dr_k = 1 + AMP*profit*align*conf*(1 - fade), so the cushion
+                        # is INTACT (baseline) when fade=0 and FADED to linear when fade=1.
+                        _dr_long = 1.0 if current_pos > 0 else 0.0
+                        _port_dd_frac_fast_dr = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
+                        _dr_deep_dd_fade = _dr_long * max(0.0, min(1.0, (_port_dd_frac_fast_dr - DERISK_DEEP_DD_ONSET) / DERISK_DEEP_DD_SCALE))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * (1.0 - _dr_deep_dd_fade)  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+conf; fades to 1.0 for long winners in deep portfolio DD
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
