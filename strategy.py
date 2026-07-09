@@ -379,35 +379,6 @@ PORT_DEEP_BEAR_MAX_SHRINK = 0.25  # max shrink at full saturation (-> 0.75x)
 PORT_DEEP_BEAR_ADMIT_ONSET = 0.03   # same onset as Exp8 SIZE cap (deep bear magnitude)
 PORT_DEEP_BEAR_ADMIT_SCALE = 0.02
 PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN = 0.15
-# Exp1 (architectural, indep): SLOPE-CONFIRMED DEEP-DOWNTREND bear entry-frac BOOST.
-# Prior-session-sanctioned UNTESTED lead (c): Exp4 found crash's slope-conf-confirmed
-# shorts are a 100pct-WR subset, but the broad entry-frac boost on |ret_vlong|>0.03
-# included STOPPED-OUT shorts that canceled the gain (bigger crash shorts don't raise
-# Sharpe -- the stopped-out fraction dominates). The fix lead (c): boost ONLY the
-# slope-conf-confirmed shorts via a signal orthogonal to portfolio DD-headroom (which
-# Exp3 showed blocks crash exactly when trend-aligned shorts enter). This adds a
-# CONJUNCTION gate on the bear entry-frac: (a) SIGNED deep multi-day downtrend
-# ret_vlong < -DEEP_DT_ONSET (the clean crash/rally separator -- Exp4 found |ret_vlong|
-# >0.03 is clean for SIDEWAYS but leaks to RALLY at the per-symbol entry-frac path because
-# rally pullback dips reach |ret_vlong|>0.03; the SIGNED ret_vlong < -0.03 fires ONLY in
-# a deep downtrend -- rally bear entries have ret_vlong>0 so they fail the gate, rally
-# byte-identical; sideways ret_vlong~0 fails the gate, byte-identical); AND (b) short-term
-# SLOPE CONFIRMATION of the short (_lr_slope < 0, the SAME 16-bar OLS log-HL2 slope used
-# by the entry voter + the validated _slope_conf scale /0.0004). The conjunction isolates
-# the high-quality trend-aligned crash shorts that BOTH the multi-day trend AND the
-# near-term slope confirm -- the 100pct-WR subset Exp4 identified -- excluding the
-# stopped-out fraction (which lacks slope-conf at entry: a short opening into a
-# slope-up/bounce bar is not slope-confirmed). New cross-component data dep: bear
-# entry-frac depends on (deep-downtrend x short-term-slope-conf conjunction). New
-# control flow: a bear-only first-bar entry-frac multiplier. Shrink-side capped at 1.0
-# (boost-only, safe family); byte-identical when the conjunction is not met (bull all
-# entries, sideways, rally bear entries, crash bounce-longs which are LONG not bear,
-# and crash shorts lacking slope-conf).
-DEEP_DT_BEAR_ONSET = 0.03    # |ret_vlong| deep-downtrend onset (signed: ret_vlong < -0.03)
-DEEP_DT_BEAR_SCALE = 0.015   # ramp width over which the deep-downtrend gate saturates
-DEEP_DT_BEAR_SLOPE_SCALE = 0.0004  # slope-conf tanh scale (matches _slope_conf /0.0004)
-DEEP_DT_BEAR_MAX_BOOST = 0.15  # max first-bar entry-frac boost (mirrors PERSIST_BOOST_MAG scale)
-
 # Exp1 (architectural, indep): MAX-AGGREGATION portfolio VOL-SPIKE SIZE CAP. Extends the
 # validated max-aggregation portfolio-cap pattern (4 keeps on SIZE: avg down_persist, max
 # down_persist, max weak_persist, max |ret_vlong| -- all on the TREND/bear axis) to a NEW
@@ -2242,19 +2213,6 @@ class Strategy:
                 # bear-side consensus boost depends on _down_persist (was weak_persist).
                 _consensus_boost_bull = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, _consensus_dir)
                 _consensus_boost_bear = 1.0 + 0.10 * _consensus_strength * _weak_persist * max(0.0, -_consensus_dir)
-                # Exp1 (architectural, indep): SLOPE-CONFIRMED DEEP-DOWNTREND bear entry-frac
-                # boost. Prior-session UNTESTED lead (c): boost ONLY crash's slope-conf-confirmed
-                # shorts (Exp4 found this is the 100pct-WR subset) via a SIGNED deep-downtrend
-                # gate (ret_vlong < -ONSET) which is clean for crash AND rally (rally bear
-                # entries have ret_vlong>0 -> fail the gate -> byte-identical; sideways ret_vlong~0
-                # -> byte-identical), conjunct with short-term slope confirmation (_lr_slope < 0
-                # confirms the short, the SAME /0.0004 scale as _slope_conf). Excludes the
-                # stopped-out shorts that canceled the broad Exp3/Exp4 boost (they lack slope-conf
-                # at entry: a short opening into a bounce/slope-up bar is not slope-confirmed).
-                # Bear-only first-bar entry-frac multiplier; boost-only (floor 1.0).
-                _deep_dt_gate = max(0.0, min(1.0, np.tanh((-ret_vlong - DEEP_DT_BEAR_ONSET) / DEEP_DT_BEAR_SCALE)))
-                _bear_slope_conf = max(0.0, np.tanh(-_lr_slope / DEEP_DT_BEAR_SLOPE_SCALE))  # ~1 slope-down, ~0 slope-up/flat
-                _deep_dt_bear_boost = 1.0 + DEEP_DT_BEAR_MAX_BOOST * _deep_dt_gate * _bear_slope_conf
                 if _bull_ready and _bull_admit:
                     # branch step3->4: re-add bull-side boost GATED ON WEAK multi-day trend.
                     # Exp3 ungated bull boost gave mixed +0.0090 REAL but rally -0.06 DD
@@ -2287,7 +2245,7 @@ class Strategy:
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn * _deep_dt_bear_boost) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
