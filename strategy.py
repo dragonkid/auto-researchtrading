@@ -2813,51 +2813,6 @@ class Strategy:
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
                 self._hold_ext_ema[symbol] = _ta_dd_hold_ext
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
-                # Exp2 (architectural, indep, this session): PORTFOLIO-WEAK-PERSIST-GATED
-                # MTM-chop time-pressure onset. NEW cross-component data dep at the time
-                # subsystem: _max_hold reads the LIVE pos_pnl path efficiency (MTM-chop,
-                # the same _pnl_path signal consumed at the emission throttle) JOINTLY with
-                # a PORTFOLIO-LEVEL weak-trend gate (_port_weak_persist_avg, cross-symbol avg
-                # fraction of last 48 bars where |ret_vlong|<0.02 -- the validated sideways/
-                # rally-vs-crash/bull separator already used at admission). The prior session's
-                # MTM-chop time-onset branch (reverted) gave REAL sideways +0.0078 (Sh -0.0135
-                # ->-0.0057) + rally +0.031 (Sh 0.882->0.892) BUT crashed -999: every LIVE-
-                # position gate (trend ret_vlong*pos_dir, persistence down_persist, profit
-                # pos_pnl, MAE) flipped during crash's sustained bounces, cutting crash
-                # winning shorts. This experiment's Exp1 (entry-context-cached, also reverted
-                # this session) extended that wall: crash shorts RE-ENTER during bounces when
-                # ret_vlong has dipped, so even the CACHED entry-context is bounce-contaminated.
-                # The PORTFOLIO weak_persist gate is structurally distinct: it does NOT read
-                # the live position (no per-position trend/profit/MAE flip) AND it is a 96-bar
-                # windowed stat averaged across symbols -> smooths over the multi-week bounce
-                # (BTC's 96-bar ret_vlong stays strongly negative through bounces -> weak_persist
-                # LOW in crash -> gate OFF -> crash spared). It fires ONLY in regime-wide weak
-                # trend: sideways (all symbols modest |ret_vlong|~0 -> avg high) AND rally
-                # (modest uptrend |ret_vlong|~0.006<0.02 -> avg high). bull (strong |ret_vlong|
-                # ~0.027>0.02) and crash (|ret_vlong|~0.04>0.02) -> avg low -> gate OFF -> spared.
-                # The separator is the SAME _port_weak_persist_avg already used at admission
-                # (PORT_WEAK_PERSIST_AVG_ONSET=0.55), reused at the time-onset gate -- a market-
-                # regime signal, NOT a live-position signal, so it does not contaminate with
-                # the crash-bounce. Max 2.0-bar shortening at full (chop_path * weak_gate);
-                # continuous tanh on both factors (no boundary); reduction-only (shorter hold
-                # fires time-pressure sooner, never extends past base). Byte-identical when
-                # _port_weak_persist_avg < onset (crash/bull -> gate 0) OR when the pos_pnl
-                # path is smooth (mtm_eff high -> chop 0, e.g. trend-aligned winners in any
-                # regime). Direction-agnostic. The live MTM-chop path signal (the real
-                # sideways/rally lever per the prior branch) is retained; the GATE is the new
-                # crash-sparing axis. Targets sideways dead-capital (the negative-Sharpe regime
-                # whose score==bare Sharpe; shorter hold cuts the dead capital sooner -> higher
-                # Sharpe) + rally grinding winners (choppy low-vol grind path -> shorter hold ->
-                # less giveback) while sparring crash/bull.
-                _pp = self._pnl_path.get(symbol, [])
-                if len(_pp) >= 4:
-                    _ppa = np.array(_pp)
-                    _mtm_net = abs(_ppa[-1] - _ppa[0])
-                    _mtm_tot = float(np.sum(np.abs(np.diff(_ppa))))
-                    _mtm_eff_live = _mtm_net / max(_mtm_tot, 1e-10)  # [0,1] high=smooth
-                    _mtm_chop_live = max(0.0, min(1.0, 1.0 - _mtm_eff_live))
-                    _port_weak_gate = max(0.0, min(1.0, np.tanh((_port_weak_persist_avg - PORT_WEAK_PERSIST_AVG_ONSET) / PORT_WEAK_PERSIST_AVG_SCALE)))
-                    _max_hold = _max_hold - 2.0 * _mtm_chop_live * _port_weak_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
