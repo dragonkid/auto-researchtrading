@@ -3658,7 +3658,25 @@ class Strategy:
                         # 1:1 since crash score == bare Sharpe). Distinct from the _de_floor
                         # lowering (lowers WHEN de-risk starts) -- this changes HOW FAST it
                         # ramps once started. Reduction-only (safe family).
-                        _dr_k = _dr_k - DERISK_CONCAVE_LOSS_AMP * max(0.0, -_pnl_scale)  # k: 1.0->1.6 profit, 1.0->0.70 deep loss
+                        # BRANCH step2: GATE the concave ramp on COUNTER-TREND (fix the opener's
+                        # crash catastrophe). The opener cut crash's winning TREND-ALIGNED
+                        # shorts that temporarily dip into loss during dead-cat bounces before
+                        # resuming the downtrend (crash trades 145->83, WR 66.9->56.6, PF 1.0->0.3).
+                        # A trend-aligned loser (pos_dir matches ret_long) is more likely a
+                        # PULLBACK on a winning trend position that will resume (crash short in a
+                        # downtrend bouncing) -- it should ride back to profit (k=1.0 linear, NOT
+                        # fast-cut). A COUNTER-trend loser (pos_dir opposes ret_long) is a genuine
+                        # adverse move -- the trend is AGAINST the position -- fast-cut it (concave
+                        # k<1). Gate the concave ramp on (1 - _dr_align): _dr_align is 1 trend-
+                        # aligned (spared, k=1.0), 0 counter-trend (full concave fast-cut). This is
+                        # the SAME separator the convex cushion uses (and the validated _ct_si_gate
+                        # / _adv_freeze principle: trend-aligned adversity is a pullback, ct
+                        # adversity is a real loser). Trend-aligned losers byte-identical to
+                        # baseline; only ct losers get the concave fast-cut. Sideways (ret_long~0
+                        # -> _dr_align~0.5 partial) gets partial concave -- sideways ct losers
+                        # (rare) cut faster. Continuous (no boundary); direction-agnostic via
+                        # _dr_align.
+                        _dr_k = _dr_k - DERISK_CONCAVE_LOSS_AMP * max(0.0, -_pnl_scale) * (1.0 - _dr_align)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
