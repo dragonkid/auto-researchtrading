@@ -412,7 +412,15 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 # (calm grind rally/sideways, and trend regimes where vol is concentrated not broad).
 PORT_VOL_AVG_ONSET = 1.15
 PORT_VOL_AVG_SCALE = 0.20
-PORT_VOL_AVG_MAX_SHRINK = 0.35  # branch step3: 25->35 probe magnitude ceiling / stability break
+PORT_VOL_AVG_MAX_SHRINK = 0.25  # branch step4: revert to bull sweet-spot (step2); short-side extra via _port_vol_avg_short below
+# branch step4: SHORT-SIDE supplementary avg-vol shrink (crash amplification). crash is
+# short-dominant and in the LINEAR negative-Sharpe region (smaller shorts -> higher Sharpe
+# directly); bull is long-dominant and dd_gate-collapsed (smaller longs -> lower Sharpe).
+# The base 25pct cap (bull sweet-spot) applies to all entries via `size`; this adds an
+# EXTRA 15pct shrink for SHORT entries only when avg-vol is elevated, decoupling the
+# crash amplification from the bull sweet-spot. Direction = structural long/short risk
+# asymmetry (not a regime label). Composes multiplicatively with the base cap.
+PORT_VOL_AVG_SHORT_EXTRA = 0.15
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -785,6 +793,15 @@ class Strategy:
         # trend regimes where vol is concentrated not broad). Max 15% shrink.
         _port_vol_ratio_avg = (sum(_port_vol_ratio_vals) / len(_port_vol_ratio_vals)) if _port_vol_ratio_vals else 0.0
         _port_vol_avg_cap = 1.0 - PORT_VOL_AVG_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
+        # branch step4: SHORT-SIDE supplementary avg-vol shrink (crash amplification).
+        # The base _port_vol_avg_cap (25pct, bull long-side sweet-spot) already applies to
+        # ALL entries via `size`. This adds an EXTRA shrink for SHORT entries only, when
+        # avg-vol is elevated, so crash (short-dominant, linear negative-Sharpe region:
+        # smaller shorts -> higher Sharpe directly) gets amplified shrink while bull
+        # (long-dominant, dd_gate-collapsed: smaller longs -> lower Sharpe) stays at the
+        # 25pct sweet-spot. Direction = structural long/short risk asymmetry (no regime
+        # label). Byte-identical for longs (applied at bear entry target only).
+        _port_vol_avg_short = 1.0 - PORT_VOL_AVG_SHORT_EXTRA * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_avg_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
@@ -2232,7 +2249,7 @@ class Strategy:
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _port_vol_avg_short
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
