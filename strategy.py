@@ -2900,7 +2900,7 @@ class Strategy:
                 # deep broad-vol. Byte-identical for shorts + when avg-vol < 0.95.
                 _broad_vol_level_gate = 1.0 if current_pos > 0 else 0.0
                 _broad_vol_level = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
-                _max_hold *= 1.0 + 0.05 * _broad_vol_level_gate * _broad_vol_level
+                _max_hold *= 1.0 + 0.10 * _broad_vol_level_gate * _broad_vol_level
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
