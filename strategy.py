@@ -424,7 +424,7 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 # identical when avg vol < onset (sideways low broad vol = the validated clean separator).
 # Direction-agnostic general principle: the de-risk graduation width should reflect broad-
 # market vol co-movement, not just own-symbol vol.
-PORT_VOL_AVG_TP_ONSET = 0.90   # branch step6: 0.95->0.90 engage more bull bars (test if sideways stays below 0.90)
+PORT_VOL_AVG_TP_ONSET = 0.95   # branch step4 PEAK onset (step6 0.90 hit stability wall)
 PORT_VOL_AVG_TP_SCALE = 0.20   # same ramp width
 PORT_VOL_AVG_TP_MAX_WIDEN = 1.00  # branch step4 PEAK (+0.000561); step5 mag 2.0 hit bull stability wall (stab<0.80)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
@@ -2899,6 +2899,15 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # branch step7: SMALL avg-vol LEVEL extension on _max_hold (complement to the
+                # width widening at step4). The width widening (step4) raised bull Sharpe
+                # +0.19 but is stability-capped at magnitude 1.0 (step5 mag 2.0 collapsed bull
+                # stab <0.80). A LEVEL extension (delays time-pressure onset) is a different
+                # phase (pre-ramp vs during-ramp) and may compose for additional bull gain.
+                # Kept SMALL (max +6pct, half the single-sym 0.12) and gated long-only x
+                # trend-aligned (same gates as the width widening) to stay stability-safe.
+                # Byte-identical when avg vol < onset OR ct/short positions.
+                _max_hold *= 1.0 + 0.06 * _port_vol_avg_tp_widen * _ta_align * _ta_long_gate
                 # Exp2 (this session): VOL-NORMALIZED time-pressure RAMP WIDTH. The fixed
                 # 4-bar ramp (_time_pressure onset over 4 bars past _max_hold) treats 4 crash
                 # bars (high vol = large real price move) the same as 4 sideways bars (low vol
