@@ -212,7 +212,7 @@ DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold thr
 # counterpart of DERISK_CONVEX_AMP). k<1 de-risks FASTER at low exit-pressure so a
 # deep loser cuts early (small realized loss) instead of holding near-full through a
 # gradual exit-pressure build toward the stop. See _dr_k below.
-DERISK_CONCAVE_LOSS_AMP = 0.40  # loss-side ramp exponent 1.0->0.60 (concave = fast cut)
+DERISK_CONCAVE_LOSS_AMP = 0.30  # loss-side ramp exponent 1.0->0.70 (concave = fast cut)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
