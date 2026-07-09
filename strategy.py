@@ -1184,6 +1184,22 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
+            # branch step5: LONG-SIDE ADMISSION TIGHTENING conditional on portfolio avg-vol.
+            # The avg-vol SIZE cap (step1-3) fires on LONG entries (crash bounce longs + bull
+            # pullback longs -- the climax entries that aggregate into bull DD and crash's
+            # losing bounce longs) because SHORTS enter in low-broad-vol downtrend legs (step4
+            # diagnosis). The size cap shrinks these longs but they still ENTER (just smaller).
+            # This COMPLEMENT cuts the COUNT: raise the long-side admission bar when avg-vol is
+            # elevated so the MARGINAL-conviction climax longs are FILTERED (not just shrunk) --
+            # the sanctioned conviction-based-admission-block lead (a) applied via the CLEAN
+            # avg-vol separator (sideways has LOW avg vol -> byte-identical, the wall that
+            # killed Exp1's equity-momentum/uptrend-direction gate which leaked to sideways-
+            # 2023-recovery). LONG-only (crash shorts unaffected -> avoids crash-bounce-wall;
+            # bear admission unchanged). Byte-identical when avg-vol < ONSET (sideways/rally/
+            # mixed, low avg vol) and at portfolio peak calm. Max 12% tighten at deep broad-vol.
+            # Composes with the size cap (independent: size on magnitude, admission on count).
+            _avg_vol_admit = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
+            _bull_strong_min *= 1.0 + 0.12 * _avg_vol_admit
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
