@@ -2378,6 +2378,31 @@ class Strategy:
                     _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
+                    # Exp3 (architectural, indep): WEAK-TREND-GATED adverse scale-in SLOWDOWN.
+                    # The _adv_freeze above fires only on COUNTER-TREND adverse moves (gated
+                    # by _ct_si_gate). In a TRENDLESS regime (sideways, low _trend_strength_w),
+                    # entries are NOT counter-trend (ret_vlong~0 -> _ct_si_gate~0 -> _adv_freeze
+                    # OFF) -> a sideways entry that goes adverse during scale-in scales in to
+                    # FULL size -> bigger loss on a noise entry that has no trend to carry it
+                    # back. DISTINCT mechanism: a WEAK-TREND-gated adverse slowdown that fires
+                    # ONLY in trendless regimes (low _trend_strength_w, the same chop
+                    # indicator used by _accel_floor/_be_trend_gate/_w_time) on ANY adverse
+                    # move (not gated by ct). In sideways (trendless), an adverse move during
+                    # scale-in is more likely noise (no trend to recover) -> slow scale-in ->
+                    # stay smaller -> smaller loss if the noise entry continues against us.
+                    # CRASH-SAFE by construction: crash/rally/bull are TREND regimes (high
+                    # _trend_strength_w -> weak-trend gate ~0 -> slowdown OFF), so crash
+                    # trend shorts that dip adverse during bounces are unaffected (the gate
+                    # is OFF in the trended regime, NOT a live-position signal that flickers
+                    # during the bounce -> no crash-bounce-wall contamination). Distinct from
+                    # _fade_slowdown (voter margin<0, fires all regimes) and _adv_freeze (ct-
+                    # gated). One-sided: only fires when pos_pnl<0 (winning scale-in unaffected).
+                    # Max 25% slowdown at deep adverse in pure trendless regime. Smooth tanh.
+                    # _trend_strength_w computed at line ~1045 (abs(ret_long)/0.04 tanh).
+                    _weak_trend_gate = 1.0 - _trend_strength_w  # 1 trendless (sideways), 0 strong trend
+                    _adv_si = max(0.0, np.tanh(-pos_pnl / (0.5 * abs(STOP_LOSS_PCT))))
+                    _wt_adv_slowdown = 0.25 * _adv_si * _weak_trend_gate
+                    scale_frac = scale_frac * (1.0 - _wt_adv_slowdown)
                     # Exp1 (architectural, indep): FEED-FORWARD scale_frac quantization
                     # to a FIXED discrete fraction grid. The continuous scale-in ramp
                     # (ENTRY_INITIAL_FRAC + (1-ENTRY_INITIAL_FRAC)*progress) lands at a
