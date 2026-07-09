@@ -3676,7 +3676,25 @@ class Strategy:
                         # -> _dr_align~0.5 partial) gets partial concave -- sideways ct losers
                         # (rare) cut faster. Continuous (no boundary); direction-agnostic via
                         # _dr_align.
-                        _dr_k = _dr_k - DERISK_CONCAVE_LOSS_AMP * max(0.0, -_pnl_scale) * (1.0 - _dr_align)
+                        # BRANCH step4: MULTI-DAY ct gate (replaces the 20-bar (1-_dr_align) which
+                        # broke at amplitude 0.50: step3 catastrophic -1.51). The 20-bar ret_long
+                        # FLIPS positive during crash dead-cat bounces -> a crash short (pos_dir=-1)
+                        # has ret_long*pos_dir<0 -> _dr_align drops -> ct-gate (1-_dr_align) rises
+                        # -> the TREND-ALIGNED short gets fast-cut at higher amplitude (the same
+                        # bull/crash separator wall). The validated multi-day separator is ret_vlong
+                        # (96-bar OLS) which STAYS NEGATIVE through crash's dead-cat bounces (the
+                        # downtrend is intact at the multi-day scale) -> a crash short stays
+                        # trend-aligned-at-multi-day through the bounce -> spared. Use a MULTI-DAY
+                        # ct gate: _dr_ct_md = tanh(-ret_vlong*pos_dir/0.04) (1 counter-trend at
+                        # multi-day, 0 trend-aligned). Fast-saturating /0.04. Gate the concave ramp
+                        # on _dr_ct_md so only MULTI-DAY counter-trend losers fast-cut (crash
+                        # dead-cat bounce LONGS, rally pullback SHORTS -- the genuine ct losers);
+                        # trend-aligned-at-multi-day losers that dip during bounces keep k=1.0
+                        # (ride back to profit). This is the SAME ret_vlong ct signal used by
+                        # _ct_si_gate / _ct_vlong / _ct_hold_sat (the validated bull/crash separator).
+                        # Continuous (no boundary); direction-agnostic via pos_dir.
+                        _dr_ct_md = max(0.0, np.tanh(-ret_vlong * _dr_pos_dir / 0.04))  # 0 trend-aligned-md, 1 ct-md
+                        _dr_k = _dr_k - DERISK_CONCAVE_LOSS_AMP * max(0.0, -_pnl_scale) * _dr_ct_md
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
