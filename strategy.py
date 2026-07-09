@@ -2952,7 +2952,24 @@ class Strategy:
                 # the residual wall -- but the avg-vol SIZE cap already shrank those bounce
                 # longs at entry, so the marginal cost is small. Byte-identical when avg vol
                 # < onset (sideways) OR when _ta_align=0 (ct positions).
-                _tp_ramp_w = _tp_ramp_w * (1.0 + PORT_VOL_AVG_TP_MAX_WIDEN * _port_vol_avg_tp_widen * _ta_align)
+                # branch step3: step2 was BYTE-IDENTICAL to step1 (the _ta_align gate had no
+                # effect -> the widening already only fires on trend-aligned positions).
+                # DIAGNOSIS: the crash -0.0028 regression is on TREND-ALIGNED crash SHORTS
+                # (the winning trades), NOT ct-bounce longs. The wider ramp holds crash
+                # winning shorts longer into dead-cat bounces -> they give back profit before
+                # time-pressure exits -> Sharpe drops. The asymmetry: bull long-in-uptrend
+                # pullbacks RECOVER (wider ramp helps hold through the pullback); crash short-
+                # in-downtrend bounces REVERSE (wider ramp holds the short into the bounce
+                # giving back profit before it resumes down). The NARROW ramp is better for
+                # crash shorts (exit near the bounce start, lock profit); the WIDER ramp is
+                # better for bull longs (ride the pullback). Gate the widening LONG-ONLY
+                # (the SAME _ta_long_gate structural-property pattern used by _ta_dd_hold_ext
+                # at line ~2841: long/short risk asymmetry, NOT a regime label -- longs in an
+                # uptrend during broad-vol face pullbacks that recover; shorts in a downtrend
+                # face asymmetric bounce risk). Crash shorts (_ta_long_gate=0) -> NO
+                # widening -> byte-identical to baseline for crash. Bull/rally trend longs
+                # -> widening preserved.
+                _tp_ramp_w = _tp_ramp_w * (1.0 + PORT_VOL_AVG_TP_MAX_WIDEN * _port_vol_avg_tp_widen * _ta_align * _ta_long_gate)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
