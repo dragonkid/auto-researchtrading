@@ -412,7 +412,7 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 # (calm grind rally/sideways, and trend regimes where vol is concentrated not broad).
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
-PORT_VOL_AVG_MAX_SHRINK = 0.50  # branch step14: 45->50 with sustain (final push to cross +0.003 keep)
+PORT_VOL_AVG_MAX_SHRINK = 0.45  # branch step13: 40->45 with sustain (push to cross +0.003 keep)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
