@@ -494,6 +494,22 @@ class Strategy:
         # at entry, deterministic). Keeps a trend-aligned counter-move entry smaller for
         # the whole hold. Pattern mirrors _conc_shrink_held / _vol_shrink_held.
         self._cv_shrink_held = {}
+        # Exp1 (architectural, indep, this session): per-symbol ENTRY-CONTEXT chop
+        # marker, CACHED AT ENTRY (like _conc_shrink_held/_cv_shrink_held) and sustained
+        # through the hold. The prior session's MTM-chop time-pressure-onset branch gave
+        # REAL sideways +0.0078 + rally +0.031 gains but was walled by crash-bounce
+        # coupling: every LIVE-position gate (trend, persistence, profit, MAE) flipped
+        # during crash's sustained bounces, cutting crash winning shorts -> crash -999.
+        # The documented untested lead: cache the entry-context (chop vs trend) AT ENTRY
+        # so it is FIXED through the hold -- the entry bar's context does NOT oscillate
+        # with the crash bounce, so a chop-entry marker will NOT flip to cut crash shorts
+        # mid-hold. Crash shorts are entered in a STRONG multi-day downtrend (high
+        # |ret_vlong|) -> low chop_ctx -> spared; sideways dead-capital entries are taken
+        # in trendless chop (low |ret_vlong|, low rsi_trend_str) -> high chop_ctx ->
+        # shorter max_hold (sooner time-pressure). The marker reads (|ret_vlong|,
+        # rsi_trend_str) at entry; sustained deterministically (set once, noise-robust).
+        # Reset on full exit; default 0.0 (trend -> no shortening).
+        self._entry_chop_ctx = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -2201,11 +2217,21 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
+                    # Exp1: cache entry-context chop marker (high=chop, low=trend).
+                    self._entry_chop_ctx[symbol] = 1.0 - max(
+                        max(0.0, np.tanh(abs(ret_vlong) / 0.02)),
+                        rsi_trend_str,
+                    )
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
+                    # Exp1: cache entry-context chop marker (high=chop, low=trend).
+                    self._entry_chop_ctx[symbol] = 1.0 - max(
+                        max(0.0, np.tanh(abs(ret_vlong) / 0.02)),
+                        rsi_trend_str,
+                    )
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2813,6 +2839,32 @@ class Strategy:
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
                 self._hold_ext_ema[symbol] = _ta_dd_hold_ext
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
+                # Exp1 (architectural, indep, this session): ENTRY-CONTEXT-CACHED
+                # time-pressure onset shortening. NEW cross-component data dep at the
+                # time subsystem: _max_hold reads the ENTRY-CONTEXT chop marker (cached
+                # at entry, self._entry_chop_ctx) -- a FIXED property of the entry bar,
+                # NOT the live position's trend/MAE. The prior session's MTM-chop time-
+                # onset branch (reverted) read the LIVE pos_pnl path efficiency (choppy
+                # path -> shorter hold) and gave REAL sideways +0.0078 + rally +0.031
+                # BUT crashed: every live-position gate flipped during crash's sustained
+                # bounces (ret_vlong flips, down_persist dips, pos_pnl/MAE zero-cross)
+                # -> cut crash winning shorts -> crash -999. The entry-context marker
+                # does NOT flip: crash shorts are entered in a strong downtrend (low
+                # chop_ctx) -> spared for the whole hold; sideways dead-capital entries
+                # are taken in trendless chop (high chop_ctx) -> shorter max_hold ->
+                # sooner time-pressure -> cuts the dead capital earlier. The marker is
+                # set ONCE at entry from (|ret_vlong|, rsi_trend_str) -- both smooth
+                # long-window stats (noise-robust, no boundary). This is the documented
+                # untested counterpart to the live-position gates that all failed.
+                # Max 2.0-bar shortening at full chop_ctx (mirrors the prior branch's
+                # step1 magnitude); continuous tanh so partial-chop entries (rally's
+                # modest trend context) get partial shortening. Trend entries (crash
+                # shorts, bull longs: chop_ctx~0) byte-identical. Reduction-only (a
+                # shorter hold fires time-pressure sooner; never extends past base).
+                # Distinct from _ct_hold_sat (live ret_vlong-based ct shortening, which
+                # flips during bounces): this reads the CACHED entry context, fixed.
+                _entry_chop = self._entry_chop_ctx.get(symbol, 0.0)
+                _max_hold = _max_hold - 2.0 * _entry_chop
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
@@ -4282,7 +4334,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._entry_chop_ctx):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
