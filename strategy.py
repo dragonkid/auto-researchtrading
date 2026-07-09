@@ -3677,6 +3677,27 @@ class Strategy:
                         # (rare) cut faster. Continuous (no boundary); direction-agnostic via
                         # _dr_align.
                         _dr_k = _dr_k - DERISK_CONCAVE_LOSS_AMP * max(0.0, -_pnl_scale) * (1.0 - _dr_align)
+                        # BRANCH step5: SLOPE-AGAINST confirmation on the concave loser gate.
+                        # Step2 (20-bar ct gate) gave +0.000674 but step3 (amplitude 0.50)
+                        # catastrophically cut trend-aligned shorts that FLIP ct at the 20-bar
+                        # boundary during bounces (ret_long flips). The 20-bar ct label alone is
+                        # noisy at the boundary. Add a NEAR-TERM SLOPE-AGAINST requirement: the
+                        # concave fast-cut fires only when the position is ct AND the near-term
+                        # multi-window exit-slope is ALSO against the position (1 - _dr_slope_conf,
+                        # where _dr_slope_conf is 1 when slope confirms the position). A position
+                        # that is ct AND facing an actively-against slope is a GENUINE adverse
+                        # move (trend and recent slope both oppose it) -- fast-cut it. A position
+                        # that is ct at 20-bar but whose slope has STARTED to confirm again (bounce
+                        # resuming, slope turning back with the position) is NOT a genuine loser
+                        # -- the bounce is reversing back -> spare it. This filters the noisy
+                        # 20-bar boundary cases (trend-aligned shorts briefly ct during a bounce
+                        # have slope STILL with them -> _dr_slope_conf high -> (1-conf) ~0 -> not
+                        # fast-cut) while keeping genuine ct-losers (slope actively against).
+                        # Lets the amplitude rise safely (the slope-conf filter rejects the
+                        # boundary-flip population that broke step3). Continuous (no boundary);
+                        # direction-agnostic via _dr_pos_dir.
+                        _dr_slope_against = 1.0 - _dr_slope_conf  # 0 slope-confirms-pos, 1 slope-against-pos
+                        _dr_k = _dr_k - DERISK_CONCAVE_LOSS_AMP * max(0.0, -_pnl_scale) * (1.0 - _dr_align) * _dr_slope_against
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
