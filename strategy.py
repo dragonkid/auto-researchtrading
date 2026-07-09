@@ -4239,15 +4239,10 @@ class Strategy:
                     # ~1.0 regardless of hold_duration). Direction-agnostic. Targets mixed
                     # (the binding positive regime whose dead-capital longs bleed across
                     # many bars) while sparing early-bar reductions everywhere.
+                    _hold_dur_profile = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    # Exp4 (architectural simplification, indep): REMOVED _hold_dur_profile
-                    # (hold-duration-conditioned trim profile, a prior structural-exploration
-                    # keep now in baseline). Test whether the other 3 gates (grind_gate,
-                    # strong_trend_fade, winner_fade) already isolate the dead-capital population
-                    # making the hold-duration conditioning redundant. The profile scaled trim
-                    # 0.5x early -> 1.4x late; removing makes it uniform 1.0x across hold life.
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
