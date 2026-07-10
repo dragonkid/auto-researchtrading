@@ -3506,6 +3506,18 @@ class Strategy:
                 # stays excluded. crash (high vol, but loss-OR inert there) unaffected.
                 _loss_or_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
                 _loss_or_gate = max(_loss_or_gate, _loss_or_vol_gate)
+                # Step2i: REMOVE the gate entirely (slope+time loss-OR fires everywhere, no BE).
+                # Step2e (gated slope+time) gave sideways +0.003 but bull/rally byte-identical
+                # (the gate restricted the loss-OR to trending stretches). The mixed stability
+                # crash was BE-driven (step2e confirmed removing BE recovered mixed stability
+                # 0.814). So slope+time WITHOUT BE should be mixed-stable AND fire on sideways/
+                # bull/rally more broadly -> amplify the sideways gain and possibly recover
+                # bull/rally (slope+time combining on pullback losers without the BE noise cost).
+                # Test the no-gate slope+time variant: if mixed stability holds (no BE) and
+                # sideways/bull/rally gain, composite may cross +0.003. Risk: without the gate,
+                # the slope+time loss-OR fires on mixed's chop -> if slope+time is noise there,
+                # mixed stability could still degrade (the BE removal may not fully save it).
+                _loss_or_gate = 1.0
                 _soft_max = max(_soft_max, _loss_or * _loss_or_gate)
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
