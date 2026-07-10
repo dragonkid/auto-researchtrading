@@ -3420,10 +3420,13 @@ class Strategy:
                 # each term clamped to [0,1] before the product. Distinct from the prior
                 # rank-weighted top-3 rewrite (discarded) -- that changed the TOP terms'
                 # weighting; this changes the COMBINATION RULE for the loss-side subset.
+                # Step2e: remove break-even from the loss-OR (the most BE-band-threshold-
+                # sensitive term; mixed's chop is BE-centric -> the break-even contribution to
+                # the loss-OR is the mixed over-exit source). Keep slope-against + time (the
+                # extending-loser combination). Tests whether mixed -0.006 is BE-driven.
                 _loss_terms = (
                     max(0.0, min(1.0, _w_slope * _sl_slope_pressure)),
                     max(0.0, min(1.0, _w_time * _time_pressure)),
-                    max(0.0, min(1.0, _w_be * _be_pressure)),
                 )
                 _loss_prod = 1.0
                 for _lt in _loss_terms:
