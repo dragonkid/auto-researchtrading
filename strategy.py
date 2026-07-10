@@ -670,7 +670,23 @@ class Strategy:
         self._equity_ema_hist = _eq_hist
         _port_eq_mom_shrink = 1.0
         if len(_eq_hist) >= 8 and self._peak_equity > 1e-10:
-            _eq_mom = (self._equity_ema - _eq_hist[0]) / self._peak_equity  # 8-bar rate of change / peak
+            # Exp5 (architectural, indep): SMOOTH the momentum DERIVATIVE via OLS slope
+            # (keep's sanctioned UNTESTED lead b: a smoother momentum signal to lift bull
+            # stability back past the 0.80 knee). The keep used the 8-bar ENDPOINT
+            # difference (ema - ema[0]) / peak, which is endpoint-noise-sensitive: an
+            # AR(1) close perturbation moves the current ema but not ema[0] -> the
+            # difference wobbles bar-to-bar -> the shrink AMOUNT wobbles -> entry size
+            # wobbles across the noise ensemble -> bull stability dropped 0.800->0.799
+            # (just below the 0.80 knee -> stab_factor 0.997 penalty). Replace the
+            # endpoint difference with an 8-bar OLS SLOPE (averages the linear trend over
+            # the whole window -> endpoint noise is averaged out -> less bar-to-bar
+            # wobble -> higher bull stability) scaled to the SAME units as the difference
+            # (slope*(n-1) = the total linear-projected change over the window) and
+            # peak-normalized. The slope is NEGATIVE during a decline (pullback detection
+            # preserved) and SMOOTHER (less wobble). _fast_slope is the OLS helper at top.
+            # If bull stability clears 0.80 the stab penalty lifts AND the keep may gain
+            # headroom (the stability knee was the cap at width 1.20/level 0.10).
+            _eq_mom = (_fast_slope(np.array(_eq_hist)) * (len(_eq_hist) - 1)) / self._peak_equity  # OLS slope*window, peak-normalized (same units as the endpoint difference, smoother)
             # Shrink only when momentum negative; max 15% shrink at deep negative momentum.
             # /0.02 scale: a 2% peak-relative 8-bar decline saturates (calm=0, sharp decline=1).
             # branch step3: LOW-DD-FRACTION gate -- fire only on TRANSIENT pullbacks (low
