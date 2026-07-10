@@ -885,7 +885,20 @@ class Strategy:
                 _agree_mags = [abs(_rv) for _rv in _port_rv_vals if (_rv > 0) == (_port_trend_mag_dir > 0)]
                 if len(_agree_mags) >= 2:
                     _port_trend_mag_agree = min(_agree_mags)
-        _port_trend_admit_relax = max(0.0, min(1.0, np.tanh(_port_trend_mag_agree / 0.02)))
+        # branch step2: RAISE THE ONSET to exclude sideways' moderate 96-bar recovery
+        # drift. Step1 (/0.02, no onset) cratered sideways -0.281: sideways 2023's broad
+        # recovery (BTC/ETH/SOL all drifting up together over 96-bar windows during
+        # recovery legs) produces a min-agreeing-magnitude ~0.005-0.015 that EXCEEDS the
+        # /0.02 scale -> relaxation fired in sideways -> admitted noise -> sideways Sharpe
+        # craters. The strong-trend regimes (bull all-up, crash all-down, rally all-up) have
+        # min-agreeing-magnitude ~0.03-0.04. Raise the onset to 0.025 with a /0.01 ramp
+        # (saturates by 0.045) so sideways' 0.005-0.015 falls BELOW onset (byte-identical)
+        # while bull/crash/rally's 0.03-0.04 stays above (relaxation fires). Continuous
+        # tanh with onset (no hard boundary); the onset is on the smooth 96-bar min-
+        # magnitude (averages ~96 bars of AR(1) noise -> noise-robust, ~1/sqrt(96)).
+        PORT_TREND_AGREE_ONSET = 0.025
+        PORT_TREND_AGREE_SCALE = 0.01
+        _port_trend_admit_relax = max(0.0, min(1.0, np.tanh((_port_trend_mag_agree - PORT_TREND_AGREE_ONSET) / PORT_TREND_AGREE_SCALE)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
