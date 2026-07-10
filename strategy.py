@@ -2465,14 +2465,21 @@ class Strategy:
                     # the trending regimes (rsi_trend_str high) keep the slowdown. Continuous
                     # tanh ramp on rsi_trend_str/0.20 (saturates by ~0.4 trend strength --
                     # the SAME scale as the other trend gates).
-                    # branch step5: SHARPER trend gate onset (shift from /0.20 saturating-by-
-                    # 0.4 to (rsi_trend_str-0.30)/0.10 saturating-by-0.5). step2's /0.20 gate
-                    # fired at 0.76 for sideways' brief rsi_trend_str spikes (0.2-0.3) -> not
-                    # excluded -> sideways -0.007. Shift the onset to 0.30 so sideways' brief
-                    # 0.2-0.3 spikes are near-0, while mixed/rally/bull sustained 0.4+ keep
-                    # firing. Continuous tanh, no boundary. This raises the bar for the trend
-                    # requirement to exclude sideways' transient trending stretches.
-                    _mom_pace_trend_gate = max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.30) / 0.10)))
+                    # branch step6: MULTI-DAY trend-magnitude gate (replaces step2's 20-bar
+                    # rsi_trend_str gate). step2 (/0.20 rsi_trend_str) captured mixed +0.027 but
+                    # cost sideways -0.007 (sideways' transient 20-bar directional legs spike
+                    # rsi_trend_str -> gate fires). step5 (sharper onset 0.30) excluded sideways
+                    # AND mixed (mixed's 20-bar trend is moderate, below 0.30). The separator
+                    # that distinguishes mixed's SUSTAINED multi-day trends from sideways'
+                    # TRANSIENT 20-bar legs is the 96-bar |ret_vlong| magnitude: sideways 2023
+                    # is flat (|ret_vlong| low) while mixed has sustained multi-day moves
+                    # (|ret_vlong| moderate-high in decline/rally phases). Gate on the multi-
+                    # day trend MAGNITUDE (any direction): tanh(|ret_vlong|/0.04). This fires
+                    # for mixed/rally/bull (strong multi-day trend) and excludes sideways
+                    # (flat). Continuous tanh, ret_vlong is already computed (96-bar OLS,
+                    # noise-robust). Keeps the mixed gain while sparing sideways at the
+                    # multi-day scale (sideways' 20-bar legs don't move the 96-bar window).
+                    _mom_pace_trend_gate = max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.04)))
                     _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate * _mom_pace_trend_gate
                 _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
                 _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
