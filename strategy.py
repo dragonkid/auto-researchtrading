@@ -2761,60 +2761,17 @@ class Strategy:
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
-                # Exp1 (architectural, indep): SYMMETRIC short-side pp_pressure winner
-                # attenuation for trend-aligned SHORTS in PERSISTENT DEEP-BEAR. The existing
-                # _ta_winner_gate is LONG-ONLY (_long_only_gate) + persistent-UPTREND
-                # (_up_persist_gate) -- it gives bull's trend-aligned winning longs pullback
-                # relief but crash's trend-aligned winning SHORTS get ZERO pp-attenuation
-                # (full pp_pressure -> exit givebacks normally). Crash Sharpe is -0.051 (PF
-                # 1.0, 66.9pct WR -- winners barely balance losers); the WINNERS are return-
-                # limited (time-pressure is NON-BINDING for crash per the broad-vol max_hold
-                # branch byte-identical crash finding; crash exits via giveback/slope). So
-                # the untested lever for raising crash Sharpe toward 0/positive is to let
-                # crash's trend-aligned winning shorts ride gradual givebacks LONGER
-                # (attenuate pp_pressure) -> capture more downtrend before the bounce ->
-                # bigger winners -> PF > 1.0 -> positive Sharpe.
-                #
-                # WHY PRIOR SHORT-SIDE ATTENUATION BLEW UP (and why this is safe): the
-                # long-only gate was added because extending pp-attenuation to shorts rode
-                # crash bounces -> DD exploded. But that version had NO short-term slope
-                # confirmation -- ret_vlong (96-bar) STAYS negative through a multi-week
-                # bounce, so the trend-align gate stayed on while price bounced. The fix:
-                # require a SHORT-TERM slope-AGREEMENT confirmation (_short_slope_conf: the
-                # 16-bar OLS exit-slope still NEGATIVE = downtrend intact, NOT bouncing). A
-                # bounce has slope turning positive -> _short_slope_conf -> 0 -> no
-                # attenuation -> pp_pressure fires normally -> exit the bounce. This is the
-                # validated safety the long-only version LACKS (the _win_accel scale-in
-                # accelerator proved slope-conf protects bull from over-acceleration into
-                # corrections; same principle, mirrored to short-side pp-attenuation).
-                #
-                # Gates (all must pass): (1) SHORT (current_pos<0), (2) trend-aligned-at-
-                # multi-day (ret_vlong<0 for a short = _ta_winner_gate base already checks
-                # ret_vlong*pos_dir>0), (3) in-profit (pos_pnl>0, base gate), (4) persistent
-                # DEEP-BEAR (_down_persist_short_gate: _down_persist high = crash ~0.9;
-                # bull ~0.3 -> gate 0 -> byte-identical), (5) gradual giveback (_gb_mag_gate,
-                # shared), (6) slope-against small (_slope_against_gate, shared -- a sharp
-                # rising slope turns it off), (7) short-term slope AGREES with short
-                # (_short_slope_conf, NEW -- slope still negative). Conservative magnitude
-                # 0.35 (vs 0.95 long-side; short-side is untested, downtrends choppier).
-                # Byte-identical for longs (long gate 0 on short term) and for sideways/rally
-                # (_down_persist low -> short gate 0) and at portfolio peak. New cross-
-                # component data dep: pp_pressure attenuation for shorts depends on
-                # (multi-day trend-align, persistent deep-bear, short-term slope-agreement,
-                # giveback magnitude) jointly -- the short-side mirror of the long-side gate
-                # with the slope-confirmation the long side lacks.
-                _short_gate = 1.0 if current_pos < 0 else 0.0
-                _down_persist_short_gate = max(0.0, min(1.0, (_down_persist - 0.60) / 0.20))  # ~0 bull/sideways, ~1 crash persistent bear
-                # Short-term slope agreement for a SHORT = exit-slope still NEGATIVE (downtrend
-                # intact, not bouncing). _exit_slope<0 favors the short. fast-saturating /0.0003
-                # (a small negative slope confirms; a bounce slope->0/positive -> gate->0).
-                _short_slope_conf = max(0.0, np.tanh(-_exit_slope / 0.0003)) if current_pos < 0 else 0.0
-                _ta_short_gate = _short_gate * _down_persist_short_gate * _gb_mag_gate * _slope_against_gate * _short_slope_conf
-                # Compose: long-side (0.95 mag, existing) OR short-side (0.35 mag, new). They
-                # are mutually exclusive (long gate vs short gate), so take the max of the two
-                # attenuation magnitudes (only one is nonzero for any position).
-                _pp_atten_mag = max(0.95 * _ta_winner_gate, 0.35 * _ta_short_gate)
-                _pp_pressure = _pp_pressure * (1.0 - _pp_atten_mag)
+                # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
+                # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
+                # crossing +0.003 at 0.80.
+                # Exp4 (this session): push magnitude 0.80 -> 0.95. Testing the floor of the magnitude
+                # axis. 0.95 leaves only 5% pp_pressure active at full gate pass -- near-complete
+                # suppression of giveback-pressure on trend-aligned persistent-uptrend long winners.
+                # The gates (giveback_ratio<0.10, slope_against<0.0004, long-only, up_persist<0.40)
+                # are the safety: attenuation ONLY fires on gradual pullbacks in persistent uptrends,
+                # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
+                # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
+                _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
