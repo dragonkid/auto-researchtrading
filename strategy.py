@@ -3382,6 +3382,54 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
+                # STRUCTURAL_EXPLORATION step1 (subsystem rewrite of the soft-pressure FUSION
+                # mechanism, loss-side): LOSS-SIDE SOFT-OR COMBINATION. The documented
+                # MAX-fusion absorption wall (Exp1-3 this session + prior loss-velocity /
+                # MAE-deepening) means ANY new loss-side exit signal is absorbed by the
+                # dominant own-symbol loss pressure (stop-loss / slope-against): when a
+                # position is losing, the own-symbol slope-against is ALREADY firing at
+                # magnitude ~0.5+, and a second moderate loss signal (break-even 0.3,
+                # directional-book 0.3) contributes NOTHING under MAX (MAX gives 0.5, not
+                # 0.8). The wall is STRUCTURAL to the MAX mechanism, not the individual
+                # signals (Exp3 directional-book was byte-identical = the signal is real
+                # but absorbed). NEW CORE MECHANISM: split the fusion by PnL sign -- the
+                # LOSS-side terms combine via SOFT-OR (probabilistic sum 1 - prod(1-p_i)),
+                # so MULTIPLE moderate loss signals COMBINE to trigger exit even when no
+                # single one dominates the MAX; the PROFIT-side stays MAX (single-source
+                # noise rejection for winner harvesting, the validated keep behavior).
+                # WHY OLD AT CEILING: 3 architectural discards this session (Exp1 conviction-
+                # scaled relaxation, Exp2 consensus-cleanliness relaxation, Exp3
+                # directional-book exit pressure) ALL hit saturation walls (entry admission
+                # saturated; MAX absorbs new exit signals). The fusion MECHANISM is the
+                # constraint for the loss side.
+                # Mechanism: loss_or = 1 - product(1 - clamp(t,0,1)) over the LOSS-relevant
+                # terms (slope-against, time-overstay, break-even, directional-book -- the
+                # terms that fire on a LOSER). Profit-side terms (pp/ve/vc = winner
+                # harvesting) are EXCLUDED from the loss-OR (they keep the MAX path).
+                # Byte-identical for WINNERS: when pos_pnl > 0 the loss terms are ~0
+                # (slope-against ~0 since slope agrees; dir-book ~0 if direction winning),
+                # so loss_or ~ 0 (or ~ a single time/be term already in the MAX) -> max(
+                # soft_max, loss_or) = soft_max (current behavior preserved). When LOSING,
+                # loss_or >= max(loss terms) = soft_max (the dominant single loss term) ->
+                # max(soft_max, loss_or) = loss_or >= soft_max -> the combination breaks
+                # the absorption wall (multiple loss signals now sum toward exit). The
+                # profit-side MAX + confirmation + chop-atten machinery is UNTOUCHED (it
+                # governs winner harvesting and single-source noise rejection); this only
+                # ADDS a loss-side combination path. SOFT-OR is bounded [0,1] (unlike the
+                # old additive weighted-sum that could exceed 1 and sum correlated noise);
+                # each term clamped to [0,1] before the product. Distinct from the prior
+                # rank-weighted top-3 rewrite (discarded) -- that changed the TOP terms'
+                # weighting; this changes the COMBINATION RULE for the loss-side subset.
+                _loss_terms = (
+                    max(0.0, min(1.0, _w_slope * _sl_slope_pressure)),
+                    max(0.0, min(1.0, _w_time * _time_pressure)),
+                    max(0.0, min(1.0, _w_be * _be_pressure)),
+                )
+                _loss_prod = 1.0
+                for _lt in _loss_terms:
+                    _loss_prod *= (1.0 - _lt)
+                _loss_or = 1.0 - _loss_prod
+                _soft_max = max(_soft_max, _loss_or)
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
