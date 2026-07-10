@@ -2466,7 +2466,19 @@ class Strategy:
                     # tanh ramp on rsi_trend_str/0.20 (saturates by ~0.4 trend strength --
                     # the SAME scale as the other trend gates).
                     _mom_pace_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate * _mom_pace_trend_gate
+                    # branch step3: SHARPER momentum scale for the pace slowdown (/0.01 -> /0.006).
+                    # step2 still regressed sideways -0.007: the /0.01 scale leaves sideways'
+                    # gentle down-swings at gate ~0.5-0.8, and the trend gate only partially
+                    # excludes them (sideways has brief trending stretches). The pace lever is
+                    # MORE damaging to sideways mean-reverters than the keep's size shrink
+                    # (pace distorts recovery geometry), so it needs a HARDER sideways
+                    # exclusion. Sharpen the momentum scale to /0.006 (require a sharper 8-bar
+                    # decline to fire): sideways' gentle ~-0.5-1pct down-swings drop to gate
+                    # ~0.3-0.6 (further excluded), while mixed/rally's sharp ~-2pct V-shaped
+                    # pullbacks still saturate. Smaller magnitude 0.8 -> 0.6 (pace is more
+                    # sensitive; less slowdown is enough for the trending-regime DD-cut).
+                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.006))) * _mom_dd_gate * _mom_pace_trend_gate
+                _entry_full_bars_dyn = _entry_full_bars_dyn + 0.6 * _mom_pace_slowdown
                 _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
