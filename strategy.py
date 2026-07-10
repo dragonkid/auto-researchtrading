@@ -2647,8 +2647,25 @@ class Strategy:
                     # -> factor 1.0 for uncached positions (no change). For held positions the
                     # shrink is fixed at entry -> no bar-to-bar size variance from momentum drift
                     # -> bull stability should lift past the 0.80 knee (the keep's wobble source).
+                    # branch step2: GATE the sustain on TREND-ALIGNMENT (ret_vlong*pos_dir>0).
+                    # Exp2 (ungated) crashed sideways -0.244: the sustained shrink LOCKED sideways
+                    # mean-reversion entries SMALL through the oscillation, but sideways positions
+                    # need to REBUILD through the chop to capture mean-reversion profit (sustain/
+                    # lock distorts the recovery geometry, same PACE-SIZE asymmetry as the prior
+                    # pace-wall). Trend-aligned positions (rally longs, bull longs, crash trend
+                    # shorts) grow WITH the trend -> locking entry-time-small still lets size
+                    # rebuild via the scale-in ramp (rally gained +0.018 ungateD). CT/mean-
+                    # reversion positions (sideways ct, the rebuild population) need the keep's
+                    # PER-BAR shrink (which wobbles but lets size rebuild as momentum recovers) ->
+                    # set _eq_mom_sustain=1.0 there (per-bar shrink flows through `size`). The
+                    # trend-align gate uses the validated ret_vlong*pos_dir signal (fast-saturating
+                    # /0.01, near-constant noise-free per the safe-family lesson). Sideways
+                    # (ret_vlong~0 -> gate~0) -> _eq_mom_sustain~1.0 -> per-bar shrink -> rebuilds.
                     _eq_mom_held = self._eq_mom_shrink_held.get(symbol, _port_eq_mom_shrink)
-                    _eq_mom_sustain = _eq_mom_held / _port_eq_mom_shrink if _port_eq_mom_shrink > 1e-6 else 1.0
+                    _eq_mom_sustain_raw = _eq_mom_held / _port_eq_mom_shrink if _port_eq_mom_shrink > 1e-6 else 1.0
+                    _pos_dir_em = 1.0 if current_pos > 0 else -1.0
+                    _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.01)))  # ~1 trend-aligned, ~0 ct/flat
+                    _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _eq_mom_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
