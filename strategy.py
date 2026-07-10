@@ -431,39 +431,6 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 # aligned entry chasing a sharp counter-move is lower quality.
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
-# Exp5 (architectural, this session): CROSS-SYMBOL PORTFOLIO-FREQUENCY chop-gated
-# admission tightener. The prior _portfolio_freq_factor (cross-symbol entry-frequency
-# regulator) was REMOVED as redundant with per-symbol _freq_factor, because it
-# double-counted CORRELATED CRASH LEGS (multi-symbol entries in tandem during crash
-# trend legs) and cost +15pct admission on legitimate correlated trend entries. The
-# removed mechanism was UNGATED -- it fired on ANY portfolio frequency, conflating
-# synchronized CHOP (sideways: all 3 symbols mean-reverting together, the 151-trade
-# churn whose fee-drag caps sideways Sharpe) with correlated TREND legs (crash: all
-# 3 symbols shorting a downtrend together, legitimate). The separator the removed
-# version lacked: multi-day TREND MAGNITUDE. Chop (sideways) has LOW |ret_vlong|
-# (~0, oscillating); crash trend legs have HIGH |ret_vlong| (strongly negative). Gate
-# the portfolio-frequency tighten on LOW |ret_vlong| so it fires ONLY in synchronized
-# CHOP (sideways) and is byte-identical in trend regimes (crash/bull/rally where
-# |ret_vlong| solidly > onset). NEW data dep + new control flow vs the removed
-# ungated version: the tighten now reads (cross-symbol entry density, multi-day
-# trend magnitude) jointly -- a portfolio-frequency regulator confined to chop. The
-# cross-symbol sum of per-symbol entry counts (sum of len(_eh) across ACTIVE_SYMBOLS)
-# catches synchronized churn that the per-symbol _freq_factor (each symbol's OWN _eh)
-# misses: in sideways each symbol's _eh is moderate (~2-3) but the 3-symbol SUM is
-# high (~6-9) = synchronized chop. Tighten admission (raise _strong_min) by up to
-# PORT_FREQ_MAX_TIGHTEN when the portfolio sum is high AND |ret_vlong| is low ->
-# fewer marginal sideways chop entries -> lower fee/loss drag -> higher sideways
-# Sharpe (sideways score == bare Sharpe -0.013, the 151-trade churn is the drag).
-# Composes with per-symbol _freq_factor (multiplicative; both raise the bar). Shrink-
-# only on admission (raise-only). Risk: filtering sideways mean-reverting WINNERS
-# (the 66.9pct WR) -- gated to fire only at HIGH portfolio frequency (sum>=6, the
-# peak-churn bars) so only the most-churning marginal entries are filtered, not the
-# whole regime. Byte-identical in trend regimes (|ret_vlong| > onset) and at low
-# portfolio frequency (sum < onset).
-PORT_FREQ_SUM_ONSET = 6.0     # cross-symbol sum of len(_eh) above which tighten engages (sum>=6 = synchronized churn)
-PORT_FREQ_SUM_SCALE = 3.0     # ramp width (6->9 saturates)
-PORT_FREQ_TREND_GATE = 0.015  # |ret_vlong| below which the chop gate engages (sideways ~0; crash/bull/rally > this)
-PORT_FREQ_MAX_TIGHTEN = 0.15  # max admission threshold raise at full saturation (-> 1.15x harder to enter)
 
 
 class Strategy:
@@ -829,23 +796,6 @@ class Strategy:
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
-        # Exp5 (this session): CROSS-SYMBOL PORTFOLIO-FREQUENCY chop-gated admission
-        # tightener. Sum of per-symbol rolling entry counts (len(_eh)) across ACTIVE
-        # symbols = the cross-symbol synchronized-churn signal. Each symbol's own _eh
-        # is pruned to a 30-bar window in the per-symbol loop below; here we read the
-        # CURRENT (previous-bar) state to get the portfolio entry density. The chop
-        # gate uses _port_deep_bear_mag (the DEEPEST symbol's |ret_vlong|): if the
-        # deepest symbol is choppy (low |ret_vlong|) then ALL are choppy (sideways),
-        # so this cleanly excludes trend regimes (crash/bull/rally where the deepest
-        # symbol's |ret_vlong| is solidly > onset). Composes with per-symbol _freq_factor
-        # and the weak-persist / deep-bear admit tighteners (all multiplicative, all
-        # raise-only). Byte-identical in trend regimes (chop gate 0) and at low
-        # portfolio frequency (sum < onset).
-        _port_freq_sum = 0.0
-        for _pfs in ACTIVE_SYMBOLS:
-            _port_freq_sum += len(self._entry_bar_history.get(_pfs, []))
-        _port_freq_chop_gate = max(0.0, 1.0 - min(1.0, _port_deep_bear_mag / PORT_FREQ_TREND_GATE))  # ~1 chop (low |ret_vlong|), ~0 trend
-        _port_freq_admit_tighten = 1.0 + PORT_FREQ_MAX_TIGHTEN * _port_freq_chop_gate * max(0.0, min(1.0, np.tanh((_port_freq_sum - PORT_FREQ_SUM_ONSET) / PORT_FREQ_SUM_SCALE)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1191,15 +1141,6 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
-            # Exp5 (this session): apply cross-symbol PORTFOLIO-FREQUENCY chop-gated
-            # admission tightener (computed at top level). Tightens admission when the
-            # cross-symbol synchronized churn is high AND the market is choppy (low
-            # |ret_vlong| = sideways). Composes with the weak-persist / deep-bear
-            # tighteners (independent signals: weak-persist avg = all-symbols-choppy,
-            # deep-bear max = any-symbol-deep-bear, port-freq = synchronized-entry-density
-            # in chop). Byte-identical in trend regimes (chop gate 0) and at low portfolio
-            # entry frequency (sum < onset).
-            _strong_min = _strong_min * _port_freq_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
