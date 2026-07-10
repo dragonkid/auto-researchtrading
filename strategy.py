@@ -3429,26 +3429,33 @@ class Strategy:
                 for _lt in _loss_terms:
                     _loss_prod *= (1.0 - _lt)
                 _loss_or = 1.0 - _loss_prod
-                # STRUCTURAL_EXPLORATION step2: TREND-GATE the loss-side SOFT-OR on
-                # rsi_trend_str (the validated trend separator used by _be_trend_gate /
-                # _exit_dd_gate / _w_time). Step1 crashed mixed stability 0.814->0.620
-                # because the SOFT-OR over-combined mixed's CHOPPY losers (slope-against +
-                # time + break-even wiggling under AR(1) noise -> noisy exit-timing ->
-                # stability penalty). The MAX was noise-robust in chop (single dominant
-                # term absorbs non-dominant noise); the SOFT-OR is noise-sensitive because
-                # it combines ALL terms. Gate the loss-OR to fire only in TRENDING regimes
-                # (high rsi_trend_str = bull/crash/rally trending, where combined loss-exit
-                # is real signal -> the step1 bull+rally raw gains) and ZERO it in CHOP
-                # (low rsi_trend_str = sideways/mixed-chop, where loss signals are noise ->
-                # byte-identical to the baseline MAX path -> mixed/sideways stability
-                # preserved). Continuous tanh on rsi_trend_str/0.20 (saturates by ~0.4
-                # trend strength -- the SAME scale as the existing trend gates). Mixed's
-                # RALLY phases (trending, rsi_trend_str spikes) keep the loss-OR -> mixed raw
-                # may still benefit there; mixed's CHOP phases (low rsi_trend_str) -> zeroed
-                # -> stability preserved. Sideways byte-identical (rsi_trend_str ~0 the
-                # whole regime). Trend regimes (bull/crash/rally) keep the step1 gains.
-                _loss_or_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                _soft_max = max(_soft_max, _loss_or * _loss_or_trend_gate)
+                # STRUCTURAL_EXPLORATION step2: DEEP-LOSS-GATE the loss-side SOFT-OR. Step1
+                # crashed mixed stability 0.814->0.620 (SOFT-OR over-combined mixed's CHOPPY
+                # near-BE losers: slope-against + time + break-even wiggling under AR(1)
+                # noise -> noisy exit-timing -> stability penalty). The MAX was noise-
+                # robust in chop (single dominant term absorbs non-dominant noise); the
+                # SOFT-OR is noise-sensitive because it combines ALL terms. The loss-OR
+                # HELPS when a loser is EXTENDING (a real adverse move -- bull pullback
+                # deepener, rally bounce-against-short -- where combining slope-against +
+                # time fires the exit faster than MAX alone, the step1 bull+rally raw gain
+                # source) and HURTS when a loser is a CHOPPY near-BE oscillation (mixed's
+                # dead capital -- where combining noisy signals destabilizes exit timing).
+                # The separator is the POSITION's loss DEPTH, not the market regime (step2's
+                # rsi_trend_str trend-gate was wrong: it zeroed the loss-OR during bull's
+                # pullback bars -- the exact bars where bull's extending losers needed it --
+                # because a pullback dips the 20-bar ret_long -> rsi_trend_str dips). Gate
+                # on LOSS MAGNITUDE: fire the loss-OR combination only for DEEP losses
+                # (pos_pnl < ~-0.3*stop, past the break-even band where losses are real
+                # extending adverse moves), zero it for SHALLOW/BE-chop losses (where the
+                # signals are noise and the MAX path's single-source rejection is needed).
+                # _pnl_scale = tanh(pos_pnl/|stop|); the gate ramps from 0 at _pnl_scale=
+                # -0.3 (pos_pnl ~ -0.3*stop) to 1 at _pnl_scale=-0.7 (deep loss). This
+                # excludes mixed's near-BE chop (stability preserved) and fires on bull's
+                # deep pullback losers + rally's bounce-against-shorts (the step1 gain
+                # source, recovered). Sideways (small losses, high WR mean-reverters ->
+                # shallow) byte-identical. Continuous, no boundary.
+                _loss_or_depth_gate = max(0.0, min(1.0, (-_pnl_scale - 0.30) / 0.40))
+                _soft_max = max(_soft_max, _loss_or * _loss_or_depth_gate)
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
