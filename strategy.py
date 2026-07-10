@@ -849,6 +849,43 @@ class Strategy:
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
+        # Exp3 (architectural, indep): CROSS-SYMBOL 96-bar TREND-MAGNITUDE-AGREEMENT
+        # admission relaxation. Sanctioned untested lead (prior session): "cross-symbol
+        # MAGNITUDE/PERSIST signals (NOT direction) remain untested for admission -- Exp1
+        # only falsified DIRECTION." The 20-bar SIGN consensus (line ~735, a SIZE boost)
+        # uses sign-agreement; the 96-bar DIRECTION divergence (prior Exp1) was inert
+        # (symbols all trend the same direction at 96-bar -> divergence rare). This uses
+        # a genuinely different aggregation: the MINIMUM |ret_vlong| among symbols whose
+        # 96-bar sign AGREES with the dominant direction. When ALL 3 symbols trend
+        # STRONGLY in the SAME direction (bull all-up big, crash all-down big, rally all-up),
+        # the agreeing-min magnitude is LARGE -> a confirmed broad-market STRONG trend. When
+        # they DISAGREE or are WEAK (sideways oscillating ~0, mixed one-at-a-time), the
+        # agreeing-min is SMALL -> no broad strong-trend confirmation. Min-aggregation
+        # (not max/avg) requires the WEAKEST agreeing symbol to still be trending -> a
+        # strict broad-trend confirmation (one weak symbol drags the min down). Used as an
+        # ADMISSION RELAXATION (lower threshold) for entries ALIGNED with the confirmed
+        # broad trend direction (entry sign == dominant sign): a trend-aligned entry
+        # during a confirmed strong broad trend is high-quality -> admit at lower conviction
+        # -> more good trend-aligned trades -> higher APY/Sharpe in the strong-trend
+        # regimes (bull/rally/crash trend-aligned winners). Counter-trend entries (bounce
+        # longs/shorts opposing the broad trend) get NO relaxation -> crash bounce longs
+        # NOT boosted (protects crash). Byte-identical when agreeing-min magnitude is
+        # small (sideways/mixed weak or disagreed) OR entry is counter-trend. Continuous
+        # tanh on the agreeing-min /0.02 (deep broad trend saturates by |rv|=0.04); no
+        # boundary. Max 12% threshold relaxation (conservative; admission boost is the
+        # reverse-direction of the validated tighteners, so modest). New cross-symbol
+        # magnitude-aggregation data dep at admission (distinct from sign-consensus size,
+        # deep-bear-magnitude tighten, weak-persist tighten).
+        _port_trend_mag_agree = 0.0
+        _port_trend_mag_dir = 0.0
+        if len(_port_rv_vals) >= 2:
+            _rv_sum = sum(_port_rv_vals)
+            _port_trend_mag_dir = 1.0 if _rv_sum > 0 else (-1.0 if _rv_sum < 0 else 0.0)
+            if _port_trend_mag_dir != 0.0:
+                _agree_mags = [abs(_rv) for _rv in _port_rv_vals if (_rv > 0) == (_port_trend_mag_dir > 0)]
+                if len(_agree_mags) >= 2:
+                    _port_trend_mag_agree = min(_agree_mags)
+        _port_trend_admit_relax = max(0.0, min(1.0, np.tanh(_port_trend_mag_agree / 0.02)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1242,6 +1279,24 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
+            # Exp3 (architectural, indep): apply CROSS-SYMBOL 96-bar TREND-MAGNITUDE-AGREEMENT
+            # admission RELAXATION (computed at top level). Lowers the admission threshold for
+            # the entry aligned with the confirmed broad-trend direction (entry sign ==
+            # _port_trend_mag_dir). A trend-aligned entry during a confirmed strong broad
+            # trend (all 3 symbols trending strongly together) is high-quality -> admit at
+            # lower conviction -> more good trend-aligned trades -> higher APY/Sharpe in the
+            # strong-trend regimes. The alignment gate (entry sign == broad direction) means
+            # COUNTER-TREND entries (crash bounce longs opposing the broad downtrend, rally
+            # pullback shorts opposing the broad uptrend) get NO relaxation -> the losing
+            # ct population is NOT boosted. Byte-identical when _port_trend_admit_relax=0
+            # (sideways/mixed weak/disagreed broad trend) OR entry is counter-trend.
+            # Conservative 12% max relaxation (admission boost; the existing consensus SIZE
+            # boost is +0.06, this is the admission-pathway counterpart). Composes
+            # multiplicatively with the tighteners above (independent signal axes).
+            if _port_trend_mag_dir > 0.0:
+                _bull_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax
+            elif _port_trend_mag_dir < 0.0:
+                _bear_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
