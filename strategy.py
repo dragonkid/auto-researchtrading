@@ -3382,6 +3382,70 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
+                # Exp (architectural, indep): SHORT-ONLY LOSS-SIDE SOFT-OR fusion split.
+                # SUBSYSTEM REWRITE of the soft-pressure FUSION mechanism, split by POSITION
+                # DIRECTION. The MAX-fusion absorption wall (documented above + prior session
+                # Exp1-4) absorbs any new loss-side soft SOURCE because the dominant
+                # slope-against/stop already fires at higher magnitude when a losing short
+                # faces a bounce. The prior session's full SOFT-OR (probabilistic-sum, ALL
+                # positions) broke the wall (bull +0.027, rally +0.012 raw) but walled at
+                # +0.000645 composite: the wall-break COST is chop-regime (mixed/sideways)
+                # stability on the LONG side -- the bull/mixed losing-LONG populations are
+                # inseparable pre-outcome (both near-BE choppy; bull deepens, mixed reverts).
+                # THIS split takes ONLY the SHORT side: for LOSING SHORTS in TRENDING
+                # regimes, combine the loss-side terms via SOFT-OR (probabilistic sum) INSTEAD
+                # of MAX, so multiple moderate loss signals (slope-against + time + break-even)
+                # combine to exit the losing short FASTER than the single dominant MAX term.
+                # For EVERYTHING ELSE (losing longs, all winners, sideways losing shorts),
+                # keep the existing MAX fusion -- BYTE-IDENTICAL by construction (the SOFT-OR
+                # path is gated off). The SHORT-ONLY split sidesteps the bull/mixed LONG-side
+                # forward-looking-outcome wall: position direction is a STRUCTURAL property
+                # available pre-outcome (a losing short is a short regardless of whether the
+                # adverse move recovers). The TRENDING-regime gate (|ret_vlong| / vol_ratio)
+                # excludes sideways losing shorts (sideways is mean-reverting on BOTH sides --
+                # Exp2/Exp3 this session proved sideways losing-short/long exits hurt; |ret_vlong|~0
+                # in sideways -> gate 0 -> byte-identical). Targets:
+                #   - crash bounce-shorts: LOSING SHORTS in a DEEP downtrend (ret_vlong<0 strongly
+                #     trending) -> faster exit -> smaller realized loss -> higher crash Sharpe.
+                #     crash is negative-Sharpe (score == bare Sharpe, dd_gate does NOT apply to
+                #     negative Sharpe) so the Sharpe gain is a 1:1 SCORE gain -- the cleanest
+                #     crash lever, NOT blocked by the 17.73pct DD that crushes positive-Sharpe.
+                #   - rally pullback-shorts: LOSING SHORTS in a strong uptrend (ret_vlong>0) ->
+                #     faster exit -> higher rally Sharpe (multiplicative on dd_gate, +0.012 raw
+                #     per the prior session SOFT-OR step1).
+                # Byte-identical for: longs (gate 0), winners (loss-gate 0), sideways losing
+                # shorts (trend-gate 0). New cross-component data dep: the fusion MECHANISM
+                # (MAX vs SOFT-OR) now depends on (position direction, PnL sign, multi-day
+                # trend magnitude) jointly. Continuous gates, no new decision boundary at
+                # the pressure-source level (the SOFT-OR is a smooth probabilistic sum).
+                _short_loss_gate = 1.0 if (current_pos < 0 and _pnl_scale < 0.0) else 0.0
+                # Trending-regime gate: |ret_vlong| large (excludes sideways flat ~0) AND
+                # vol_ratio elevated (the validated _fusion_vol_gate, excludes sideways
+                # moderate vol). Take the MIN so BOTH must hold (trending multi-day AND
+                # elevated vol = crash/rally, NOT sideways).
+                _short_trend_gate = min(
+                    max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.010))),  # flat-excluded multi-day
+                    _fusion_vol_gate,  # sideways-excluded vol (existing gate, >1.15 onset)
+                )
+                if _short_loss_gate > 0.0 and _short_trend_gate > 0.0:
+                    # Probabilistic sum (SOFT-OR) of the LOSS-side terms only. Clamp each to
+                    # [0,1] (they are already in [0,1] via their construction); the SOFT-OR
+                    # 1-prod(1-t) combines them so two moderate signals (0.4 + 0.3) yield
+                    # 0.58 (vs MAX 0.4) -> exits faster. Loss-side: slope-against, time, BE.
+                    # (pp/ve/vc are profit-side; excluded from the loss-combine.)
+                    _loss_terms = (
+                        max(0.0, min(1.0, _sl_slope_pressure)),
+                        max(0.0, min(1.0, _time_pressure)),
+                        max(0.0, min(1.0, _be_pressure)),
+                    )
+                    _soft_or_loss = 1.0
+                    for _lt in _loss_terms:
+                        _soft_or_loss *= (1.0 - _lt)
+                    _soft_or_loss = (1.0 - _soft_or_loss) * _short_trend_gate
+                    # Take the MAX of the existing fusion and the SOFT-OR: the SOFT-OR can
+                    # only INCREASE exit pressure for losing shorts (never decrease, since
+                    # MAX(soft_max, soft_or) >= soft_max). Byte-identical when SOFT-OR <= MAX.
+                    _soft_max = max(_soft_max, _soft_or_loss)
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
