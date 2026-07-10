@@ -2898,6 +2898,34 @@ class Strategy:
                 # (long gate 0), ct (align 0), losers (profit gate 0).
                 _ta_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
                 _ta_dd_hold_ext_raw = 1.5 * _ta_long_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
+                # Exp2 (architectural, indep): gate the trend-aligned-winner hold-extension
+                # by the portfolio equity-momentum DERIVATIVE (the keep-validated fresh-
+                # pullback signal). The extension above fires on the DD-LEVEL gap (1.0-
+                # _port_dd_atten) -> it EXTENDS holds as DD DEEPENS (sustained), letting
+                # trend-aligned winners ride through deep DD for recovery. The momentum
+                # DERIVATIVE is orthogonal: at a FRESH pullback START (low dd_frac, sharp
+                # negative 8-bar momentum) the level-gap is ~0 (no extension yet) but the
+                # trajectory says "declining". REDUCE the extension during that fresh sharp
+                # pullback so time-pressure harvests the winner sooner -> cut the pullback
+                # DD BEFORE it deepens (complementary to the keep's entry-size shrink which
+                # cuts pullback DD via smaller NEW entries; this cuts it via harvesting
+                # EXISTING winners sooner). Same gate stack as the keep: low-dd_frac (spare
+                # sustained deep DD where the extension SHOULD still fire for recovery) +
+                # sharp-momentum /0.01 (spare sideways' gentle down-swings, which are excluded
+                # anyway by _ta_align/_ta_long_gate but this keeps the gate family consistent).
+                # Byte-identical when _ta_dd_hold_ext_raw=0 (shorts/ct/losers/outside-DD -> the
+                # reduction multiplies 0) AND when momentum>=0 (no fresh decline -> gate 0 ->
+                # no reduction). Crash byte-identical (sustained deep DD -> low-dd_frac gate 0
+                # AND crash shorts -> _ta_long_gate 0); sideways byte-identical (_ta_align ~0
+                # -> extension ~0). Fires on bull/rally trend-aligned winning longs during
+                # fresh sharp pullbacks. Reduces max_hold by up to ~0.5 bars at full gate.
+                _eq_hist_he = getattr(self, "_equity_ema_hist", [])
+                _mom_hold_reduce = 0.0
+                if len(_eq_hist_he) >= 8 and self._peak_equity > 1e-10:
+                    _eq_mom_he = (self._equity_ema - _eq_hist_he[0]) / self._peak_equity
+                    _mom_dd_gate_he = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.02) / 0.04))
+                    _mom_hold_reduce = 0.50 * max(0.0, min(1.0, np.tanh(-_eq_mom_he / 0.01))) * _mom_dd_gate_he
+                _ta_dd_hold_ext_raw = _ta_dd_hold_ext_raw * (1.0 - _mom_hold_reduce)
                 # BRANCH (Exp1 opener, architectural): SMOOTH the hold-extension DECISION
                 # INPUT at the source. The keep 47cbe827 added bar-to-bar tracking error at
                 # the source: _ta_dd_hold_ext wobbles under AR(1) noise (profit_gate flips
