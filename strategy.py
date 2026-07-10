@@ -3424,25 +3424,38 @@ class Strategy:
                 # sensitive term; mixed's chop is BE-centric -> the break-even contribution to
                 # the loss-OR is the mixed over-exit source). Keep slope-against + time (the
                 # extending-loser combination). Tests whether mixed -0.006 is BE-driven.
-                # Step2g: RE-ADD break-even GATED ON HIGH-VOL (bull's sharp pullbacks only).
-                # Step1 (BE included, no gate) gave bull +0.027 raw -- the bull gain came from
-                # the BE term combining with slope-against+time on bull's near-BE pullback
-                # losers (which DON'T recover -- sharp pullback deepens -> exiting is right).
-                # But BE also over-exited mixed's near-BE chop (which DOES revert -> exiting is
-                # wrong -> mixed -0.006 + stability crash). The separator: bull's near-BE
-                # losers DON'T recover (high-vol sharp pullback), mixed's DO (low-vol gentle
-                # chop). Gate the BE term's contribution to the loss-OR on high-vol (vol_ratio
-                # > 1.15 = bull's sharp pullbacks) so BE combines ONLY in bull, not mixed.
-                # slope-against + time stay ungated-by-vol (they gave sideways +0.003). This
-                # should recover bull's +0.027 (BE in high-vol) while keeping mixed protected
-                # (BE excluded in low-vol). The BE term is multiplied by the vol-gate before
-                # the SOFT-OR product (so BE contributes ~0 in low-vol -> mixed byte-identical
-                # to step2e; BE contributes fully in high-vol -> bull gain returns).
-                _be_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
+                # Step2g: re-add BE gated on high-vol -> byte-identical (bull vol_ratio is
+                # moderate ~1.0-1.2, the 1.15 onset doesn't fire on bull pullbacks; vol is the
+                # WRONG separator for bull pullbacks).
+                # Step2h: re-add BE gated on LOW MTM-CHOP (the deepening-vs-reverting separator).
+                # Step1's bull +0.027 came from the BE term combining with slope+time on bull's
+                # near-BE pullback losers (which DEEPEN -> exiting is right -> +0.027). BE also
+                # over-exited mixed's near-BE chop (which REVERTS -> exiting is wrong -> -0.006
+                # + stability crash). The separator is the held position's MTM-PATH EFFICIENCY
+                # (the validated mixed-vs-trend separator at the emission throttle): bull's
+                # deepening losers have HIGH efficiency (one-directional bleed = LOW chop);
+                # mixed's reverting losers have LOW efficiency (whipsaw = HIGH chop). Gate the
+                # BE term on LOW chop (efficiency >= ~0.5 -> include BE; choppy -> exclude),
+                # computed from _pnl_path (12-bar pos_pnl path, already appended before the
+                # fusion). slope+time stay ungated (sideways +0.003). This should recover
+                # bull's +0.027 (BE on deepening low-chop losers) while keeping mixed protected
+                # (BE excluded on choppy high-chop losers). sideway's losers are also choppy
+                # (high WR mean-reverters) -> BE excluded -> sideways keeps the slope+time gain
+                # only (byte-identical to step2e on sideways). Byte-identical to step2e when
+                # _pnl_path < 4 (chop undefined -> BE gate 0 -> BE excluded -> step2e behavior).
+                _be_chop = 1.0
+                _pp_be = self._pnl_path.get(symbol, [])
+                if len(_pp_be) >= 4:
+                    _ppa_be = np.array(_pp_be[-12:])
+                    _net_be = abs(_ppa_be[-1] - _ppa_be[0])
+                    _tot_be = float(np.sum(np.abs(np.diff(_ppa_be))))
+                    _mtm_eff_be = _net_be / max(_tot_be, 1e-10)
+                    _be_chop = max(0.0, min(1.0, 1.0 - _mtm_eff_be))
+                _be_chop_gate = max(0.0, min(1.0, (0.50 - _be_chop) / 0.30))  # 1 when chop<0.2 (efficient/deepening), 0 when chop>0.5
                 _loss_terms = (
                     max(0.0, min(1.0, _w_slope * _sl_slope_pressure)),
                     max(0.0, min(1.0, _w_time * _time_pressure)),
-                    max(0.0, min(1.0, _w_be * _be_pressure * _be_vol_gate)),
+                    max(0.0, min(1.0, _w_be * _be_pressure * _be_chop_gate)),
                 )
                 _loss_prod = 1.0
                 for _lt in _loss_terms:
