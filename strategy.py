@@ -441,6 +441,13 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # Per-symbol bar_count of the last MAE update (new pos_pnl low since entry).
+        # Used by the MAE-RECENCY break-even gate: a position near BE whose MAE updated
+        # RECENTLY (new low in the last K bars) is actively deepening -- structurally
+        # fragile, more likely to re-test the low and bleed to the stop than a position
+        # whose MAE is stable (found a floor). Distinct from MAE depth (how deep) and
+        # peak_pnl (high-water): this is the TIMING of the last adverse excursion.
+        self._mae_bar = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
@@ -2721,7 +2728,11 @@ class Strategy:
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
                 # Tracks lowest pos_pnl observed since entry; only updates downward.
                 _curr_mae = self._mae.get(symbol, 0.0)
-                self._mae[symbol] = min(_curr_mae, pos_pnl)
+                if pos_pnl < _curr_mae:
+                    self._mae[symbol] = pos_pnl
+                    self._mae_bar[symbol] = self.bar_count  # record the update bar
+                else:
+                    self._mae[symbol] = _curr_mae
 
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
@@ -3285,9 +3296,36 @@ class Strategy:
                 # negative-Sharpe regime whose score == bare Sharpe; cutting deep-MAE stalls
                 # before they bleed to the stop raises sideways Sharpe directly).
                 _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
-                _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
+                # Exp (architectural, indep): MAE-RECENCY break-even gate for chop. The MAE
+                # depth gate above fires for DEEP underwater (mae <= -0.4*stop). It MISSES
+                # the SHALLOW-but-WORSENING stall: a position near BE whose MAE is shallow
+                # (never went deep) but is ACTIVELY DEEPENING -- it made a new pos_pnl low
+                # in the last few bars (the oscillation is dipping progressively lower).
+                # NEW data dependency: the bar_count of the last MAE update (self._mae_bar),
+                # a position-LIFE-CYCLE timing signal genuinely absent from every existing
+                # exit source. MAE (the level) reads how DEEP; this reads WHEN it last
+                # deepened. A position near BE with a RECENT MAE update (new low <= 4 bars
+                # ago) is structurally fragile -- the adverse excursion is ongoing, not a
+                # stale past dip; it is more likely to re-test the low and bleed to the
+                # stop than a position whose MAE has been stable for many bars (found a
+                # floor, the oscillation is not deteriorating). Distinct from the pos_pnl
+                # slope (Exp1, byte-identical: sideways oscillates so the 8-bar net slope
+                # ~0): MAE-update recency captures the DIRECTION of the excursions (each
+                # dip is a new low) even when pos_pnl oscillates back to BE between dips.
+                # Composes with the MAE depth gate via MAX (this catches shallow-worsening;
+                # depth catches deep-stable; together they cover both stagnation types).
+                # Gated by the SAME faster 2-bar hold-gate as the MAE path. Targets
+                # sideways (the negative-Sharpe regime; cutting worsening stalls before
+                # the stop raises sideways Sharpe directly). General position-level
+                # property (recent adverse excursion), NOT a regime label.
+                _mae_last_bar = self._mae_bar.get(symbol, self.bar_count)
+                _mae_recency = max(0.0, 1.0 - (self.bar_count - _mae_last_bar) / 4.0)  # 1 if updated this bar, 0 if >4 bars ago
+                _be_mae_recent = max(0.0, min(1.0, np.tanh((abs(STOP_LOSS_PCT) * 0.10 - abs(self._mae.get(symbol, 0.0))) / (abs(STOP_LOSS_PCT) * 0.10)))) * _mae_recency
+                _be_mae_recent = _be_mae_recent * (1.0 - _be_mae_depth)  # only where depth gate MISSES (shallow MAE); deep-MAE already covered
+                _be_mae_gate = max(_be_trend_gate, _be_mae_depth, _be_mae_recent)
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
-                _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
+                _be_hold_gate_recent = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS - 1.0) / 2.0))
+                _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth, _be_hold_gate_recent * _be_mae_recent)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
@@ -4471,7 +4509,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._mae_bar, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -4483,6 +4521,7 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._mae_bar[symbol] = self.bar_count
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
