@@ -578,58 +578,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
-        # Exp3 (architectural, indep this session): PORTFOLIO CROSS-SYMBOL DIRECTIONAL
-        # LOSING-BOOK pressure. NEW portfolio-level exit signal: aggregate the unrealized
-        # pos_pnl across symbols SEPARATELY by direction (all longs together, all shorts
-        # together). When ONE direction is collectively losing across multiple symbols
-        # simultaneously (a correlated directional bet going wrong -- e.g. a crash pullback
-        # where all longs are under water, or a rally bounce where all shorts are under
-        # water), that is the source of loss clustering (streak_gate) and correlated DD.
-        # A NEW exit pressure that fires on the LOSING direction's positions specifically,
-        # distinct from own-symbol pos_pnl (single-symbol) and from _port_dd_atten (portfolio
-        # EQUITY DD level, direction-agnostic -- fires on entry SIZE, not exit). This is a
-        # DIRECTION-SPECIFIC correlated-loss signal no existing exit source reads: the 6
-        # soft sources (slope/pp/time/ve/vc/be) are all own-symbol; the portfolio signals
-        # (_port_dd_atten, caps) are all direction-agnostic or entry-only. Computed once per
-        # bar from portfolio.positions + entry_prices + each symbol's close; falls to 0 if no
-        # same-direction positions. Used at the exit fusion (per-symbol loop) as a soft
-        # pressure term on the position's OWN direction when that direction's collective
-        # pos_pnl is negative (the correlated bet is failing). SOFT (adds to the MAX fusion,
-        # existing gates still control); direction-targeted (only presses on the LOSING
-        # direction); shrink-only (no pressure when the direction is profitable collectively).
-        # Byte-identical when no same-direction positions are losing (single-position regimes,
-        # or a direction that's collectively winning).
-        _dir_long_pnl = 0.0
-        _dir_short_pnl = 0.0
-        _dir_long_n = 0
-        _dir_short_n = 0
-        for _dsym, _dpos in portfolio.positions.items():
-            if _dpos == 0 or _dsym not in bar_data:
-                continue
-            _dbd = bar_data[_dsym]
-            if len(_dbd.history) < 2 or _dsym not in self.entry_prices:
-                continue
-            _dmid = _dbd.close
-            _dpnl = (_dmid - self.entry_prices[_dsym]) / self.entry_prices[_dsym]
-            if _dpos < 0:
-                _dpnl = -_dpnl
-            if _dpos > 0:
-                _dir_long_pnl += _dpnl
-                _dir_long_n += 1
-            else:
-                _dir_short_pnl += _dpnl
-                _dir_short_n += 1
-        # Normalize by count + stop magnitude so the pressure scale is comparable to the
-        # existing _sl_slope_pressure / _pp_pressure [0,1] terms. A direction with avg loss
-        # >= 1 stop (deep collective bleed) saturates.
-        _dir_long_press = 0.0
-        _dir_short_press = 0.0
-        if _dir_long_n >= 2:
-            _avg_lp = _dir_long_pnl / _dir_long_n
-            _dir_long_press = 0.4 * max(0.0, min(1.0, -_avg_lp / abs(STOP_LOSS_PCT)))
-        if _dir_short_n >= 2:
-            _avg_sp = _dir_short_pnl / _dir_short_n
-            _dir_short_press = 0.4 * max(0.0, min(1.0, -_avg_sp / abs(STOP_LOSS_PCT)))
         # Exp1 branch step3: EMA-smoothed equity (for the giveback-tightening DD
         # fraction only; _peak_equity still uses instantaneous for the entry circuit).
         _eq_alpha = 2.0 / (PORT_DD_GIVEBACK_EQUITY_SPAN + 1)
@@ -3341,17 +3289,6 @@ class Strategy:
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
-                # Exp3 (architectural, indep this session): apply the PORTFOLIO CROSS-SYMBOL
-                # DIRECTIONAL LOSING-BOOK pressure (computed at top level). Fires on the
-                # position's OWN direction when that direction's collective cross-symbol
-                # pos_pnl is negative (correlated directional bet failing). Loss-side weighted
-                # (only adds pressure when own pos_pnl is also negative -> spare winners that
-                # happen to be in a collectively-losing direction; a winning position in a
-                # losing direction is the one to KEEP -- it's the outlier, not the correlated
-                # loser). Byte-identical when the direction is collectively profitable
-                # (_dir_*_press=0) or when own pos is winning (_w_dir=0).
-                _dir_book_press = _dir_long_press if current_pos > 0 else _dir_short_press
-                _w_dir = max(0.0, -_pnl_scale)  # loss-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -3366,7 +3303,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
-                    _w_dir * _dir_book_press,
                 )
                 _soft_max = max(_soft_terms)
                 # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
