@@ -517,6 +517,18 @@ class Strategy:
         # entry (deterministic); keeps a broad-vol entry smaller for the whole hold
         # instead of ramping back to un-shrunk `size` after bar 1. Default 1.0.
         self._avgvol_shrink_held = {}
+        # Exp3 (architectural, indep): sustain the portfolio-DD circuit-breaker
+        # (_port_dd_atten) shrink through scale-in. The _port_dd_atten is a documented
+        # load-bearing stability component that shrinks first-bar entry size during
+        # portfolio DD. But the scale-in full_target (line ~2699) rebuilds to un-shrunk
+        # `size` after bar 1 -> the DD protection is lost for the held position. Cache
+        # the entry-time _port_dd_atten and apply it to scale-in (mirrors the validated
+        # _conc_held/_vol_held/_avgvol_held sustain pattern, 4 prior keeps). GATED on
+        # counter-trend-at-multi-day (mirror the _avgvol_sustain_gate at line ~2376):
+        # sustain ONLY for ct entries (crash bounce longs, rally pullback shorts = the
+        # DD-source losers), NOT trend-aligned (bull longs whose exit-timing must not be
+        # disrupted per the keep 7cb68a94 bull-stability-ceiling lesson). Default 1.0.
+        self._dd_atten_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -2375,6 +2387,12 @@ class Strategy:
                     # step14/15 ceiling). The first-bar cap on size still applies to all.
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
+                    # Exp3: cache entry-time _port_dd_atten for scale-in sustain, gated on
+                    # ct-at-multi-day (mirror _avgvol_sustain_gate_bull). Trend-aligned bull
+                    # longs (ret_vlong>0 -> gate 0 -> _dd_atten_held 1.0 -> no sustain -> no
+                    # exit-timing disruption); ct bounce longs (ret_vlong<0 -> gate ~1 -> sustain
+                    # the DD shrink through scale-in). Default 1.0 (no effect) when not cached.
+                    self._dd_atten_held[symbol] = 1.0 + (_port_dd_atten - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
@@ -2385,6 +2403,11 @@ class Strategy:
                     # shorts ret_vlong<0 -> no sustain -> no exit-timing disruption).
                     _avgvol_sustain_gate_bear = max(0.0, np.tanh(ret_vlong / 0.01))  # ~1 ct-short, ~0 trend-aligned-short
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bear
+                    # Exp3: cache entry-time _port_dd_atten for scale-in sustain, gated on
+                    # ct-at-multi-day (mirror _avgvol_sustain_gate_bear). Trend-aligned crash
+                    # shorts (ret_vlong<0 -> gate 0 -> no sustain); ct rally pullback shorts
+                    # (ret_vlong>0 -> gate ~1 -> sustain the DD shrink through scale-in).
+                    self._dd_atten_held[symbol] = 1.0 + (_port_dd_atten - 1.0) * _avgvol_sustain_gate_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2696,7 +2719,8 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain
+                    _dd_atten_held = self._dd_atten_held.get(symbol, 1.0)  # Exp3: sustain portfolio-DD shrink
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _dd_atten_held
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -4471,7 +4495,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._dd_atten_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
