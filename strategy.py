@@ -665,12 +665,12 @@ class Strategy:
         # smaller risk.
         _eq_hist = getattr(self, "_equity_ema_hist", [])
         _eq_hist.append(self._equity_ema)
-        if len(_eq_hist) > 24:
-            _eq_hist = _eq_hist[-24:]
+        if len(_eq_hist) > 8:
+            _eq_hist = _eq_hist[-8:]
         self._equity_ema_hist = _eq_hist
         _port_eq_mom_shrink = 1.0
-        if len(_eq_hist) >= 24 and self._peak_equity > 1e-10:
-            _eq_mom = (self._equity_ema - _eq_hist[-8]) / self._peak_equity  # 8-bar rate of change / peak
+        if len(_eq_hist) >= 8 and self._peak_equity > 1e-10:
+            _eq_mom = (self._equity_ema - _eq_hist[0]) / self._peak_equity  # 8-bar rate of change / peak
             # Shrink only when momentum negative; max 15% shrink at deep negative momentum.
             # /0.02 scale: a 2% peak-relative 8-bar decline saturates (calm=0, sharp decline=1).
             # branch step3: LOW-DD-FRACTION gate -- fire only on TRANSIENT pullbacks (low
@@ -684,23 +684,7 @@ class Strategy:
             # entry cuts DD without starving recovery). Continuous tanh ramp: full at
             # dd_frac<2pct, fading to 0 by 6pct. Byte-identical in sustained deep DD (crash).
             _mom_dd_gate = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.02) / 0.04))  # ~1 fresh pullback (dd<2pct), ~0 sustained DD (dd>6pct)
-            # branch step5: LONG-TERM-MOMENTUM-POSITIVE gate. Step3 (low-dd gate alone)
-            # regressed sideways -0.0092 because sideways' down-swings reach dd_frac 2-4pct
-            # (the low-dd gate partially fires). The separator between a sideways down-swing
-            # (flat regime oscillation) and a rally/mixed PULLBACK (a dip in an uptrend) is
-            # the LONGER-term equity trajectory: rally/mixed are in a rising portfolio (24-bar
-            # equity momentum POSITIVE -- the pullback is a dip in an uptrend); sideways'
-            # 24-bar momentum is ~0 (flat regime); crash is NEGATIVE (sustained decline). Gate
-            # the shrink on the 24-bar momentum being POSITIVE (pullback-in-uptrend only):
-            # rally/mixed/bull pullbacks (24-bar mom>0, 8-bar mom<0 -> shrink) fire; sideways
-            # (24-bar mom~0 -> gate ~0) and crash (24-bar mom<0 -> gate 0) excluded. The
-            # low-dd gate (step3) is RETAINED (catches the fresh-pullback condition); the
-            # long-mom gate ADDS the uptrend-context condition. Together: shrink only on a
-            # fresh (dd<2pct) dip in a rising (24-bar mom>0) portfolio = rally/mixed/bull
-            # pullbacks, the exact transient-pullback-in-uptrend population.
-            _eq_mom_long = (self._equity_ema - _eq_hist[0]) / self._peak_equity  # 24-bar rate of change / peak
-            _mom_uptrend_gate = max(0.0, min(1.0, np.tanh(_eq_mom_long / 0.01)))  # ~0 flat/declining (sideways/crash), ~1 rising (rally/mixed/bull)
-            _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02))) * _mom_dd_gate * _mom_uptrend_gate
+            _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02))) * _mom_dd_gate
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
