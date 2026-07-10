@@ -3429,33 +3429,34 @@ class Strategy:
                 for _lt in _loss_terms:
                     _loss_prod *= (1.0 - _lt)
                 _loss_or = 1.0 - _loss_prod
-                # STRUCTURAL_EXPLORATION step2: DEEP-LOSS-GATE the loss-side SOFT-OR. Step1
-                # crashed mixed stability 0.814->0.620 (SOFT-OR over-combined mixed's CHOPPY
-                # near-BE losers: slope-against + time + break-even wiggling under AR(1)
-                # noise -> noisy exit-timing -> stability penalty). The MAX was noise-
-                # robust in chop (single dominant term absorbs non-dominant noise); the
-                # SOFT-OR is noise-sensitive because it combines ALL terms. The loss-OR
-                # HELPS when a loser is EXTENDING (a real adverse move -- bull pullback
-                # deepener, rally bounce-against-short -- where combining slope-against +
-                # time fires the exit faster than MAX alone, the step1 bull+rally raw gain
-                # source) and HURTS when a loser is a CHOPPY near-BE oscillation (mixed's
-                # dead capital -- where combining noisy signals destabilizes exit timing).
-                # The separator is the POSITION's loss DEPTH, not the market regime (step2's
-                # rsi_trend_str trend-gate was wrong: it zeroed the loss-OR during bull's
-                # pullback bars -- the exact bars where bull's extending losers needed it --
-                # because a pullback dips the 20-bar ret_long -> rsi_trend_str dips). Gate
-                # on LOSS MAGNITUDE: fire the loss-OR combination only for DEEP losses
-                # (pos_pnl < ~-0.3*stop, past the break-even band where losses are real
-                # extending adverse moves), zero it for SHALLOW/BE-chop losses (where the
-                # signals are noise and the MAX path's single-source rejection is needed).
-                # _pnl_scale = tanh(pos_pnl/|stop|); the gate ramps from 0 at _pnl_scale=
-                # -0.3 (pos_pnl ~ -0.3*stop) to 1 at _pnl_scale=-0.7 (deep loss). This
-                # excludes mixed's near-BE chop (stability preserved) and fires on bull's
-                # deep pullback losers + rally's bounce-against-shorts (the step1 gain
-                # source, recovered). Sideways (small losses, high WR mean-reverters ->
-                # shallow) byte-identical. Continuous, no boundary.
-                _loss_or_depth_gate = max(0.0, min(1.0, (-_pnl_scale - 0.30) / 0.40))
-                _soft_max = max(_soft_max, _loss_or * _loss_or_depth_gate)
+                # STRUCTURAL_EXPLORATION step2: UP-PERSIST-GATE the loss-side SOFT-OR. Step1
+                # (no gate) crashed mixed stability 0.814->0.620: the SOFT-OR over-combined
+                # mixed's CHOPPY near-BE losers (slope-against + time + break-even wiggling
+                # under AR(1) noise -> noisy exit-timing -> stability penalty) -- but step1
+                # ALSO gave bull +0.027 raw + rally +0.012 raw (the loss-OR combined their
+                # shallow-pullback-loser signals to exit faster before the loss deepened).
+                # The SAME shallow/BE region is where the gains (bull/rally) AND the stability
+                # cost (mixed) live -- the separator is REGIME (persistent-trend vs chop),
+                # NOT loss depth (step2b's deep-loss gate was byte-identical: in the deep
+                # region the stop-loss already dominates MAX, so the loss-OR is redundant
+                # there; the loss-OR only helps in the shallow region, which the deep gate
+                # excluded). Step2a's rsi_trend_str trend-gate was wrong: it uses 20-bar
+                # ret_long which DIPS during a bull pullback -> zeroed the loss-OR exactly
+                # on bull's pullback bars (where bull needed it) -> bull gain vanished. The
+                # correct separator is the MULTI-DAY trend PERSISTENCE (validated duration
+                # count _down_persist = fraction of last 48 bars where ret_vlong<0): bull
+                # ~0.3 (PERSISTENT uptrend -- pullbacks are transient, ret_vlong stays >0 ->
+                # down_persist stays LOW through pullbacks); mixed ~0.5+ (oscillating);
+                # crash ~0.9 (persistent downtrend). The EXISTING _up_persist_gate (line
+                # ~2893, full when _down_persist<0.40, zero when >0.60 -- already used by
+                # pp_pressure attenuation) is EXACTLY this: it stays ON through bull's
+                # pullbacks (down_persist low, multi-day trend persists) and zeros for mixed
+                # (oscillation -> down_persist higher). Use it: fire the loss-OR only in
+                # persistent-uptrend regimes (bull/rally, down_persist low) -> keeps step1's
+                # bull+rally shallow-loser gains; zero in mixed/crash (down_persist high) ->
+                # mixed stability preserved, crash byte-identical (loss-OR never helped
+                # crash). Sideways (down_persist oscillates ~0.5 -> gate ~0) byte-identical.
+                _soft_max = max(_soft_max, _loss_or * _up_persist_gate)
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
