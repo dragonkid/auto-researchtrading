@@ -517,11 +517,6 @@ class Strategy:
         # entry (deterministic); keeps a broad-vol entry smaller for the whole hold
         # instead of ramping back to un-shrunk `size` after bar 1. Default 1.0.
         self._avgvol_shrink_held = {}
-        # Exp2: cached entry-time portfolio equity-momentum shrink, sustained through
-        # scale-in (deterministic hold-profile, no per-bar wobble). Mirrors the validated
-        # _conc_held / _vol_held / _cv_held / _avgvol_held pattern. See _eq_mom_held near
-        # full_target. Default _port_eq_mom_shrink (current) so uncached positions are unchanged.
-        self._eq_mom_shrink_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -2296,19 +2291,6 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
-                    # Exp2: cache the entry-time equity-momentum shrink for a deterministic
-                    # hold-profile (sustained at the fresh-pullback entry value through scale-in,
-                    # not re-wobbling each bar as the 8-bar momentum drifts). The first-bar size
-                    # already carries the entry-time _port_eq_mom_shrink via `size`; sustaining it
-                    # keeps the fresh-pullback entry smaller for the whole hold (the keep's intent)
-                    # WITHOUT the per-bar size wobble that the keep note attributed to bull's
-                    # stability slipping 0.800->0.799 past the 0.80 knee. Distinct from the keep
-                    # (per-bar recomputed shrink that follows momentum through the hold): this
-                    # FIXES the shrink at the entry value, eliminating the bar-to-bar variance
-                    # in sustained position size. Hypothesis: bull stability lifts back past 0.80
-                    # (stab_factor 0.997->1.0) AND the fresh-pullback DD-cut is preserved (the
-                    # entry value captures the pullback start), addressing keep lead (b).
-                    self._eq_mom_shrink_held[symbol] = _port_eq_mom_shrink
                     # branch step16: gate the avg-vol SUSTAIN on counter-trend-at-multi-day.
                     # bull entry ct-at-multi-day = ret_vlong<0 (long in downtrend = crash bounce
                     # long). Sustain the shrink ONLY for ct entries (crash bounce longs); bull
@@ -2322,7 +2304,6 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
-                    self._eq_mom_shrink_held[symbol] = _port_eq_mom_shrink  # Exp2: sustain entry-time momentum shrink
                     # branch step16: gate avg-vol sustain on ct-at-multi-day (bear entry ct =
                     # ret_vlong>0 = short in uptrend = rally pullback short; crash trend-aligned
                     # shorts ret_vlong<0 -> no sustain -> no exit-timing disruption).
@@ -2639,65 +2620,7 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    # Exp2: sustain the entry-time equity-momentum shrink through scale-in via
-                    # a deterministic hold-profile. `size` recomputes each bar with the CURRENT
-                    # bar's _port_eq_mom_shrink (line ~1387); dividing it out and multiplying by
-                    # the cached entry-time _eq_mom_held REPLACES the per-bar momentum wobble with
-                    # the fixed fresh-pullback-entry value. Default _port_eq_mom_shrink (current)
-                    # -> factor 1.0 for uncached positions (no change). For held positions the
-                    # shrink is fixed at entry -> no bar-to-bar size variance from momentum drift
-                    # -> bull stability should lift past the 0.80 knee (the keep's wobble source).
-                    # branch step2: GATE the sustain on TREND-ALIGNMENT (ret_vlong*pos_dir>0).
-                    # Exp2 (ungated) crashed sideways -0.244: the sustained shrink LOCKED sideways
-                    # mean-reversion entries SMALL through the oscillation, but sideways positions
-                    # need to REBUILD through the chop to capture mean-reversion profit (sustain/
-                    # lock distorts the recovery geometry, same PACE-SIZE asymmetry as the prior
-                    # pace-wall). Trend-aligned positions (rally longs, bull longs, crash trend
-                    # shorts) grow WITH the trend -> locking entry-time-small still lets size
-                    # rebuild via the scale-in ramp (rally gained +0.018 ungateD). CT/mean-
-                    # reversion positions (sideways ct, the rebuild population) need the keep's
-                    # PER-BAR shrink (which wobbles but lets size rebuild as momentum recovers) ->
-                    # set _eq_mom_sustain=1.0 there (per-bar shrink flows through `size`). The
-                    # trend-align gate uses the validated ret_vlong*pos_dir signal (fast-saturating
-                    # /0.01, near-constant noise-free per the safe-family lesson). Sideways
-                    # (ret_vlong~0 -> gate~0) -> _eq_mom_sustain~1.0 -> per-bar shrink -> rebuilds.
-                    _eq_mom_held = self._eq_mom_shrink_held.get(symbol, _port_eq_mom_shrink)
-                    _eq_mom_sustain_raw = _eq_mom_held / _port_eq_mom_shrink if _port_eq_mom_shrink > 1e-6 else 1.0
-                    _pos_dir_em = 1.0 if current_pos > 0 else -1.0
-                    # branch step3-4: trend-align gate /0.02 then /0.03 -> both gave -0.0034
-                    # composite (rally +0.0038 but bull -0.0009 sideways -0.015). The sustain
-                    # HELPS rally DD (pullback entries stay small through long pullbacks) but
-                    # HURTS any position that should REBUILD to capture profit (bull fast-
-                    # recovery longs lose return; sideways trend-episode mean-reverters starved).
-                    # branch step5: RELEASE the sustain once the position is PROFITABLE (pos_pnl>0).
-                    # Rationale: a losing pullback entry stays sustained-small (DD cut holds
-                    # through the pullback); once it turns profitable the trend has resumed ->
-                    # releasing lets the position rebuild to capture the resumed trend (recovers
-                    # bull/rally/crash winner return) while the DD-cut already banked during the
-                    # losing phase. Sideways mean-reverters are LOSING through the oscillation ->
-                    # stay sustained-small -> but they mean-revert to profit late then release ->
-                    # rebuild is too late (exits before full rebuild) -> sideways cost bounded.
-                    # Smooth tanh on pos_pnl/|stop| (the validated pnl-scale): full sustain at
-                    # loss, fading to 0 by ~0.5*stop profit. Composes with the trend-align gate
-                    # (only trend-aligned positions sustain at all; ct uses per-bar shrink).
-                    _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.02)))  # back to /0.02 (step3 peak)
-                    _em_release = max(0.0, 1.0 - max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))  # 1 at loss, ~0 at profit
-                    # branch step7: VOL-REGIME gate on the sustain (the validated bull/rally
-                    # separator). The sustain CUTS DD on pullback entries but COSTS return on
-                    # fast-recovery regimes. bull_2021 has HIGH vol (sharp corrections that
-                    # recover fast -> sustained-small longs miss the recovery -> Sharpe 0.51->0.49,
-                    # DD 12.47->12.77 WORSE); crash has HIGH vol (trend-aligned winning shorts
-                    # sustained small -> lose return). rally_2024 is a LOW-vol grinding uptrend
-                    # (pullbacks are long/shallow -> sustained-small cuts DD at the 5pct knee AND
-                    # the trend rebuilds anyway -> rally gained +0.0038). Gate the sustain on
-                    # LOW vol_ratio (calm grind = rally; the bull/crash high-vol regimes are
-                    # exempted -> per-bar shrink, rebuild). Vol-gate: full sustain at vol_ratio
-                    # ~0.8, fading to 0 by ~1.2 (excludes bull/crash high-vol). General signal
-                    # (vol_ratio, no regime label): sustain is worthwhile only in calm regimes
-                    # where the pullback is shallow/long enough that DD-cut beats the rebuild cost.
-                    _em_vol_gate = max(0.0, min(1.0, np.tanh((1.20 - vol_ratio) / 0.30)))  # ~1 calm (vol<0.9), ~0 high-vol (vol>1.2)
-                    _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate * _em_release * _em_vol_gate
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _eq_mom_sustain
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
