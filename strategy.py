@@ -3391,41 +3391,6 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
-                    # Exp1 (architectural, indep): feed the validated portfolio EQUITY-
-                    # MOMENTUM DERIVATIVE (sanctioned UNTESTED lead c from keep 1142132f)
-                    # into the exit-threshold lowering. The lowering above uses
-                    # (1.0 - _port_dd_atten) = the DD-LEVEL gap, which is ~0 at the
-                    # START of a fresh pullback (dd_frac still low -> _port_dd_atten~1.0),
-                    # so it does NOT cut losers during the FIRST bars of a fresh pullback.
-                    # The momentum DERIVATIVE is orthogonal: it is non-zero EXACTLY there
-                    # (a sharp 8-bar equity decline with low dd_frac = the keep-validated
-                    # fresh-pullback population). Lower the full-exit threshold for LOSERS
-                    # during that fresh-pullback window -> cut losers ~1 bar earlier ->
-                    # smaller realized losses -> higher Sharpe in the negative-Sharpe
-                    # regimes where the portfolio trends down (crash/sideways). Reuses the
-                    # keep's signal: 8-bar rate-of-change of span-3 smoothed equity
-                    # (self._equity_ema) normalized by peak, recomputed here from the stored
-                    # self._equity_ema_hist (no new state). SAME gate stack as the keep
-                    # entry-side shrink + the existing exit-side lowering: low-dd_frac
-                    # (spare crash sustained deep DD), sharp-momentum /0.01 (spare sideways
-                    # gentle down-swings), trend-strength (spare sideways mean-reverters),
-                    # loss-side-only (the enclosing if _pnl_scale<0; winners byte-identical).
-                    # Byte-identical at portfolio peak (dd_frac=0 -> no accumulated decline
-                    # -> _eq_mom~0 -> gate 0) and when momentum>=0. Does NOT amplify exit
-                    # PRESSURE (the protective MAX-fusion is untouched); lowers only the
-                    # THRESHOLD that converts pressure to action, on the loss side, during
-                    # fresh pullbacks. General principle (no regime label): a losing
-                    # position during a fresh portfolio pullback is at correlated-regime-
-                    # hit risk -> exit sooner.
-                    _eq_hist_x = getattr(self, "_equity_ema_hist", [])
-                    _mom_exit_gate = 0.0
-                    if len(_eq_hist_x) >= 8 and self._peak_equity > 1e-10:
-                        _eq_mom_x = (self._equity_ema - _eq_hist_x[0]) / self._peak_equity
-                        # low-dd_frac gate: full at dd<2pct, fading to 0 by 6pct (spare crash)
-                        _mom_dd_gate_x = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.02) / 0.04))
-                        # sharp-momentum /0.01 (spare sideways gentle down-swings), shrink-only
-                        _mom_exit_gate = max(0.0, min(1.0, np.tanh(-_eq_mom_x / 0.01))) * _mom_dd_gate_x * _sustained_loss_trend_gate
-                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * _mom_exit_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
