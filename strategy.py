@@ -639,6 +639,42 @@ class Strategy:
         _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(_port_dd_frac / (0.008 * LEVERAGE_K)))
 
+        # Exp3 (architectural, indep): PORTFOLIO EQUITY-MOMENTUM (trajectory DERIVATIVE)
+        # entry-size shrink. NEW portfolio-STATE data dep distinct from every existing
+        # portfolio signal: _port_dd_atten reads the DD-FRACTION LEVEL (1-equity/peak),
+        # _port_dd_frac is high when equity is BELOW peak; the loss_streak reads the trade
+        # SEQUENCE. NEITHER measures the TRAJECTORY DERIVATIVE (slope of the smoothed
+        # equity): a portfolio at peak (low dd_frac) just starting to fall has NEGATIVE
+        # momentum (the dd_atten misses it -- dd_frac still ~0); a portfolio in deep DD
+        # (high dd_frac) that is RECOVERING has POSITIVE momentum (the dd_atten shrinks but
+        # the trajectory says recovering). The momentum is the DERIVATIVE -- orthogonal to
+        # the level. Track an 8-bar rolling history of _equity_ema (the span-3 smoothed
+        # equity, already noise-attenuated) and compute the 8-bar rate of change normalized
+        # by peak equity: positive = portfolio rising (good regime), negative = falling.
+        # SHRINK-ONLY: when momentum is negative (portfolio declining), shrink first-bar
+        # entry size up to 15% (smaller entries in a declining-portfolio regime -> smaller
+        # losses -> higher Sharpe in the negative-Sharpe regimes where the portfolio trends
+        # down, i.e. crash/sideways). When momentum is positive (rising) -> factor 1.0,
+        # byte-identical (NO boost -- avoids the positive-feedback risk of boosting size on
+        # rising equity, the documented win-streak/boost wall). Composes with _port_dd_atten
+        # (both shrink-only, multiplicative). Byte-identical when momentum >= 0 (bull/
+        # rally/mixed uptrends, portfolio rising). New state + new control flow at entry
+        # sizing: a portfolio-trajectory-DERIVATIVE signal (distinct from the DD-level and
+        # trade-sequence signals). Direction-agnostic general principle (no regime label):
+        # a portfolio whose equity is actively declining is in a hostile regime -> take
+        # smaller risk.
+        _eq_hist = getattr(self, "_equity_ema_hist", [])
+        _eq_hist.append(self._equity_ema)
+        if len(_eq_hist) > 8:
+            _eq_hist = _eq_hist[-8:]
+        self._equity_ema_hist = _eq_hist
+        _port_eq_mom_shrink = 1.0
+        if len(_eq_hist) >= 8 and self._peak_equity > 1e-10:
+            _eq_mom = (self._equity_ema - _eq_hist[0]) / self._peak_equity  # 8-bar rate of change / peak
+            # Shrink only when momentum negative; max 15% shrink at deep negative momentum.
+            # /0.02 scale: a 2% peak-relative 8-bar decline saturates (calm=0, sharp decline=1).
+            _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02)))
+
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
         # first-bar entry size: an alt entry that DISAGREES with BTC's multi-day trend is a
@@ -1295,7 +1331,9 @@ class Strategy:
             # rally, sideways where cross-symbol avg down_persist < ONSET).
             # Exp6: apply max-aggregation weak-trend cap (composes with Exp1/Exp5). Fires
             # when any symbol has persistent weak multi-day trend (mixed's consolidation).
-            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap
+            # Exp3: apply portfolio equity-MOMENTUM (trajectory-derivative) shrink, computed
+            # at top level. Composes with the deep-bear/weak-trend caps (all shrink-only).
+            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
