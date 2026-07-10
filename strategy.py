@@ -3362,7 +3362,37 @@ class Strategy:
                 # triggers exit anyway).
                 _fusion_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
                 _agree_amp = SOFT_FUSION_AGREE_MAX * _agree_gate * _fusion_vol_gate
-                _soft_max = _soft_max + _agree_amp * _sorted_terms[1]  # no clamp (original didn't)
+                # Exp2 (architectural, indep): MULTIPLICATIVE confirmation amplification
+                # (subsystem rewrite of the soft-pressure FUSION core mechanism). The
+                # prior session's STRUCTURAL_EXPLORATION branch (loss-side SOFT-OR) and
+                # the additive confirmation-amplified MAX here both ADD a second term
+                # (_soft_max + _agree_amp * 2nd) -- the prior session explicitly found
+                # additive blends are a DEAD END (correlated-noise re-amplification ->
+                # DD explosion on bull): two mildly-correlated pressure sources
+                # (slope-against + pp-giveback share HL2/closes inputs) both fire on
+                # trend-aligned winners -> ADDING them re-amplifies the shared-input
+                # noise. The prior session-summary's sanctioned UNTESTED lead: "a
+                # MULTIPLICATIVE fusion shape (top1 * (1 + small*agree) instead of
+                # top1 + small*top2) might avoid correlated-noise ADDITION while still
+                # amplifying agreement -- untested." This implements that: scale the
+                # (already-MAX-selected, already-noise-rejected) DOMINANT term by a
+                # factor when multi-source confirmation is high, instead of adding the
+                # 2nd term's own (shared-input) noise. Mechanism: top1 * (1 + amp*ratio_2nd).
+                # When single-source (ratio~0) -> factor 1.0 (byte-identical to pure MAX).
+                # When two agreeing mid-magnitude sources (0.5 + 0.45, ratio=0.9, amp
+                # 0.25) -> 0.5 * (1 + 0.25*0.9) = 0.5 * 1.225 = 0.61 (cuts the loser
+                # faster via the dominant term, NOT via adding the 2nd's noise). When a
+                # single 0.9 spike (ratio~0) -> 0.9 * 1.0 = 0.9 (no change, noise
+                # rejected). The multiplicative form AMPLIFIES the dominant term by
+                # confirmation but does NOT ADD a second noisy signal -- the shared-
+                # input noise that blew bull DD in the additive form is structurally
+                # absent (the 2nd term only contributes its RATIO, not its magnitude).
+                # The _agree_amp is bounded by AGREE_MAX 0.50 and the ratio by 1.0, so
+                # the factor is in [1.0, 1.50] -- bounded, no clamp needed (the exit-
+                # threshold logic tolerates _exit_pressure > 1.0). The vol-regime gate
+                # (exclude sideways) is retained. Subsystem rewritten: soft-pressure
+                # FUSION core, additive-confirmation -> multiplicative-confirmation.
+                _soft_max = _soft_max * (1.0 + _agree_amp * _ratio_2nd)  # multiplicative (was: + _agree_amp * _sorted_terms[1])
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
