@@ -3559,6 +3559,29 @@ class Strategy:
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
                     _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp5 (architectural, indep): MAE-CLEANLINESS-GATED tp-harvest magnitude
+                    # boost. The prior magnitude ceiling was 0.50 (walled: crash stability
+                    # collapsed) under the OLD 20-bar _ts_supp. Exp4 keep fixed _ts_supp to
+                    # use multi-day ret_vlong (crash shorts now shielded -> _ts_supp HIGH ->
+                    # harvest SUPPRESSED for crash). The 0.50 wall may be lifted for the
+                    # CLEAN-MAE population. NEW data dep on tp-harvest MAGNITUDE: scale the
+                    # boost by the position's MAE cleanliness (distinct from the _ts_supp
+                    # MAE factor which gates SUPPRESSION, not magnitude). A CLEAN-MAE winner
+                    # (never went deep underwater = |mae| << stop) is a high-conviction
+                    # genuine peak -> harvest more (boost 0.45 -> 0.55 for clean-MAE); a
+                    # DEEP-MAE winner (went underwater then recovered = fragile) stays at the
+                    # baseline 0.45 (the validated safe level). The boost ONLY bites on
+                    # clean-MAE NON-trend-aligned or shallow-peak winners (the _ts_supp
+                    # trend-aligned clean winners are SUPPRESSED -> (1-1.5*_ts_supp) -> 0 ->
+                    # no harvest regardless of magnitude). Byte-identical for deep-MAE
+                    # winners (the _mae_clean_factor scales the boost back to baseline).
+                    # Continuous tanh on (-mae)/(|stop|*0.3) (fast-saturating: clean by
+                    # ~0.3*stop, deep by ~0.6*stop). Direction-agnostic; reduction-only family.
+                    # Targets mixed (deep peaks with clean MAE -> deeper harvest -> more
+                    # paper->realized per re-peak -> lower MTM oscillation -> higher Sharpe).
+                    _mae_clean = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.3))))
+                    _tp_mag = 0.45 + 0.10 * _mae_clean  # 0.45 baseline -> 0.55 for clean-MAE
+                    _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
