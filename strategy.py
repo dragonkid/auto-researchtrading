@@ -763,6 +763,7 @@ class Strategy:
         _port_down_persist_vals = []
         _port_weak_persist_vals = []  # Exp6: per-symbol weak_persist for max-aggregation
         _port_rv_vals = []  # Exp8: per-symbol raw ret_vlong for max-aggregation deep-bear cap
+        _port_rv_map = {}  # Exp1: symbol -> 96-bar ret_vlong for cross-symbol trend-DIRECTION coherence
         _port_vol_ratio_vals = []  # Exp1: per-symbol vol_ratio for max-aggregation vol-spike cap
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
@@ -770,6 +771,7 @@ class Strategy:
             _phl2 = (bar_data[_psym].history["high"].values[-_pn:] + bar_data[_psym].history["low"].values[-_pn:]) / 2.0
             _p_rv = _fast_slope(np.log(_phl2)) * _pn
             _port_rv_vals.append(_p_rv)
+            _port_rv_map[_psym] = _p_rv
             _pdvh = list(self._down_vlong_hist.get(_psym, []))
             _pdvh.append(1 if _p_rv < 0.0 else 0)
             if len(_pdvh) > PERSIST_WINDOW:
@@ -849,6 +851,38 @@ class Strategy:
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
+
+        # Exp1 (architectural indep): CROSS-SYMBOL TREND-DIRECTION DIVERGENCE SIZE shrink.
+        # NEW cross-component data dep: entry SIZE reads the cross-symbol multi-day trend-
+        # DIRECTION agreement (whether the OTHER symbols' 96-bar ret_vlong sign confirms the
+        # entry's own trend direction). Distinct from every existing cross-symbol size cap:
+        # those key on down-MAGNITUDE (_port_bear_cap), weak-PERSIST (_port_weak_cap),
+        # vol-SPIKE (_port_vol_spike_cap), vol-AVERAGE (_port_vol_avg_cap) -- all MAGNITUDE/
+        # vol signals, NONE on trend DIRECTION agreement. Distinct from _consensus (20-bar
+        # close sign, used as a +0.06 first-bar SIZE boost for trend-aligned entries): this
+        # uses the SAME 96-bar OLS ret_vlong already computed for the deep-bear caps (smooth,
+        # ~1/sqrt(96) noise attenuation) and is SHRINK-ONLY.
+        # MECHANISM: an entry is trend-aligned when entry_dir*ret_vlong>0 (own multi-day trend
+        # supports it). When trend-aligned AND the OTHER symbols trend the SAME direction
+        # (cross-symbol agreement), the entry is a high-quality broad-trend entry -> NO shrink.
+        # When trend-aligned BUT the other symbols trend the OPPOSITE direction (the symbol
+        # is the lone trending leg while the broad market moves against it), the entry is an
+        # ISOLATED trend that often reverts as the broad market reasserts -> SHRINK up to 15%.
+        # Counter-trend entries (entry_dir*ret_vlong<0, the sideways mean-reversion population)
+        # are EXCLUDED from the shrink: their trend-alignment gate is ~0 so the shrink term is
+        # ~0 regardless of cross-symbol direction (byte-identical relative weight for ct).
+        # SAFETY vs crash-winner wall: crash's WINNING trend-aligned shorts have ALL 3 symbols
+        # trending down (broad bear) -> cross-symbol agreement HIGH -> NO shrink (winners
+        # preserved). crash's LOSING counter-trend bounce longs are ct (gate~0) -> not shrunk
+        # by THIS term (distinct from the catastrophic entry-frac boost which AMPLIFIED
+        # trend-aligned crash shorts). This shrinks the LONE-trending-trend-aligned population,
+        # a set disjoint from both crash winners (broad agreement) and sideways ct (gate~0).
+        # Direction-agnostic general principle: a trend-aligned entry unconfirmed by the broad
+        # market is a lower-quality, more-revertible trade -> take less risk. Shrink-only,
+        # bounded 15%, composes multiplicatively with the other size caps. Byte-identical when
+        # fewer than 2 symbols present or when the entry is ct or when all symbols agree.
+        # Computed per-symbol in the entry path below (needs entry_dir + own ret_vlong + the
+        # _port_rv_map of other symbols' trends). See _port_trend_agree_shrink near line 1353.
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1007,6 +1041,43 @@ class Strategy:
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
+
+            # Exp1 (architectural indep): CROSS-SYMBOL TREND-DIRECTION DIVERGENCE shrink.
+            # Per-symbol computation: own ret_vlong (just computed) + the OTHER symbols'
+            # ret_vlong (from the top-level _port_rv_map). The shrink targets trend-ALIGNED
+            # entries (entry_dir*ret_vlong>0) that are UNCONFIRMED by the broad market: the
+            # other symbols trend the OPPOSITE direction. Computed here (needs own ret_vlong)
+            # but APPLIED at the entry-target (needs entry direction). Two direction-specific
+            # factors below; the unused one is byte-identical-neutral (multiplied in only at
+            # the matching entry-target line).
+            # _ta_align_self: how trend-aligned this symbol's OWN trend is (0 ct-weak, 1 strong).
+            # _diverge: fraction of OTHER symbols trending OPPOSITE to this symbol's ret_vlong.
+            # shrink_bull: a BULL entry (dir+1) is trend-aligned when ret_vlong>0; unconfirmed
+            #   when other symbols trend down (opposite). shrink = 1 - 0.15 * ta_gate * diverge.
+            # shrink_bear: a BEAR entry (dir-1) is trend-aligned when ret_vlong<0; unconfirmed
+            #   when other symbols trend up (opposite). Same form.
+            # Counter-trend entries (ta_gate~0) -> shrink~1.0 (byte-identical weight). Full
+            # agreement (diverge~0) -> shrink~1.0. Lone-trending-against-broad -> shrink 0.85.
+            _port_trend_agree_shrink_bull = 1.0
+            _port_trend_agree_shrink_bear = 1.0
+            if len(_port_rv_map) >= 2:
+                _own_rv_sign = 1.0 if ret_vlong > 0.0 else (-1.0 if ret_vlong < 0.0 else 0.0)
+                _other_rvs = [v for s, v in _port_rv_map.items() if s != symbol]
+                if len(_other_rvs) >= 1 and _own_rv_sign != 0.0:
+                    _n_opp = sum(1 for v in _other_rvs if (1.0 if v > 0.0 else (-1.0 if v < 0.0 else 0.0)) == -_own_rv_sign and v != 0.0)
+                    _diverge = float(_n_opp) / float(len(_other_rvs))  # 0 all-confirm, 1 all-opposite
+                    # trend-alignment gate: ~1 strong own trend (|ret_vlong|>>0), ~0 ct/flat.
+                    # /0.02 scale: a 2pct 96-bar trend saturates (sideways' |ret_vlong|~0.5-1pct
+                    # -> partial; rally/crash ~3-4pct -> saturate). Fast-saturating so the shrink
+                    # is gated to genuine trend-aligned entries, not sideways' near-flat noise.
+                    _ta_gate_self = max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.02)))
+                    _agree_shrink_mag = 0.15 * _ta_gate_self * _diverge
+                    # bull trend-aligned (ret_vlong>0): shrink bull entries unconfirmed (others down)
+                    if _own_rv_sign > 0.0:
+                        _port_trend_agree_shrink_bull = 1.0 - _agree_shrink_mag
+                    else:
+                        # bear trend-aligned (ret_vlong<0): shrink bear entries unconfirmed (others up)
+                        _port_trend_agree_shrink_bear = 1.0 - _agree_shrink_mag
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
             # rolling boolean (|ret_vlong| < PERSIST_WEAK_THRESH) over PERSIST_WINDOW
@@ -2287,7 +2358,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _port_trend_agree_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2300,7 +2371,7 @@ class Strategy:
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _port_trend_agree_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
