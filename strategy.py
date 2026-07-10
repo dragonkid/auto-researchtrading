@@ -1312,12 +1312,25 @@ class Strategy:
             # sideways -> byte-identical. Crash/bull/rally are LOCAL trending (high
             # rsi_trend_str) -> relaxation fires. Two-timescale: 96-bar broad agreement
             # (confirmation) x per-symbol LOCAL trend-strength (gate). Continuous tanh.
-            # Conservative 12% max relaxation; composes multiplicatively with the tighteners.
+            # branch step4: SLOPE-CONFIRMATION gate (the validated bull-protector from the
+            # win-accelerator Exp4: _slope_conf = tanh(_lr_slope*pos_dir/0.0004)). Step3
+            # CROSSED +0.003 keep but bull stability crashed 0.799->0.768 (stab_factor
+            # 0.896) -- the relaxed admission admitted noisier entries on bars where the
+            # near-term slope was NOT confirming (bull entries right before a correction,
+            # when slope weakened). Gate the relaxation OFF when the 16-bar OLS slope
+            # opposes the entry direction: the relaxation fires only on trend-aligned
+            # entries whose NEAR-TERM slope still confirms (ongoing trend, not a
+            # weakening-before-correction bar). Bull's corrections are preceded by slope
+            # weakening -> gate off -> no relaxation on the noisiest bars -> bull
+            # stability recovers. Crash/rally trend-aligned entries have persistent
+            # confirming slope -> gate on -> gains preserved. Continuous tanh, no boundary.
             _trend_relax_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
             if _port_trend_mag_dir > 0.0:
-                _bull_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax * _trend_relax_gate
+                _slope_conf_relax = max(0.0, np.tanh(_lr_slope / 0.0004))
+                _bull_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax * _trend_relax_gate * _slope_conf_relax
             elif _port_trend_mag_dir < 0.0:
-                _bear_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax * _trend_relax_gate
+                _slope_conf_relax = max(0.0, np.tanh(-_lr_slope / 0.0004))
+                _bear_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax * _trend_relax_gate * _slope_conf_relax
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
