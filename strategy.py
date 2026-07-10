@@ -3463,6 +3463,20 @@ class Strategy:
                 _pos_dir_lo = 1.0 if current_pos > 0 else -1.0
                 _ct_at_md = max(0.0, np.tanh(-_pos_dir_lo * ret_vlong / 0.01))  # ~1 ct-at-multi-day, ~0 aligned
                 _loss_or_gate = _loss_or_trend_gate * (1.0 - _ct_at_md)
+                # Step2f: ADD a high-vol amplifier path. Step1 (no gate) gave bull +0.027 raw
+                # (loss-OR fired on bull's SHARP pullback losers) but the step2 gates
+                # restricted it to keep mixed/sideways stable, losing the bull gain. The
+                # separator between bull's sharp pullbacks (loss-OR helps: exit pullback
+                # losers before they deepen) and mixed/sideways gentle oscillations (loss-OR
+                # hurts: over-exit reverting losers) is VOL REGIME (bull high-vol sharp vs
+                # mixed/sideways low-vol gentle -- the validated vol-regime separator). Add
+                # a high-vol gate path: fire the loss-OR ALSO in high-vol regimes (vol_ratio
+                # > 1.15 = bull's sharp pullbacks) via OR with the trend gate. Sideways (low
+                # vol, trend-gate from trending stretches) keeps its +0.003; bull (high vol)
+                # recovers step1's pullback-loser gain; mixed (low vol + ct -> both gates 0)
+                # stays excluded. crash (high vol, but loss-OR inert there) unaffected.
+                _loss_or_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
+                _loss_or_gate = max(_loss_or_gate, _loss_or_vol_gate)
                 _soft_max = max(_soft_max, _loss_or * _loss_or_gate)
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
