@@ -684,12 +684,7 @@ class Strategy:
             # entry cuts DD without starving recovery). Continuous tanh ramp: full at
             # dd_frac<2pct, fading to 0 by 6pct. Byte-identical in sustained deep DD (crash).
             _mom_dd_gate = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.02) / 0.04))  # ~1 fresh pullback (dd<2pct), ~0 sustained DD (dd>6pct)
-            # branch step7: reduce magnitude 0.15->0.10 to lower the sideways cost (step3
-            # regressed sideways -0.0092 from the shrink firing in its 2-4pct dd_frac down-
-            # swings). Smaller magnitude -> smaller sideways regression while keeping the
-            # rally/mixed/bull DD-cut benefit (proportional).
-            # branch step8: probe magnitude 0.12 (between 0.10 sideways-safe and 0.15 peak).
-            _port_eq_mom_shrink = 1.0 - 0.12 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02))) * _mom_dd_gate
+            _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02))) * _mom_dd_gate
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
