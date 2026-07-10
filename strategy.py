@@ -1305,6 +1305,33 @@ class Strategy:
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
             _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
+            # Exp2 (architectural, indep): PORTFOLIO-STREAK-SCALED re-entry cooldown. The
+            # per-symbol _cd_window is stretched 60pct after a SINGLE per-symbol loss above
+            # (the _loss_only term). This extends that stretch PROPORTIONALLY to the
+            # PORTFOLIO consecutive-loss streak -- a re-entry after 3 consecutive portfolio
+            # losses is a marginal re-entry into a hostile regime (the streak-extend
+            # population), so it should wait LONGER (delay) AND stay smaller longer
+            # (smaller magnitude). DISTINCT from the existing _streak_ct_shrink (ct-gated,
+            # first-bar SIZE only, max 25pct): this is NOT ct-gated (fires regardless of trend
+            # direction), affects the per-symbol RE-ENTRY TIMING via the cooldown window (a
+            # delay + size axis, not a one-shot first-bar size cut), and keys on the
+            # portfolio streak x per-symbol-last-loss interaction. The cooldown is a SOFT
+            # size factor (entries still happen once it decays, not filtered), so it does
+            # NOT hit the admission-tighten-filters-winners wall (the entry is admitted --
+            # just delayed+smaller -- unlike Exp1's hard admission tighten which DROPPED
+            # the trade entirely). In rally the bear-side pullback shorts re-enter during a
+            # portfolio streak -> the longer window delays the re-entry past the immediate
+            # pullback noise + keeps it smaller -> smaller loser -> the streak loses
+            # magnitude (Sharpe up). In sideways the portfolio streak stays SHORT (losses
+            # alternate across the mean-reversion legs) -> the streak stretch stays ~0 ->
+            # sideways winners spared. Max +100pct window stretch (window doubles) at deep
+            # portfolio streak (streak>=4 saturates); gated to fire only when this symbol's
+            # last exit was a loss (_loss_only>0 -- a re-entry after a win is a fresh entry,
+            # not a streak-extend re-entry). Continuous tanh on (streak-1)/2.0 (same ramp as
+            # _streak_ct_admit); no boundary. New cross-component data dep: cooldown window
+            # reads the portfolio loss-streak.
+            _streak_cd_stretch = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _loss_only  # 0 no-recent-loss or streak<=1, ~1 deep streak after a loss
+            _cd_window = _cd_window * (1.0 + 1.0 * _streak_cd_stretch)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
