@@ -2925,33 +2925,7 @@ class Strategy:
                     _he_alpha = 0.15  # fast fall: release immediately on winner->loser (raw)
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
                 self._hold_ext_ema[symbol] = _ta_dd_hold_ext
-                # Exp4 (architectural, indep): LOW-VOL-REGIME trend-aligned-winner hold
-                # extension. _ta_dd_hold_ext above is DD-LEVEL-keyed (fires on (1.0-
-                # _port_dd_atten), significant only at DEEP portfolio DD), so it does NOT
-                # reach rally (low-vol grind, DD 5.36pct -> dd_frac low -> level gap ~0 ->
-                # ~no extension). Yet rally's DD source IS trend-aligned longs exiting via
-                # time-pressure during pullbacks (slope/pp don't fire on the gradual
-                # pullback -> time-pressure fires -> exits at the pullback bottom -> realizes
-                # the loss -> the DD). A SECOND hold-extension term, NOT DD-keyed, that
-                # fires on LOW VOL_RATIO (calm grind = rally; excludes crash/bull high-vol
-                # sharp) x trend-aligned x long-only x in-profit x persistent-uptrend,
-                # extends the time-pressure onset so rally trend-aligned long WINNERS hold
-                # THROUGH the gradual pullback -> recover (rally PF 2.2, winners resume) ->
-                # smaller realized loss -> smaller rally DD (the high-leverage axis: rally
-                # DD 5.36pct just past the 5pct knee). Byte-identical: crash (high-vol ->
-                # low-vol gate 0; AND shorts -> long gate 0), bull (high-vol sharp -> low-vol
-                # gate ~0; bull's pullbacks are sharp not gradual so extending holds them
-                # through sharp drops that DON'T resume -> would hurt bull, the low-vol
-                # gate spares bull), sideways (low up_persist -> _up_persist_gate 0; AND
-                # sideways mean-reverters should NOT be held longer -- the up_persist +
-                # trend-align + in-profit gates exclude sideways's choppy longs), shorts
-                # (long gate 0), ct (trend-align 0), losers (profit gate 0). Magnitude 0.8
-                # bars (modest; vs _ta_dd_hold_ext max 1.5). General principle (no regime
-                # label): a trend-aligned in-profit long in a calm low-vol regime benefits
-                # from a longer time-pressure hold (gradual pullbacks resume).
-                _lowvol_hold_gate = max(0.0, min(1.0, (0.8 - vol_ratio) / 0.4))  # ~1 vol<=0.4...0.8, ~0 vol>=1.2 (rally calm, bull/crash sharp)
-                _ta_lowvol_hold_ext = 0.8 * _ta_long_gate * _ta_align * _ta_profit_gate * _up_persist_gate * _lowvol_hold_gate
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _ta_lowvol_hold_ext
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
