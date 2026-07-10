@@ -1059,6 +1059,23 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
+            # Exp4 (architectural, indep): 96-bar trend CLEANLINESS (R^2) for the
+            # calm_boost size multiplier. The calm_boost fires on vol-compression
+            # (vol_short<vol_long), boosting size in calm regimes (rally grind, sideways
+            # calm). It does NOT distinguish a CLEAN linear calm trend (rally's grinding
+            # uptrend, high R^2 = price tracks a straight line up) from a CHOPPY calm path
+            # (sideways' oscillating-around-flat, low R^2 = same low vol but whipsaw path).
+            # The 96-bar R^2 is INDEPENDENT of vol_ratio (which measures magnitude, not
+            # shape) and of rsi_trend_str (which measures |ret_long| magnitude). Gating
+            # calm_boost by R^2 (full boost at high R^2 clean grind, ~0.70x at low R^2
+            # choppy calm) targets the sideways-vs-rally calm-regime separation: rally's
+            # clean grind keeps full calm_boost, sideways' choppy calm gets reduced boost
+            # (its oscillating entries are mean-reverters, not trend continuation). The 96-
+            # bar window averages ~96 bars of AR(1) noise (~1/sqrt(96) attenuation) so R^2
+            # is bar-to-bar stable. Byte-identical when calm_boost is inactive (vol_ratio
+            # >=1.7, the calm gate floors at 0). New per-symbol data dep at sizing:
+            # calm_boost depends on the own-symbol 96-bar trend cleanliness.
+            _vlong_r2 = _fast_r2(np.log(_hl2_vl))
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
@@ -1386,6 +1403,9 @@ class Strategy:
             in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
+            # Exp4: apply 96-bar cleanliness factor to calm_boost (only reduce when R^2
+            # below 0.5 -- choppy calm path; byte-identical at R^2>=0.5 clean trends).
+            calm_boost = calm_boost * (1.0 - 0.30 * max(0.0, min(1.0, np.tanh((0.50 - _vlong_r2) / 0.20))))
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
