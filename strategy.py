@@ -2453,7 +2453,20 @@ class Strategy:
                 # slowdown only (no acceleration -- avoids positive-feedback risk).
                 _mom_pace_slowdown = 0.0
                 if len(_eq_hist) >= 8 and self._peak_equity > 1e-10:
-                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
+                    # branch step2: TREND-STRENGTH gate to spare sideways mean-reverters.
+                    # Exp1 opener catastrophically regressed sideways -0.117 because the
+                    # /0.01 momentum scale only PARTIALLY excludes sideways' gentle down-
+                    # swings, and slowing PACE on sideways mean-reverters distorts their
+                    # oscillation-recovery geometry (under-built during recovery). The
+                    # validated separator between sideways (mean-reversion) and the
+                    # trending regimes (rally/mixed/bull) is rsi_trend_str (already used by
+                    # _w_time / _be_trend_gate / _exit_dd_gate). Gate the pace slowdown on
+                    # trend strength so sideways (rsi_trend_str ~0) is byte-identical while
+                    # the trending regimes (rsi_trend_str high) keep the slowdown. Continuous
+                    # tanh ramp on rsi_trend_str/0.20 (saturates by ~0.4 trend strength --
+                    # the SAME scale as the other trend gates).
+                    _mom_pace_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate * _mom_pace_trend_gate
                 _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
