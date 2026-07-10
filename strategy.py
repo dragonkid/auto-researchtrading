@@ -2682,7 +2682,12 @@ class Strategy:
                     # (only trend-aligned positions sustain at all; ct uses per-bar shrink).
                     _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.02)))  # back to /0.02 (step3 peak)
                     _em_release = max(0.0, 1.0 - max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))  # 1 at loss, ~0 at profit
-                    _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate * _em_release
+                    # branch step6: amplify the sustain magnitude 1.5x to deepen the rally DD cut
+                    # (step5 +0.0038 rally gain is sub-keep; the profit-release bounds the
+                    # bull/sideways/crash side effects to the LOSING phase only, so amplifying the
+                    # DD-cut-on-losers should scale the rally gain faster than the bounded losses).
+                    _em_amp = 1.5
+                    _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate * _em_release * _em_amp
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _eq_mom_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
