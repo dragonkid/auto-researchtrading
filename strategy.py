@@ -681,9 +681,16 @@ class Strategy:
             # entries). Gate on low dd_frac: the momentum shrink complements _port_dd_atten
             # (which fires at HIGH dd_frac for deep DD) -- this fires at LOW dd_frac for
             # fresh pullbacks (rally/mixed/bull transient declines where cutting the pullback
-            # entry cuts DD without starving recovery). Continuous tanh ramp: full at
-            # dd_frac<2pct, fading to 0 by 6pct. Byte-identical in sustained deep DD (crash).
-            _mom_dd_gate = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.02) / 0.04))  # ~1 fresh pullback (dd<2pct), ~0 sustained DD (dd>6pct)
+            # entry cuts DD without starving recovery). Continuous tanh ramp.
+            # branch step4: TIGHTEN the gate onset 2pct->0.5pct (fade to 0 by 1.5pct). Step3
+            # (onset 2pct, fade to 6pct) still fired in sideways' 2-4pct down-swings (sideways
+            # regressed -0.0092). Sideways' DD-fraction oscillates to 2-4pct during its mean-
+            # reverting down-swings; the trending regimes' FRESH pullbacks start at dd_frac
+            # <0.5pct (the very first bars of a pullback, before the DD accumulates). Tighten
+            # so only the freshest pullbacks fire (dd_frac<0.5pct), excluding sideways' deeper
+            # 2-4pct oscillations. Crash (dd_frac>6pct sustained) and sideways (2-4pct) both
+            # excluded; rally/mixed/bull fresh pullbacks (<0.5pct) fire.
+            _mom_dd_gate = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.005) / 0.010))  # ~1 fresh pullback (dd<0.5pct), ~0 by dd>1.5pct
             _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02))) * _mom_dd_gate
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
