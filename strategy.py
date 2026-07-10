@@ -688,7 +688,8 @@ class Strategy:
             # regressed sideways -0.0092 from the shrink firing in its 2-4pct dd_frac down-
             # swings). Smaller magnitude -> smaller sideways regression while keeping the
             # rally/mixed/bull DD-cut benefit (proportional).
-            _port_eq_mom_shrink = 1.0 - 0.10 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02))) * _mom_dd_gate
+            # branch step8: probe magnitude 0.12 (between 0.10 sideways-safe and 0.15 peak).
+            _port_eq_mom_shrink = 1.0 - 0.12 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02))) * _mom_dd_gate
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
