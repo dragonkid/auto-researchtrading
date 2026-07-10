@@ -2465,23 +2465,15 @@ class Strategy:
                     # the trending regimes (rsi_trend_str high) keep the slowdown. Continuous
                     # tanh ramp on rsi_trend_str/0.20 (saturates by ~0.4 trend strength --
                     # the SAME scale as the other trend gates).
-                    _mom_pace_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                    # branch step4: MULTI-DAY DOWNTREND gate to isolate the pace slowdown to
-                    # down-market pullbacks (mixed) and exclude up-market pullbacks (rally/
-                    # bull). step2 regressed rally -0.004: rally's pullbacks REVERSE (uptrend
-                    # resumes) so a slower pace leaves positions under-built during recovery.
-                    # mixed's pullbacks CONTINUE (down-year) so slower pace avoids building
-                    # into the decline. The separator is the BROAD multi-day trend: use the
-                    # cross-symbol _port_down_persist (fraction of recent bars where the
-                    # 96-bar ret_vlong<0 across symbols, already computed at top level).
-                    # mixed (down-year oscillation) -> high; rally/bull (up-year) -> low;
-                    # sideways -> ~mid. Gate so the pace slowdown fires only in a persistent
-                    # down-market (where pullbacks continue, not reverse). Continuous tanh
-                    # ramp on (_port_down_persist - 0.55)/0.15 (near-0 below 0.55, saturates
-                    # by ~0.70). crash already byte-identical via the low-dd gate. This
-                    # isolates the +0.027 mixed gain while sparing rally/bull/sideways.
-                    _mom_pace_down_gate = max(0.0, min(1.0, np.tanh((_port_down_persist - 0.55) / 0.15)))
-                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate * _mom_pace_trend_gate * _mom_pace_down_gate
+                    # branch step5: SHARPER trend gate onset (shift from /0.20 saturating-by-
+                    # 0.4 to (rsi_trend_str-0.30)/0.10 saturating-by-0.5). step2's /0.20 gate
+                    # fired at 0.76 for sideways' brief rsi_trend_str spikes (0.2-0.3) -> not
+                    # excluded -> sideways -0.007. Shift the onset to 0.30 so sideways' brief
+                    # 0.2-0.3 spikes are near-0, while mixed/rally/bull sustained 0.4+ keep
+                    # firing. Continuous tanh, no boundary. This raises the bar for the trend
+                    # requirement to exclude sideways' transient trending stretches.
+                    _mom_pace_trend_gate = max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.30) / 0.10)))
+                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate * _mom_pace_trend_gate
                 _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
                 _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
                 if bars_held <= _entry_full_bars_dyn:
