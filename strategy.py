@@ -2664,15 +2664,25 @@ class Strategy:
                     _eq_mom_held = self._eq_mom_shrink_held.get(symbol, _port_eq_mom_shrink)
                     _eq_mom_sustain_raw = _eq_mom_held / _port_eq_mom_shrink if _port_eq_mom_shrink > 1e-6 else 1.0
                     _pos_dir_em = 1.0 if current_pos > 0 else -1.0
-                    # branch step3: tighten the trend-align gate onset /0.01 -> /0.02 to
-                    # exclude sideways' WEAK multi-day trend drift (|ret_vlong|~0.5-1pct ->
-                    # gate ~0.3-0.5 at /0.01, partially sustaining and starving the rebuild).
-                    # /0.02 needs a 2pct 96-bar trend to saturate (rally/crash ~3-4pct -> 1.0;
-                    # sideways 0.5-1pct -> ~0.2-0.4 -> mostly per-bar shrink, rebuilds).
-                    # branch step4: tighten further /0.02 -> /0.03 to recover more of sideways'
-                    # trend-episode rebuild (|ret_vlong|~0.5-1pct -> gate ~0.15-0.3 at /0.03).
-                    _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.03)))  # ~1 strong-trend-aligned, ~0 ct/weak-drift
-                    _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate
+                    # branch step3-4: trend-align gate /0.02 then /0.03 -> both gave -0.0034
+                    # composite (rally +0.0038 but bull -0.0009 sideways -0.015). The sustain
+                    # HELPS rally DD (pullback entries stay small through long pullbacks) but
+                    # HURTS any position that should REBUILD to capture profit (bull fast-
+                    # recovery longs lose return; sideways trend-episode mean-reverters starved).
+                    # branch step5: RELEASE the sustain once the position is PROFITABLE (pos_pnl>0).
+                    # Rationale: a losing pullback entry stays sustained-small (DD cut holds
+                    # through the pullback); once it turns profitable the trend has resumed ->
+                    # releasing lets the position rebuild to capture the resumed trend (recovers
+                    # bull/rally/crash winner return) while the DD-cut already banked during the
+                    # losing phase. Sideways mean-reverters are LOSING through the oscillation ->
+                    # stay sustained-small -> but they mean-revert to profit late then release ->
+                    # rebuild is too late (exits before full rebuild) -> sideways cost bounded.
+                    # Smooth tanh on pos_pnl/|stop| (the validated pnl-scale): full sustain at
+                    # loss, fading to 0 by ~0.5*stop profit. Composes with the trend-align gate
+                    # (only trend-aligned positions sustain at all; ct uses per-bar shrink).
+                    _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.02)))  # back to /0.02 (step3 peak)
+                    _em_release = max(0.0, 1.0 - max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))  # 1 at loss, ~0 at profit
+                    _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate * _em_release
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _eq_mom_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
