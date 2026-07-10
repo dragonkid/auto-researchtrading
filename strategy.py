@@ -1331,7 +1331,9 @@ class Strategy:
             # rally, sideways where cross-symbol avg down_persist < ONSET).
             # Exp6: apply max-aggregation weak-trend cap (composes with Exp1/Exp5). Fires
             # when any symbol has persistent weak multi-day trend (mixed's consolidation).
-            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap
+            # Exp3: apply portfolio equity-MOMENTUM (trajectory-derivative) shrink, computed
+            # at top level. Composes with the deep-bear/weak-trend caps (all shrink-only).
+            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
@@ -2281,21 +2283,7 @@ class Strategy:
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
-                    # branch step2: apply equity-momentum shrink to COUNTER-TREND SHORT entries
-                    # only. The opener's profitable-regime DD cut (rally/mixed/bull) came from
-                    # shrinking the pullback COUNTER-TREND SHORTS (the losers during uptrend
-                    # pullbacks where equity declines), NOT from shrinking longs (step1 long-
-                    # only REGRESSED rally/mixed -- shrinking their trend-aligned LONG WINNERS
-                    # hurt). The CT gate (ret_vlong>0 for a short = uptrend pullback short =
-                    # rally/mixed loser) spares crash's TREND-ALIGNED shorts (ret_vlong<0 =
-                    # downtrend short = crash WINNER) -- the opener's crash regression (-0.10
-                    # from shrinking crash winners) is recovered. Longs untouched (rally/mixed
-                    # long winners preserved). Byte-identical for longs, crash trend-aligned
-                    # shorts (gate 0), and when momentum >= 0 (rising portfolio = uptrend
-                    # regimes -> shrink factor 1.0).
-                    _ct_short_mom_gate = max(0.0, np.tanh(ret_vlong / 0.01))  # ~1 ct-short (uptrend pullback), ~0 trend-aligned-short (downtrend)
-                    _bear_mom_shrink = 1.0 + (_port_eq_mom_shrink - 1.0) * _ct_short_mom_gate
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _bear_mom_shrink
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
@@ -2616,13 +2604,6 @@ class Strategy:
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain
-                    # branch step2: sustain the CT-short equity-momentum shrink through scale-in
-                    # (mirrors the entry-target application). Shorts that are ct at entry
-                    # (ret_vlong>0) and in a declining-portfolio regime stay smaller through the
-                    # hold. Trend-aligned shorts (ret_vlong<0) and longs untouched.
-                    if current_pos < 0:
-                        _ct_si_mom_gate = max(0.0, np.tanh(ret_vlong / 0.01))
-                        full_target = full_target * (1.0 + (_port_eq_mom_shrink - 1.0) * _ct_si_mom_gate)
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
