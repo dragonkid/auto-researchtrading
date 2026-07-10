@@ -1315,9 +1315,9 @@ class Strategy:
             # Conservative 12% max relaxation; composes multiplicatively with the tighteners.
             _trend_relax_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
             if _port_trend_mag_dir > 0.0:
-                _bull_strong_min *= 1.0 - 0.04 * _port_trend_admit_relax * _trend_relax_gate
+                _bull_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
             elif _port_trend_mag_dir < 0.0:
-                _bear_strong_min *= 1.0 - 0.04 * _port_trend_admit_relax * _trend_relax_gate
+                _bear_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
