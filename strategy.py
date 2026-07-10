@@ -2669,7 +2669,9 @@ class Strategy:
                     # gate ~0.3-0.5 at /0.01, partially sustaining and starving the rebuild).
                     # /0.02 needs a 2pct 96-bar trend to saturate (rally/crash ~3-4pct -> 1.0;
                     # sideways 0.5-1pct -> ~0.2-0.4 -> mostly per-bar shrink, rebuilds).
-                    _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.02)))  # ~1 strong-trend-aligned, ~0 ct/weak-drift
+                    # branch step4: tighten further /0.02 -> /0.03 to recover more of sideways'
+                    # trend-episode rebuild (|ret_vlong|~0.5-1pct -> gate ~0.15-0.3 at /0.03).
+                    _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.03)))  # ~1 strong-trend-aligned, ~0 ct/weak-drift
                     _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _eq_mom_sustain
                     target = full_target * scale_frac
