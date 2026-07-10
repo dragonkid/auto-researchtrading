@@ -2664,7 +2664,12 @@ class Strategy:
                     _eq_mom_held = self._eq_mom_shrink_held.get(symbol, _port_eq_mom_shrink)
                     _eq_mom_sustain_raw = _eq_mom_held / _port_eq_mom_shrink if _port_eq_mom_shrink > 1e-6 else 1.0
                     _pos_dir_em = 1.0 if current_pos > 0 else -1.0
-                    _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.01)))  # ~1 trend-aligned, ~0 ct/flat
+                    # branch step3: tighten the trend-align gate onset /0.01 -> /0.02 to
+                    # exclude sideways' WEAK multi-day trend drift (|ret_vlong|~0.5-1pct ->
+                    # gate ~0.3-0.5 at /0.01, partially sustaining and starving the rebuild).
+                    # /0.02 needs a 2pct 96-bar trend to saturate (rally/crash ~3-4pct -> 1.0;
+                    # sideways 0.5-1pct -> ~0.2-0.4 -> mostly per-bar shrink, rebuilds).
+                    _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.02)))  # ~1 strong-trend-aligned, ~0 ct/weak-drift
                     _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _eq_mom_sustain
                     target = full_target * scale_frac
