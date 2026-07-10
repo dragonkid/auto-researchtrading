@@ -2422,66 +2422,6 @@ class Strategy:
                     _pos_dir_vov = 1.0 if current_pos > 0 else -1.0
                     _ct_vov_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_vov / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
                     _entry_full_bars_dyn = _entry_full_bars_dyn + 0.6 * _vov_gate * _ct_vov_gate
-                # Exp1 (architectural, indep): PORTFOLIO EQUITY-MOMENTUM scale-in PACE
-                # SLOWDOWN. NEW cross-component data dep: the scale-in pace reads the
-                # portfolio equity-momentum DERIVATIVE (the keep 1142132f's top-level
-                # _eq_mom signal, 8-bar rate of change of smoothed equity / peak), distinct
-                # from every existing scale-in pace input (rsi_trend_str, pos_pnl, VoV,
-                # voter margin -- all per-symbol; this is the PORTFOLIO trajectory).
-                # Mechanism: during a FRESH portfolio pullback (the keep's validated
-                # population: low dd_frac + sharp 8-bar negative momentum), SLOW the
-                # scale-in pace so the position reaches full size over MORE bars -> less
-                # capital is deployed into the continuing decline before the pullback
-                # reverses -> smaller average entry during the adverse move -> smaller
-                # giveback -> smaller DD in the trending regimes (rally/mixed/bull
-                # pullbacks -- the same target as the keep's per-bar SIZE shrink, but via
-                # the TIMING axis, not the amount axis). STRUCTURALLY DISTINCT from the
-                # keep's size shrink: that shrinks the FULL TARGET (size) immediately so
-                # the whole hold is proportionally smaller; this keeps the full target but
-                # ramps toward it SLOWER, so the AVERAGE deployed capital over the scale-in
-                # window is smaller while the eventual full size is unchanged -- a
-                # different PnL trajectory shape (smaller early exposure, full exposure
-                # once the pullback has resolved). Composes with the keep's size shrink
-                # (shrunken size x slower pace = smaller average entry during pullbacks).
-                # GATED IDENTICALLY to the keep's size shrink (low-dd-fraction gate so
-                # sustained deep DD / crash is byte-identical; the /0.01 sharp-momentum
-                # scale so sideways' gentle down-swings are byte-identical). Max +0.8
-                # bars slower at deep negative momentum, floored at _accel_floor. Uses
-                # _eq_mom and _mom_dd_gate already computed at the top level (in scope).
-                # Byte-identical when momentum >= 0 (rising portfolio) AND when dd_frac
-                # high (sustained DD) AND when momentum gentle (sideways). One-sided
-                # slowdown only (no acceleration -- avoids positive-feedback risk).
-                _mom_pace_slowdown = 0.0
-                if len(_eq_hist) >= 8 and self._peak_equity > 1e-10:
-                    # branch step2: TREND-STRENGTH gate to spare sideways mean-reverters.
-                    # Exp1 opener catastrophically regressed sideways -0.117 because the
-                    # /0.01 momentum scale only PARTIALLY excludes sideways' gentle down-
-                    # swings, and slowing PACE on sideways mean-reverters distorts their
-                    # oscillation-recovery geometry (under-built during recovery). The
-                    # validated separator between sideways (mean-reversion) and the
-                    # trending regimes (rally/mixed/bull) is rsi_trend_str (already used by
-                    # _w_time / _be_trend_gate / _exit_dd_gate). Gate the pace slowdown on
-                    # trend strength so sideways (rsi_trend_str ~0) is byte-identical while
-                    # the trending regimes (rsi_trend_str high) keep the slowdown. Continuous
-                    # tanh ramp on rsi_trend_str/0.20 (saturates by ~0.4 trend strength --
-                    # the SAME scale as the other trend gates).
-                    _mom_pace_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                    # branch step8: WINNING-POSITION gate (pos_pnl > 0 during scale-in). Step2
-                    # is the peak at +0.001377 but sideways still regresses -0.007. The pace
-                    # slowdown is most damaging on UNDERWATER mean-reverters (sideways
-                    # positions that are losing during a directional leg -> slowing build-up
-                    # locks them smaller before the mean-reversion recovery). A WINNING
-                    # position during a fresh pullback (trend-aligned entry already in profit,
-                    # e.g. mixed's winning-trend entries) is less harmed by a slower pace
-                    # (it is already profitable; slowing just trims the incremental addition).
-                    # Gate the slowdown on pos_pnl > 0 (winning early) so sideways' underwater
-                    # mean-reverters are spared while mixed's winning-trend entries keep it.
-                    # Smooth tanh on pos_pnl/|stop| (ramp around 0, saturates by ~1 stop-magnitude
-                    # profit). Composes with step2's trend gate.
-                    _mom_pace_win_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate * _mom_pace_trend_gate * _mom_pace_win_gate
-                _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
-                _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
