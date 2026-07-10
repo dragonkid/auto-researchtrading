@@ -3424,9 +3424,25 @@ class Strategy:
                 # sensitive term; mixed's chop is BE-centric -> the break-even contribution to
                 # the loss-OR is the mixed over-exit source). Keep slope-against + time (the
                 # extending-loser combination). Tests whether mixed -0.006 is BE-driven.
+                # Step2g: RE-ADD break-even GATED ON HIGH-VOL (bull's sharp pullbacks only).
+                # Step1 (BE included, no gate) gave bull +0.027 raw -- the bull gain came from
+                # the BE term combining with slope-against+time on bull's near-BE pullback
+                # losers (which DON'T recover -- sharp pullback deepens -> exiting is right).
+                # But BE also over-exited mixed's near-BE chop (which DOES revert -> exiting is
+                # wrong -> mixed -0.006 + stability crash). The separator: bull's near-BE
+                # losers DON'T recover (high-vol sharp pullback), mixed's DO (low-vol gentle
+                # chop). Gate the BE term's contribution to the loss-OR on high-vol (vol_ratio
+                # > 1.15 = bull's sharp pullbacks) so BE combines ONLY in bull, not mixed.
+                # slope-against + time stay ungated-by-vol (they gave sideways +0.003). This
+                # should recover bull's +0.027 (BE in high-vol) while keeping mixed protected
+                # (BE excluded in low-vol). The BE term is multiplied by the vol-gate before
+                # the SOFT-OR product (so BE contributes ~0 in low-vol -> mixed byte-identical
+                # to step2e; BE contributes fully in high-vol -> bull gain returns).
+                _be_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.15) / 0.15)))
                 _loss_terms = (
                     max(0.0, min(1.0, _w_slope * _sl_slope_pressure)),
                     max(0.0, min(1.0, _w_time * _time_pressure)),
+                    max(0.0, min(1.0, _w_be * _be_pressure * _be_vol_gate)),
                 )
                 _loss_prod = 1.0
                 for _lt in _loss_terms:
