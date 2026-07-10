@@ -1473,10 +1473,19 @@ class Strategy:
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             # Exp5: 96-bar cleanliness (R^2) ADDITIVE ONE-SIDED-POSITIVE on entry_frac.
-            # High R^2 (clean linear multi-day trend) -> +0.02 commit; R^2<=0.5 -> 0
+            # High R^2 (clean linear multi-day trend) -> larger commit; R^2<=onset -> 0
             # (byte-identical for choppy/curved paths, avoids the Exp4 base-reduction
             # trap). Independent of ER (path efficiency vs linear fit).
-            _r2_frac_adj = 0.02 * max(0.0, min(1.0, np.tanh((_vlong_r2 - 0.50) / 0.15)))
+            # branch step3: VOL-REGIME-GATED magnitude. Step2 (uniform 0.04) over-
+            # committed crash clean-downtrend shorts (Sharpe -0.034->-1.652: crash is
+            # Sharpe-SENSITIVE to size). But sideways/rally (low-vol clean grind) had
+            # headroom (step2 sideways +0.0021, rally +0.0005 vs opener). Gate the R^2
+            # magnitude by vol_ratio: full +0.04 at low-vol (sideways/rally grind,
+            # vol_ratio<=0.9), fading to +0.02 at high-vol (crash vol_ratio>=1.3) so
+            # crash stays at the safe opener magnitude. Byte-identical at R^2<=onset.
+            _r2_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.4))  # 1 low-vol, 0 high-vol
+            _r2_mag = 0.02 + 0.02 * _r2_vol_gate  # 0.02 high-vol (crash safe), 0.04 low-vol
+            _r2_frac_adj = _r2_mag * max(0.0, min(1.0, np.tanh((_vlong_r2 - 0.50) / 0.15)))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj + _r2_frac_adj)
 
             if current_pos == 0 and not in_cooldown:
