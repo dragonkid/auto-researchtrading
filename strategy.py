@@ -2422,6 +2422,39 @@ class Strategy:
                     _pos_dir_vov = 1.0 if current_pos > 0 else -1.0
                     _ct_vov_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_vov / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
                     _entry_full_bars_dyn = _entry_full_bars_dyn + 0.6 * _vov_gate * _ct_vov_gate
+                # Exp1 (architectural, indep): PORTFOLIO EQUITY-MOMENTUM scale-in PACE
+                # SLOWDOWN. NEW cross-component data dep: the scale-in pace reads the
+                # portfolio equity-momentum DERIVATIVE (the keep 1142132f's top-level
+                # _eq_mom signal, 8-bar rate of change of smoothed equity / peak), distinct
+                # from every existing scale-in pace input (rsi_trend_str, pos_pnl, VoV,
+                # voter margin -- all per-symbol; this is the PORTFOLIO trajectory).
+                # Mechanism: during a FRESH portfolio pullback (the keep's validated
+                # population: low dd_frac + sharp 8-bar negative momentum), SLOW the
+                # scale-in pace so the position reaches full size over MORE bars -> less
+                # capital is deployed into the continuing decline before the pullback
+                # reverses -> smaller average entry during the adverse move -> smaller
+                # giveback -> smaller DD in the trending regimes (rally/mixed/bull
+                # pullbacks -- the same target as the keep's per-bar SIZE shrink, but via
+                # the TIMING axis, not the amount axis). STRUCTURALLY DISTINCT from the
+                # keep's size shrink: that shrinks the FULL TARGET (size) immediately so
+                # the whole hold is proportionally smaller; this keeps the full target but
+                # ramps toward it SLOWER, so the AVERAGE deployed capital over the scale-in
+                # window is smaller while the eventual full size is unchanged -- a
+                # different PnL trajectory shape (smaller early exposure, full exposure
+                # once the pullback has resolved). Composes with the keep's size shrink
+                # (shrunken size x slower pace = smaller average entry during pullbacks).
+                # GATED IDENTICALLY to the keep's size shrink (low-dd-fraction gate so
+                # sustained deep DD / crash is byte-identical; the /0.01 sharp-momentum
+                # scale so sideways' gentle down-swings are byte-identical). Max +0.8
+                # bars slower at deep negative momentum, floored at _accel_floor. Uses
+                # _eq_mom and _mom_dd_gate already computed at the top level (in scope).
+                # Byte-identical when momentum >= 0 (rising portfolio) AND when dd_frac
+                # high (sustained DD) AND when momentum gentle (sideways). One-sided
+                # slowdown only (no acceleration -- avoids positive-feedback risk).
+                _mom_pace_slowdown = 0.0
+                if len(_eq_hist) >= 8 and self._peak_equity > 1e-10:
+                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
+                _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
