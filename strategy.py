@@ -885,20 +885,23 @@ class Strategy:
                 _agree_mags = [abs(_rv) for _rv in _port_rv_vals if (_rv > 0) == (_port_trend_mag_dir > 0)]
                 if len(_agree_mags) >= 2:
                     _port_trend_mag_agree = min(_agree_mags)
-        # branch step2: RAISE THE ONSET to exclude sideways' moderate 96-bar recovery
-        # drift. Step1 (/0.02, no onset) cratered sideways -0.281: sideways 2023's broad
-        # recovery (BTC/ETH/SOL all drifting up together over 96-bar windows during
-        # recovery legs) produces a min-agreeing-magnitude ~0.005-0.015 that EXCEEDS the
-        # /0.02 scale -> relaxation fired in sideways -> admitted noise -> sideways Sharpe
-        # craters. The strong-trend regimes (bull all-up, crash all-down, rally all-up) have
-        # min-agreeing-magnitude ~0.03-0.04. Raise the onset to 0.025 with a /0.01 ramp
-        # (saturates by 0.045) so sideways' 0.005-0.015 falls BELOW onset (byte-identical)
-        # while bull/crash/rally's 0.03-0.04 stays above (relaxation fires). Continuous
-        # tanh with onset (no hard boundary); the onset is on the smooth 96-bar min-
-        # magnitude (averages ~96 bars of AR(1) noise -> noise-robust, ~1/sqrt(96)).
-        PORT_TREND_AGREE_ONSET = 0.025
-        PORT_TREND_AGREE_SCALE = 0.01
-        _port_trend_admit_relax = max(0.0, min(1.0, np.tanh((_port_trend_mag_agree - PORT_TREND_AGREE_ONSET) / PORT_TREND_AGREE_SCALE)))
+        # branch step3: REVERT onset (step2's 0.025 onset cratered crash -1.53: the
+        # higher onset concentrated the relaxation on the DEEPEST crash downtrend bars
+        # where trend-aligned shorts are entered right before a bounce -> bad shorts;
+        # step1's no-onset fired on broader crash trend bars including early/strong-trend
+        # shorts [the winners] -> crash +0.0156). Step1's problem was sideways -0.281
+        # (sideways' broad 96-bar recovery drift exceeds the /0.02 scale). FIX: keep
+        # step1's low /0.02 scale (no onset -> fires broadly in the strong-trend regimes)
+        # and gate the relaxation at the APPLICATION point (per-symbol, where rsi_trend_str
+        # is available) on the validated per-symbol trend-strength separator rsi_trend_str:
+        # fires ONLY in trending regimes (high rsi_trend_str = bull/crash/rally trending),
+        # ~0 in chop (rsi_trend_str~0 = sideways oscillating) -> sideways byte-identical.
+        # This separates sideways (LOCAL chop, low rsi_trend_str) from the trending regimes
+        # (LOCAL trend, high rsi_trend_str) on the validated LOCAL-trend axis (NOT the 96-bar
+        # magnitude axis, which overlaps sideways-recovery-drift and crash). The 96-bar
+        # cross-symbol magnitude-agreement stays as the broad-trend CONFIRMATION; the
+        # per-symbol rsi_trend_str is the LOCAL-trend gate -- two distinct timescales.
+        _port_trend_admit_relax = max(0.0, min(1.0, np.tanh(_port_trend_mag_agree / 0.02)))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1303,13 +1306,18 @@ class Strategy:
             # pullback shorts opposing the broad uptrend) get NO relaxation -> the losing
             # ct population is NOT boosted. Byte-identical when _port_trend_admit_relax=0
             # (sideways/mixed weak/disagreed broad trend) OR entry is counter-trend.
-            # Conservative 12% max relaxation (admission boost; the existing consensus SIZE
-            # boost is +0.06, this is the admission-pathway counterpart). Composes
-            # multiplicatively with the tighteners above (independent signal axes).
+            # branch step3: TREND-STRENGTH gate on the per-symbol rsi_trend_str (the validated
+            # LOCAL-trend separator). Sideways is LOCAL chop (low rsi_trend_str) even though
+            # its 96-bar recovery drift agrees broadly -> the gate zeros the relaxation in
+            # sideways -> byte-identical. Crash/bull/rally are LOCAL trending (high
+            # rsi_trend_str) -> relaxation fires. Two-timescale: 96-bar broad agreement
+            # (confirmation) x per-symbol LOCAL trend-strength (gate). Continuous tanh.
+            # Conservative 12% max relaxation; composes multiplicatively with the tighteners.
+            _trend_relax_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
             if _port_trend_mag_dir > 0.0:
-                _bull_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax
+                _bull_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax * _trend_relax_gate
             elif _port_trend_mag_dir < 0.0:
-                _bear_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax
+                _bear_strong_min *= 1.0 - 0.12 * _port_trend_admit_relax * _trend_relax_gate
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
