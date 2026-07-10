@@ -673,7 +673,18 @@ class Strategy:
             _eq_mom = (self._equity_ema - _eq_hist[0]) / self._peak_equity  # 8-bar rate of change / peak
             # Shrink only when momentum negative; max 15% shrink at deep negative momentum.
             # /0.02 scale: a 2% peak-relative 8-bar decline saturates (calm=0, sharp decline=1).
-            _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02)))
+            # branch step3: LOW-DD-FRACTION gate -- fire only on TRANSIENT pullbacks (low
+            # dd_frac = a fresh, shallow decline) NOT sustained deep DD (high dd_frac =
+            # crash's persistent bear where shrinking reduces the short winners that profit
+            # from the sustained decline). The opener regressed crash/sideways because the
+            # shrink fired during their SUSTAINED declines (shrinking recovery/short-winner
+            # entries). Gate on low dd_frac: the momentum shrink complements _port_dd_atten
+            # (which fires at HIGH dd_frac for deep DD) -- this fires at LOW dd_frac for
+            # fresh pullbacks (rally/mixed/bull transient declines where cutting the pullback
+            # entry cuts DD without starving recovery). Continuous tanh ramp: full at
+            # dd_frac<2pct, fading to 0 by 6pct. Byte-identical in sustained deep DD (crash).
+            _mom_dd_gate = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.02) / 0.04))  # ~1 fresh pullback (dd<2pct), ~0 sustained DD (dd>6pct)
+            _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.02))) * _mom_dd_gate
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
