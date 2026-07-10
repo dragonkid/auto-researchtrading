@@ -2245,7 +2245,41 @@ class Strategy:
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
+                    # Exp2 (architectural, indep): BEAR-SIDE trend-aligned x down-persist x
+                    # slope-confirmed entry-frac BOOST -- the crash winner-return lever via ENTRY
+                    # SIZE. The validated bull-side _entry_frac_boost_bull (1+0.15*trend_align*
+                    # weak*dd_headroom, line ~2234) was NEVER successfully mirrored to the bear
+                    # side: the prior 268fa816 attempt added a bear boost gated on dd_headroom,
+                    # but crash trend-aligned shorts enter DURING portfolio DD (from prior bounce
+                    # longs) -> _frac_dd_headroom ~0 -> boost gated OFF exactly when it would
+                    # fire (crash BYTE-IDENTICAL). The DD-headroom gate that PROTECTS rally is
+                    # precisely what BLOCKS crash.
+                    #
+                    # This version DROPS the dd_headroom gate and replaces it with a NEAR-TERM
+                    # SLOPE-CONFIRMATION gate: the 16-bar OLS log-HL2 slope (_lr_slope) must still
+                    # AGREE with the short (_lr_slope < 0 = near-term downtrend intact, not
+                    # bouncing). Gates: (1) trend-align-at-multi-day for a SHORT = ret_vlong<0
+                    # (_frac_trend_align_bear = tanh(-ret_vlong/0.02), high in downtrend, ~0 in
+                    # uptrend -> rally pullback shorts EXCLUDED since ret_vlong>0 there); (2)
+                    # down_persist high (persistent bear = crash ~0.9; bull/sideways ~0.3 ->
+                    # excluded); (3) near-term slope confirms the short (_lr_slope<0, NEW gate
+                    # the bull side does NOT use and 268fa816 did NOT have -- excludes
+                    # bounce-shorts whose 96-bar ret_vlong is still negative but the 16-bar
+                    # slope has turned up = a bounce is developing). Crash's HIGH-CONVICTION
+                    # trend-aligned shorts (multi-day downtrend AND near-term slope down AND
+                    # persistent bear) get a bigger first-bar commit -> capture more of the
+                    # downtrend before the bounce -> bigger winners -> PF>1.0 -> positive Sharpe
+                    # (crash Sharpe -0.051, PF 1.0, 66.9pct WR -- winners barely balance losers;
+                    # bigger winners tip the balance). Magnitude 0.12 (below bull's 0.15; bear
+                    # side untested, downtrends choppier). Byte-identical for longs, rally
+                    # (ret_vlong>0 -> align 0), sideways (down_persist low -> gate 0), and
+                    # bounce-shorts (_lr_slope>0 -> slope-conf 0). New cross-component data dep
+                    # at bear entry sizing: boost depends on (multi-day trend-align, persistent
+                    # deep-bear, near-term slope confirmation) jointly.
+                    _frac_trend_align_bear = max(0.0, np.tanh(-ret_vlong / 0.02))  # ~1 short in downtrend, ~0 short in uptrend (rally pullback)
+                    _frac_slope_conf_bear = max(0.0, np.tanh(-_lr_slope / 0.0004))  # ~1 near-term slope down (confirms short), ~0 slope up (bounce)
+                    _entry_frac_boost_bear = 1.0 + 0.12 * _frac_trend_align_bear * _down_persist * _frac_slope_conf_bear
+                    target = -size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bear) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
