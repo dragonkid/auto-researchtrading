@@ -1256,6 +1256,30 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
+            # Exp3 (architectural, indep): BROAD-TREND-AGREEMENT relaxation of the
+            # trade-frequency admission self-regulator, PER-SIDE (trend-aligned only).
+            # The _freq_factor tightens admission when per-symbol recent entry density
+            # is high (churn = noise). But during a CONFIRMED broad-market trend (high
+            # cross-symbol 96-bar trend-magnitude agreement, the keep 7cb68a94's
+            # _port_trend_admit_relax signal), high entry density is LEGITIMATE broad-
+            # trend signal, not noise -- the same insight that led to removing the
+            # _portfolio_freq_factor (it double-counted correlated crash legs). This
+            # extends that validated direction: relax the _freq_factor tighten for
+            # entries ALIGNED with the confirmed broad-trend direction, gated on
+            # per-symbol rsi_trend_str (the keep's LOCAL-trend separator, zeros
+            # sideways chop). Computed PER-SIDE here (the bull freq relaxes when broad
+            # dir is up, the bear freq relaxes when broad dir is down) so the alignment
+            # gate is applied correctly (counter-trend churny re-entries -- rally
+            # pullback shorts, crash bounce longs -- get NO relaxation -> the noise
+            # filtering protects them). Byte-identical when _port_trend_admit_relax=0
+            # (weak/disagreed broad trend) OR rsi_trend_str~0 (sideways chop) OR entry
+            # is counter-trend. New cross-component data dep: per-side _freq_factor
+            # depends on cross-symbol broad-trend agreement x entry alignment x per-
+            # symbol local-trend-strength. Max 50pct relaxation of the 0.20 tighten
+            # (-> effective 0.10 tighten) at full broad agreement + trend-aligned.
+            _freq_relax_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+            _freq_factor_bull = _freq_factor * (1.0 - 0.50 * _port_trend_admit_relax * _freq_relax_gate * (1.0 if _port_trend_mag_dir > 0.0 else 0.0))
+            _freq_factor_bear = _freq_factor * (1.0 - 0.50 * _port_trend_admit_relax * _freq_relax_gate * (1.0 if _port_trend_mag_dir < 0.0 else 0.0))
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
@@ -1277,8 +1301,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bull_strong_min = _strong_min * _freq_factor_bull * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor_bear * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
