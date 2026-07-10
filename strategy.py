@@ -1473,10 +1473,14 @@ class Strategy:
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             # Exp5: 96-bar cleanliness (R^2) ADDITIVE ONE-SIDED-POSITIVE on entry_frac.
-            # High R^2 (clean linear multi-day trend) -> +0.02 commit; R^2<=0.5 -> 0
+            # High R^2 (clean linear multi-day trend) -> larger commit; R^2<=onset -> 0
             # (byte-identical for choppy/curved paths, avoids the Exp4 base-reduction
             # trap). Independent of ER (path efficiency vs linear fit).
-            _r2_frac_adj = 0.02 * max(0.0, min(1.0, np.tanh((_vlong_r2 - 0.50) / 0.15)))
+            # branch step2: AMPLIFY magnitude 0.02->0.04 AND lower onset 0.50->0.40
+            # (engage more bars: crash/rally clean trends may sit at R^2 0.40-0.50 on
+            # some bars; the opener +0.000473 had all-regime-improve headroom). Monitor
+            # sideways (largest opener gain +0.001197) and crash (bare-Sharpe leverage).
+            _r2_frac_adj = 0.04 * max(0.0, min(1.0, np.tanh((_vlong_r2 - 0.40) / 0.15)))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj + _r2_frac_adj)
 
             if current_pos == 0 and not in_cooldown:
