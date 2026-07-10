@@ -2682,7 +2682,21 @@ class Strategy:
                     # (only trend-aligned positions sustain at all; ct uses per-bar shrink).
                     _em_ta_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_em / 0.02)))  # back to /0.02 (step3 peak)
                     _em_release = max(0.0, 1.0 - max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))  # 1 at loss, ~0 at profit
-                    _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate * _em_release
+                    # branch step7: VOL-REGIME gate on the sustain (the validated bull/rally
+                    # separator). The sustain CUTS DD on pullback entries but COSTS return on
+                    # fast-recovery regimes. bull_2021 has HIGH vol (sharp corrections that
+                    # recover fast -> sustained-small longs miss the recovery -> Sharpe 0.51->0.49,
+                    # DD 12.47->12.77 WORSE); crash has HIGH vol (trend-aligned winning shorts
+                    # sustained small -> lose return). rally_2024 is a LOW-vol grinding uptrend
+                    # (pullbacks are long/shallow -> sustained-small cuts DD at the 5pct knee AND
+                    # the trend rebuilds anyway -> rally gained +0.0038). Gate the sustain on
+                    # LOW vol_ratio (calm grind = rally; the bull/crash high-vol regimes are
+                    # exempted -> per-bar shrink, rebuild). Vol-gate: full sustain at vol_ratio
+                    # ~0.8, fading to 0 by ~1.2 (excludes bull/crash high-vol). General signal
+                    # (vol_ratio, no regime label): sustain is worthwhile only in calm regimes
+                    # where the pullback is shallow/long enough that DD-cut beats the rebuild cost.
+                    _em_vol_gate = max(0.0, min(1.0, np.tanh((1.20 - vol_ratio) / 0.30)))  # ~1 calm (vol<0.9), ~0 high-vol (vol>1.2)
+                    _eq_mom_sustain = 1.0 + (_eq_mom_sustain_raw - 1.0) * _em_ta_gate * _em_release * _em_vol_gate
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _eq_mom_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
