@@ -517,6 +517,11 @@ class Strategy:
         # entry (deterministic); keeps a broad-vol entry smaller for the whole hold
         # instead of ramping back to un-shrunk `size` after bar 1. Default 1.0.
         self._avgvol_shrink_held = {}
+        # Exp2: cached entry-time portfolio equity-momentum shrink, sustained through
+        # scale-in (deterministic hold-profile, no per-bar wobble). Mirrors the validated
+        # _conc_held / _vol_held / _cv_held / _avgvol_held pattern. See _eq_mom_held near
+        # full_target. Default _port_eq_mom_shrink (current) so uncached positions are unchanged.
+        self._eq_mom_shrink_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -2291,6 +2296,19 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
+                    # Exp2: cache the entry-time equity-momentum shrink for a deterministic
+                    # hold-profile (sustained at the fresh-pullback entry value through scale-in,
+                    # not re-wobbling each bar as the 8-bar momentum drifts). The first-bar size
+                    # already carries the entry-time _port_eq_mom_shrink via `size`; sustaining it
+                    # keeps the fresh-pullback entry smaller for the whole hold (the keep's intent)
+                    # WITHOUT the per-bar size wobble that the keep note attributed to bull's
+                    # stability slipping 0.800->0.799 past the 0.80 knee. Distinct from the keep
+                    # (per-bar recomputed shrink that follows momentum through the hold): this
+                    # FIXES the shrink at the entry value, eliminating the bar-to-bar variance
+                    # in sustained position size. Hypothesis: bull stability lifts back past 0.80
+                    # (stab_factor 0.997->1.0) AND the fresh-pullback DD-cut is preserved (the
+                    # entry value captures the pullback start), addressing keep lead (b).
+                    self._eq_mom_shrink_held[symbol] = _port_eq_mom_shrink
                     # branch step16: gate the avg-vol SUSTAIN on counter-trend-at-multi-day.
                     # bull entry ct-at-multi-day = ret_vlong<0 (long in downtrend = crash bounce
                     # long). Sustain the shrink ONLY for ct entries (crash bounce longs); bull
@@ -2304,6 +2322,7 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
+                    self._eq_mom_shrink_held[symbol] = _port_eq_mom_shrink  # Exp2: sustain entry-time momentum shrink
                     # branch step16: gate avg-vol sustain on ct-at-multi-day (bear entry ct =
                     # ret_vlong>0 = short in uptrend = rally pullback short; crash trend-aligned
                     # shorts ret_vlong<0 -> no sustain -> no exit-timing disruption).
@@ -2620,7 +2639,17 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain
+                    # Exp2: sustain the entry-time equity-momentum shrink through scale-in via
+                    # a deterministic hold-profile. `size` recomputes each bar with the CURRENT
+                    # bar's _port_eq_mom_shrink (line ~1387); dividing it out and multiplying by
+                    # the cached entry-time _eq_mom_held REPLACES the per-bar momentum wobble with
+                    # the fixed fresh-pullback-entry value. Default _port_eq_mom_shrink (current)
+                    # -> factor 1.0 for uncached positions (no change). For held positions the
+                    # shrink is fixed at entry -> no bar-to-bar size variance from momentum drift
+                    # -> bull stability should lift past the 0.80 knee (the keep's wobble source).
+                    _eq_mom_held = self._eq_mom_shrink_held.get(symbol, _port_eq_mom_shrink)
+                    _eq_mom_sustain = _eq_mom_held / _port_eq_mom_shrink if _port_eq_mom_shrink > 1e-6 else 1.0
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _eq_mom_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
