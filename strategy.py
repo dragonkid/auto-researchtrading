@@ -2826,32 +2826,7 @@ class Strategy:
                 # are the safety: attenuation ONLY fires on gradual pullbacks in persistent uptrends,
                 # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
                 # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
-                # Exp3 (architectural, indep): PORTFOLIO-DD relaxation of the _ta_winner_gate
-                # pp_pressure ATTENUATION. The 0.95 attenuation below lets trend-aligned long
-                # winners (bull/rally uptrend longs in a gradual pullback within a persistent
-                # uptrend) ride their giveback -- the "let winners run" mechanism. It WAS firing
-                # at FULL 0.95 magnitude REGARDLESS of portfolio DD, so during a rally/bull
-                # PULLBACK that is drawing the PORTFOLIO down (dd_frac rising), trend-aligned
-                # long winners STILL got 0.95 attenuation -> they rode the full giveback -> the
-                # giveback IS the DD. Weaken the attenuation magnitude during portfolio DD so
-                # pp_pressure harvests the trend-aligned long winner sooner during DD pullbacks
-                # -> smaller giveback -> smaller rally/bull DD (rally DD 5.36pct sits JUST past
-                # the 5pct dd_gate knee -> cutting it below 5pct relaxes dd_gate 0.79->0.95, a
-                # +20pct rally score = +0.06 regime = the high-leverage axis). DISTINCT from
-                # PORT_DD_GIVEBACK_TIGHTEN (tightens the giveback TOLERANCE so pp_pressure RAMPS
-                # sooner as giveback rises -- a different control point: that changes WHEN
-                # pp_pressure activates; this changes how much of the FIRED pp_pressure is
-                # ATTENUATED for trend-aligned long winners) and from PORT_DD_TP_HARVEST_RELAX
-                # (weakens _ts_supp on the tp-harvest SIZE path). Continuous tanh on the DD
-                # fraction; leverage-coupled scale (same discipline as giveback tightening);
-                # byte-identical at portfolio peak (dd_frac=0 -> relax 1.0 -> attenuation
-                # unchanged). Crash byte-identical (shorts -> _long_only_gate 0 -> _ta_winner_gate
-                # 0 -> relaxation of 0 attenuates 0). Sideways byte-identical (low up_persist ->
-                # _up_persist_gate 0 -> _ta_winner_gate 0). The existing safety gates (giveback-mag,
-                # slope-against, long-only, up-persist) still bind: relaxation ONLY affects the
-                # gradual-pullback-in-persistent-uptrend long-winner population during DD.
-                _ta_winner_dd_relax = 1.0 - 0.30 * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate * _ta_winner_dd_relax)
+                _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
