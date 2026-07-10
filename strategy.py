@@ -3285,9 +3285,67 @@ class Strategy:
                 # negative-Sharpe regime whose score == bare Sharpe; cutting deep-MAE stalls
                 # before they bleed to the stop raises sideways Sharpe directly).
                 _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
-                _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
+                # Exp (architectural, indep): PnL-TRAJECTORY-SLOPE break-even path for
+                # FLAT-MULTI-DAY chop. The MAE path above (_be_mae_depth) fires for DEEP-MAE
+                # stalls (mae <= -0.4*stop = position went significantly underwater then crept
+                # back to BE). It MISSES the SHALLOW-MAE slow-bleed population: a position
+                # that NEVER went deep underwater but is DRIFTING downward in pos_pnl over
+                # many bars while near breakeven -- a dead-capital stall that bleeds to the
+                # stop via a sequence of small adverse moves rather than one deep excursion.
+                # NEW data dependency genuinely absent from every existing exit source: the
+                # TIME-DERIVATIVE (OLS slope) of the held position's pos_pnl trajectory over
+                # the last K bars. Distinct from MAE (the MIN of the path), peak_pnl (the MAX),
+                # MTM-path-efficiency (|net|/sum|delta| = path shape, direction-agnostic),
+                # _pp_pressure (peak-to-CURRENT giveback magnitude), and _time_pressure (bar
+                # count alone). A NEGATIVE sustained pos_pnl slope = the position is actively
+                # bleeding (trending toward the stop); a position near BE with a negative
+                # slope is structurally fragile (about to cross into loss territory).
+                #
+                # SEPARATOR FROM MIX (the walled chop-regime): both sideways and mixed are
+                # choppy (rsi_trend_str~0) so the trend gate is off for both; mixed's wrong-side
+                # longs in a DOWN year ALSO have sustained negative pos_pnl slopes (they bleed
+                # in the downtrend). The clean structural separator is the MULTI-DAY TREND
+                # DIRECTION: mixed is ret_vlong<0 (down year -- a bleeding long is trend-
+                # consistent, and mixed's positions REVERT on local bounces so cutting them at
+                # BE loses the reversion = the documented mixed over-exit wall); sideways is
+                # ret_vlong~0 (FLAT -- a bleeding position in a flat multi-day market is a
+                # genuine dead-capital stall with no trend to resume, NOT a counter-trend
+                # hold awaiting reversion). Gate the drift path on |ret_vlong| SMALL (flat
+                # multi-day = sideways), excluding mixed (ret_vlong strongly negative = the
+                # bleeding is trend-consistent and reverts). This is a STRUCTURAL property
+                # (multi-day trend magnitude), NOT a regime label -- it generalizes to any
+                # flat-trend chop where a position slowly bleeds. The MAE keep already proved
+                # sideways be_pressure can fire without crashing mixed; this extends the
+                # MAE path to the shallow-MAE population via a genuinely different signal.
+                #
+                # Noise-robustness: the slope is an OLS over the 12-bar pos_pnl path (each
+                # bar's pos_pnl is itself mark-to-market -- but the slope AVERAGES all 12
+                # points, so single-bar AR(1) close-noise wobble in pos_pnl carries ~1/12
+                # weight -> the slope is smooth under perturbation, unlike a 1-bar diff).
+                # The pos_pnl path is updated AFTER the slope is computed (line ~2396), so
+                # the read is on the prior-bar path (no lookahead). Gated by the SAME faster
+                # 2-bar hold-gate as the MAE path (deep stalls need fast firing). Composes
+                # with the existing gates via MAX (trend path / mae path / drift path). New
+                # cross-component data dep: _be_pressure now reads the pos_pnl trajectory
+                # SLOPE jointly with the multi-day trend magnitude (flat-trend gate).
+                _be_drift_gate = 0.0
+                _pp_dr = self._pnl_path.get(symbol, [])
+                if len(_pp_dr) >= 6:
+                    _pp_arr_dr = np.array(_pp_dr[-8:])
+                    _dr_slope = _fast_slope(_pp_arr_dr)  # OLS slope of pos_pnl over last <=8 bars
+                    # Negative slope = bleeding; scale by stop so a slope of -1 stop/8bars
+                    # saturates (a position losing ~1 stop over 8 bars = deep bleed).
+                    _dr_neg = max(0.0, min(1.0, np.tanh(-_dr_slope / (abs(STOP_LOSS_PCT) * 0.25))))
+                    # Flat-multi-day gate: |ret_vlong| small = sideways (flat), excluding
+                    # mixed (down-trending, ret_vlong strongly negative). /0.015 fast-
+                    # saturating so sideways ret_vlong~0 -> gate ~1, mixed ret_vlong<-0.03
+                    # -> gate ~0. Continuous tanh, no boundary.
+                    _flat_vlong_gate = 1.0 - max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.010)))
+                    _be_drift_gate = _dr_neg * _flat_vlong_gate
+                _be_mae_gate = max(_be_trend_gate, _be_mae_depth, _be_drift_gate)
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
-                _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
+                _be_hold_gate_drift = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS - 1.0) / 2.0))
+                _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth, _be_hold_gate_drift * _be_drift_gate)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
