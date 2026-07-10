@@ -1101,33 +1101,6 @@ class Strategy:
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            # Exp2 (architectural, indep this session): MULTI-WINDOW SLOPE CONSENSUS for the
-            # admission relaxation cleanliness gate. The trend-magnitude admission relaxation
-            # (keep 7cb68a94) fires on broad 96-bar magnitude-agreement x local rsi_trend_str x
-            # alignment -- all MAGNITUDE/STRENGTH gates. The prior session's sanctioned untested
-            # lead (a): extend the crash lever via a cleanliness/quality gate that allows MORE
-            # relaxation on the HIGHEST-quality trend-aligned entries without the noise over-
-            # admission that walled the uniform 12pct (bull stab 0.768). Exp1 (conviction ratio)
-            # was inert because conviction is ALREADY saturated where the broad-agreement gate
-            # fires. The cleanliness dimension that is NOT saturated there is PATH CONSISTENCY
-            # across timescales: a clean persistent trend (crash's deep one-directional downtrend
-            # legs) has 8/16/32-bar OLS slopes ALL pointing the same way -> high consensus; a
-            # choppy/transitioning path (bull's pullback-within-uptrend, mixed's oscillations)
-            # has the 8-bar slope diverging from the 32-bar -> low consensus. This separates
-            # crash's clean winning shorts (high bear consensus) from bull's choppy pullback
-            # longs (low bull consensus) WITHIN the population the trend-magnitude gate already
-            # passes -- the dimension the magnitude gates cannot see. Noise-robust: OLS slopes
-            # over 8-32 bars each carry ~1/sqrt(n) AR(1) attenuation, and the CONSENSUS across 3
-            # windows averages further (a single-window flip is averaged out). Computed here
-            # (after _lr_slope, before admission) so it is available at the relaxation gate.
-            # The SAME 8/16/32 windows + per-window tanh scales as the existing _bull_consensus
-            # _atten (line ~1591 sizing path), lifted here for the admission gate.
-            _hl2_c = (bd.history["high"].values + bd.history["low"].values) / 2.0
-            _slps_c = [_fast_slope(np.log(_hl2_c[-_w_c:])) for _w_c in (8, 16, 32)]
-            _cons_scales_c = (0.0010, 0.0007, 0.0005)
-            _bull_consensus_admit = sum(np.tanh(s / sc) for s, sc in zip(_slps_c, _cons_scales_c)) / 3.0  # in [-1, +1]
-            _bear_consensus_admit = sum(np.tanh(-s / sc) for s, sc in zip(_slps_c, _cons_scales_c)) / 3.0  # in [-1, +1]
-
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
             # 5-bar median signal (maximum noise immunity, returns sacrificed for stability)
@@ -1341,38 +1314,10 @@ class Strategy:
             # (confirmation) x per-symbol LOCAL trend-strength (gate). Continuous tanh.
             # Conservative 12% max relaxation; composes multiplicatively with the tighteners.
             _trend_relax_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-            # Exp2 (architectural, indep this session): CONSENSUS-CLEANLINESS-gated admission
-            # relaxation. Sanctioned untested lead (prior session-summary (a)): extend the
-            # crash Sharpe lever via a cleanliness gate that allows MORE relaxation on the
-            # highest-quality trend-aligned entries without the noise over-admission that
-            # walled the uniform 12pct (bull stab 0.768). Exp1 (conviction ratio, discarded)
-            # was inert because conviction is ALREADY saturated where the broad-agreement gate
-            # fires. The cleanliness dimension NOT saturated there is PATH CONSISTENCY across
-            # timescales (multi-window slope consensus, computed at line ~1103): a clean
-            # persistent trend has 8/16/32-bar slopes all aligned (high consensus); a choppy
-            # path has them diverging (low consensus). Scale the relaxation magnitude by
-            # consensus: HIGH-consensus trend-aligned entries (crash's deep clean downtrend
-            # shorts -- the winners) get up to 0.10 relaxation (vs 0.06 baseline) -> more
-            # admitted -> crash Sharpe up (extends the +0.0156 lever on the highest-quality
-            # shorts). LOW-consensus trend-aligned entries (bull's choppy pullback longs,
-            # mixed's oscillating bounces) get ~0.04 relaxation (FLOOR 0.4 * 0.10) -> fewer
-            # noise admits -> bull stability preserved + mixed protected (avoids the 12pct
-            # uniform wall). Sideways byte-identical (rsi_trend_str gate zeros it); counter-
-            # trend byte-identical (alignment gate). NEW cross-component data dep: the
-            # admission relaxation magnitude depends on multi-window path consensus (was a
-            # fixed 0.06). Consensus mapped to [0,1] via (1+consensus)/2 (0 = slopes oppose
-            # entry dir, 1 = all confirm); FLOOR 0.4 keeps a baseline so low-consensus entries
-            # still get partial relaxation (don't zero -- that reverts toward no relaxation
-            # and loses the crash gain on bars where consensus momentarily dips). Max 0.10
-            # (between the validated 0.06 and the walled 0.12). Continuous, no decision boundary.
-            _trend_relax_mag = 0.10
-            _trend_relax_floor = 0.40
             if _port_trend_mag_dir > 0.0:
-                _clean_b = _trend_relax_floor + (1.0 - _trend_relax_floor) * max(0.0, min(1.0, (1.0 + _bull_consensus_admit) / 2.0))
-                _bull_strong_min *= 1.0 - _trend_relax_mag * _port_trend_admit_relax * _trend_relax_gate * _clean_b
+                _bull_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
             elif _port_trend_mag_dir < 0.0:
-                _clean_s = _trend_relax_floor + (1.0 - _trend_relax_floor) * max(0.0, min(1.0, (1.0 + _bear_consensus_admit) / 2.0))
-                _bear_strong_min *= 1.0 - _trend_relax_mag * _port_trend_admit_relax * _trend_relax_gate * _clean_s
+                _bear_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
