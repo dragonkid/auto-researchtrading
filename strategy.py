@@ -443,6 +443,20 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
+        # Exp2 (architectural, indep): per-symbol RECENT-LOSS-RATE rolling window.
+        # A rolling list of recent exit OUTCOMES (1 = loss, 0 = win) per symbol.
+        # The recent loss RATE (fraction of last N exits that were losses) is a
+        # per-symbol hostile-micro-regime signal: a symbol whose recent entries
+        # keep losing is in an adverse patch for THAT symbol -> shrink new entries
+        # (smaller magnitude, not blocked). DISTINCT from every existing outcome
+        # signal: _last_exit_pnl is the SINGLE most-recent exit (one-shot, decays
+        # over 8 bars via _outcome_size_mult); _loss_streak is the CROSS-SYMBOL
+        # CONSECUTIVE-loss counter (resets on ANY single win across ALL symbols).
+        # NEITHER captures a per-symbol SUSTAINED loss rate that survives interspersed
+        # wins (a symbol losing 6 of its last 8 trades has a high loss rate even if
+        # 2 wins broke the streak). NEW per-symbol state + new data dep on entry
+        # size (recent loss rate feeds first-bar sizing). Shrink-only (safe family).
+        self._exit_outcome_hist = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -1384,6 +1398,34 @@ class Strategy:
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
+            # Exp2 (architectural, indep): per-symbol RECENT-LOSS-RATE size attenuation.
+            # Read the rolling exit-outcome window (populated on full exit, line ~4480).
+            # loss_rate = fraction of last N exits that were losses. A symbol in a hostile
+            # micro-patch (many recent losses) gets a SMALLER first-bar entry: shrink-only,
+            # does NOT block the entry (avoids the admission filters-winners wall -- the
+            # entry still passes the conviction gate, just at reduced magnitude -> if it's
+            # a winner it still wins, smaller; if it's a loser it loses smaller). Distinct
+            # from _outcome_size_mult (single last exit, decays in 8 bars) and _loss_streak
+            # (cross-symbol consecutive, resets on any win): the loss-RATE survives
+            # interspersed wins (6-of-8 losses = 0.75 rate even with 2 wins). Continuous
+            # tanh ramp above onset 0.50 (fires only when the majority of recent exits
+            # were losses); max 0.25 shrink at full loss rate (1.0). Requires >=4 exits in
+            # the window (below that, insufficient sample -> byte-identical). Trend-
+            # strength GATE mirrors the validated sideways-sparing pattern (rsi_trend_str):
+            # in chop (sideways, low rsi_trend_str) a high loss rate is the MEAN-REVERTING
+            # oscillation (losers are dips that recover -> shrinking them realizes losses
+            # that revert) -> spare sideways; in trends (high rsi_trend_str) a high loss
+            # rate signals a genuine adverse patch (crash bounce longs, rally pullback
+            # shorts) -> shrink. The gate is the SAME validated separator used by
+            # _be_trend_gate / _w_time / _exit_dd_gate. Byte-identical in chop (gate 0),
+            # with <4 exits (no sample), and when loss_rate <= 0.50 (most recent exits
+            # were winners). Direction-agnostic, no regime label.
+            _exit_rate_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+            _eo_hist = self._exit_outcome_hist.get(symbol, [])
+            _loss_rate = 0.0
+            if len(_eo_hist) >= 4:
+                _loss_rate = float(sum(_eo_hist)) / len(_eo_hist)
+            _loss_rate_shrink = 1.0 - 0.25 * _exit_rate_trend_gate * max(0.0, min(1.0, np.tanh((_loss_rate - 0.50) / 0.15)))
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -2363,7 +2405,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult * _loss_rate_shrink * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2376,7 +2418,7 @@ class Strategy:
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult * _loss_rate_shrink * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
@@ -4465,6 +4507,11 @@ class Strategy:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         _exit_pnl_signed = -_ep if current_pos < 0 else _ep
                         self._last_exit_pnl[symbol] = _exit_pnl_signed
+                        # Exp2: update per-symbol recent-loss-RATE rolling window (8 exits).
+                        _eo = self._exit_outcome_hist.setdefault(symbol, [])
+                        _eo.append(1 if _exit_pnl_signed < 0 else 0)
+                        if len(_eo) > 8:
+                            _eo.pop(0)
                         # Exp3: update portfolio consecutive-loss streak (mirrors
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
