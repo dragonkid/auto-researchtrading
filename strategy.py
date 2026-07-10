@@ -3209,45 +3209,6 @@ class Strategy:
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
-                # Exp (architectural, indep): SHORT-TERM ADVERSE-VELOCITY exit pressure
-                # for LOSING SHORTS. NEW exit-pressure source + NEW data dep at the fusion:
-                # the 3-bar return velocity against the position, a FASTER reversal signal
-                # than the multi-window _exit_slope (12/16/22-bar mean) which averages out
-                # the sharp bounces/pullbacks that stop out losing shorts. Distinct from the
-                # entry-side _cv_shrink (counter-velocity at ENTRY sizing) -- this is the
-                # EXIT-side analog: a sharp adverse move on a HELD LOSING position is the
-                # bounce/pullback that is actively stopping it out; exiting on the velocity
-                # (not waiting for the slow slope to confirm) cuts the loser ~1 bar earlier
-                # -> smaller realized loss -> higher Sharpe. Gated:
-                #  (1) LOSING (pos_pnl<0 via _pnl_scale<0): only fires on adverse moves that
-                #      are HURTING, never on winning positions facing temporary pullback noise
-                #      (a winning short facing a 3-bar up-move is a pullback that resumes down;
-                #      a LOSING short facing the same up-move is the bounce that stops it out).
-                #  (2) SHORT-ONLY (current_pos<0): isolates crash bounce-shorts + rally
-                #      pullback-shorts from bull/mixed LOSING LONGS (which RECOVER in bull
-                #      pullbacks / mixed oscillations -- the documented bull/mixed wall is
-                #      on the LONG side; shorts in crash/rally are the trend-aligned losers
-                #      whose adverse move does NOT recover). Position direction is a
-                #      structural property (the bull/mixed forward-looking-outcome wall is
-                #      on longs; shorts are separable by direction).
-                #  (3) adverse = 3-bar UP move against a short (closes[-1] > closes[-4]).
-                # Continuous tanh on the adverse magnitude / ATR-scale; loss-side weight
-                # (gated 1.0 only when losing). Targets crash (negative-Sharpe -> 1:1 score
-                # gain, dd_gate does NOT apply to negative Sharpe so this is the cleanest
-                # crash lever) + rally (positive Sharpe, multiplicative). Byte-identical
-                # for longs (gate 0) and winning shorts (loss-gate 0). New cross-timescale
-                # data dep: a 3-bar exit signal layered on the existing 12/16/22-bar slope.
-                _cv_x_n = 4
-                _cv_x_pressure = 0.0
-                _w_cv_x = 0.0
-                if current_pos < 0 and _pnl_scale < 0.0 and len(closes) > _cv_x_n:
-                    _cv_x_ret3 = (closes[-1] - closes[-_cv_x_n]) / closes[-_cv_x_n]  # +ve = up = adverse for short
-                    _cv_x_adverse = max(0.0, _cv_x_ret3)  # up-move against short
-                    # Scale by ATR_pct so the velocity is normalized to the symbol's vol
-                    # (a 1.5x ATR 3-bar move = deep adverse velocity saturating the gate).
-                    _cv_x_pressure = 0.45 * max(0.0, min(1.0, np.tanh((_cv_x_adverse / max(_atr_pct, 1e-10) - 1.0) / 0.6)))
-                    _w_cv_x = 1.0  # loss-gated + short-gated above; full weight when active
-
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
                 # crash/sideways (PF 0.7/0.3/0.4) -- many positions survive scale-in then
@@ -3342,7 +3303,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
-                    _w_cv_x * _cv_x_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
