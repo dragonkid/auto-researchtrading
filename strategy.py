@@ -529,26 +529,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp1 (architectural, indep): PER-SIDE consecutive-loss streak. The portfolio
-        # _loss_streak above fires on ANY closed losing trade regardless of side. It
-        # drives ONLY a counter-trend admission tighten (gated on ret_vlong SIGN),
-        # because a blanket tighten hurt bull (the documented lesson: post-streak
-        # bull entries are trend-aligned LONGS that recover). The per-side streak is a
-        # genuinely different signal: it tracks WHICH SIDE has been consecutively
-        # losing. In rally, the streak losses are pullback SHORTS all on the bear side
-        # -> the bear-side streak grows long while the bull-side streak stays 0 (rally
-        # longs win). Tightening ONLY the losing side's admission (bear) filters the
-        # marginal short re-entries that extend the streak WITHOUT touching bull longs
-        # (no trend-direction gate needed -- the SIDE that lost IS the side that's
-        # over-trading). This targets max_consecutive_losses directly (the streak_gate
-        # = exp(-max_consec/30), the dominant suppressor of rally -- the highest regime
-        # -- at ~0.6735). In sideways, losses ALTERNATE sides (mean-reversion long/short)
-        # -> neither per-side streak grows long -> tighten stays ~0 -> sideways winners
-        # spared (avoids the admission-tighten-filters-winners wall). bull-side losses
-        # (rare, bull wins) tighten bull admission only when longs are consecutively
-        # losing (a real bearish shift), not on every portfolio loss. New state + new
-        # cross-component data dep at admission: threshold reads per-side loss history.
-        self._side_loss_streak = {"bull": 0, "bear": 0}
         # Exp1 (this session): per-symbol rolling pos_pnl PATH history (the MTM
         # trajectory since entry). Used to compute MTM-path-efficiency =
         # |net pos_pnl| / sum(|bar-to-bar pos_pnl change|) over the window, in [0,1].
@@ -1262,30 +1242,6 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
-            # Exp1 (architectural, indep): PER-SIDE loss-streak admission throttle. Tighten
-            # bull admission proportional to the BULL-side (long) consecutive-loss streak,
-            # bear admission proportional to the BEAR-side (short) streak. Each side
-            # throttles ONLY its own losers -- the side that has been consecutively
-            # losing is the side over-trading its marginal re-entries (the streak-extend
-            # population). Distinct from the ct-streak above (keys on trend DIRECTION,
-            # protects trend-aligned entries on both sides): this keys on WHICH SIDE has
-            # been losing, regardless of trend alignment, so it also catches TREND-ALIGNED
-            # losing re-entries the ct-gate spares (e.g. a run of losing longs in a choppy
-            # down-leg). Safety: in sideways losses ALTERNATE sides -> per-side streaks stay
-            # short (1-2) -> tanh((streak-1)/2.0) stays small -> minimal tighten -> sideways
-            # mean-reverting winners spared (the admission-tighten-filters-winners wall).
-            # In rally the bear-side streak grows long (pullback shorts all lose) -> bear
-            # admission tightens -> fewer marginal short re-entries -> breaks the streak
-            # (reduces max_consecutive_losses -> raises streak_gate, rally's dominant
-            # suppressor). Bull-side streak stays 0 (rally longs win) -> bull admission
-            # untouched. Max 12% tighten per side at deep side-streak (smaller than the
-            # ct-streak's 10% x saturated-ct-gate since this fires unconditionally on its
-            # side; conservative). Continuous tanh, no boundary. Composes multiplicatively
-            # with the ct-streak (independent signals: side-history vs trend-direction).
-            _bull_side_streak = max(0.0, np.tanh((self._side_loss_streak["bull"] - 1) / 2.0))
-            _bear_side_streak = max(0.0, np.tanh((self._side_loss_streak["bear"] - 1) / 2.0))
-            _bull_strong_min *= 1.0 + 0.12 * _bull_side_streak
-            _bear_strong_min *= 1.0 + 0.12 * _bear_side_streak
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -4439,19 +4395,6 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                        # Exp1 (architectural, indep): update PER-SIDE consecutive-loss
-                        # streak. The closed position's side (long=current_pos>0 ->
-                        # "bull" side, short -> "bear" side) increments on a loss, resets
-                        # on a win. The OPPOSITE side is UNCHANGED (its own history tracks
-                        # independently) -- a winning long does NOT reset the bear-side
-                        # streak (the shorts are still consecutively losing). This keeps
-                        # the losing-side streak live until that SIDE wins, matching the
-                        # max_consecutive_losses per-side intuition.
-                        _exit_side = "bull" if current_pos > 0 else "bear"
-                        if _exit_pnl_signed < 0:
-                            self._side_loss_streak[_exit_side] += 1
-                        else:
-                            self._side_loss_streak[_exit_side] = 0
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
