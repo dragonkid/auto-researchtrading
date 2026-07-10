@@ -436,6 +436,12 @@ COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturate
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        # Exp3: per-symbol bar_count of the last peak_pnl update (new confirmed high).
+        # Used by the PEAK-STAGNATION tp_harvest amplifier: a deep peak that PLATEAUED
+        # (no new high for K bars) is stalling at the top -- harvest it more before the
+        # oscillation gives back. Distinct from giveback magnitude (pp_pressure), bar-
+        # count-since-entry (time-pressure), and MAE. Byte-identical for fresh peaks.
+        self._peak_bar = {}
         # Maximum adverse excursion (MAE): per-symbol low-water mark of pos_pnl since entry.
         # Used by adverse-recovery exit pressure (architectural): when current pos_pnl
         # has recovered from MAE but still in modest loss, position is "barely surviving"
@@ -2716,6 +2722,7 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
+                    self._peak_bar[symbol] = self.bar_count  # Exp3: record peak-update bar
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
@@ -3559,6 +3566,29 @@ class Strategy:
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
                     _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp (architectural, indep): PEAK-STAGNATION tp_harvest amplifier.
+                    # NEW data dep: bars since the last CONFIRMED peak update (self._peak_bar).
+                    # A deep peak that PLATEAUED (no new confirmed high for K bars) is stalling
+                    # at the top -- the trend/move that built it has exhausted -> harvest MORE
+                    # before the oscillation gives back. Distinct from giveback magnitude
+                    # (_pp_pressure: how much already given back), bar-count-since-entry
+                    # (_time_pressure), MAE (adverse excursion), and _tp_ratio (how deep the
+                    # peak is). This reads the peak's RECENCY (is it still extending?).
+                    # Amplifies the harvest magnitude up to 1.30x for plateaued peaks. Gated
+                    # by the SAME _ts_supp factor the base harvest uses (max(0,1-1.5*_ts_supp)):
+                    # for trend-aligned clean winners (_ts_supp>0.667 -> base _tp_scale 0),
+                    # amplifying 0 is 0 -> BYTE-IDENTICAL (rally/bull/crash trend-aligned
+                    # deep winners let run as before). For counter-trend/mixed (_ts_supp~0 ->
+                    # base harvest fires), a plateaued peak harvests up to 1.30x more ->
+                    # converts more oscillating paper to realized BEFORE the re-peak gives
+                    # back -> lower MTM oscillation -> higher mixed Sharpe. Targets mixed
+                    # (the deep-peak oscillating regime); trend regimes byte-identical.
+                    # Continuous tanh ramp on bars-since-peak / 5 (0 fresh, ~1 plateaued >=5
+                    # bars; the confirmed-peak 2-rising-bar gate already smooths single-bar
+                    # noise out of peak updates -> the plateau signal is noise-robust).
+                    _peak_age = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
+                    _peak_stag = 1.0 + 0.30 * max(0.0, min(1.0, np.tanh((_peak_age - 2.0) / 3.0)))
+                    _tp_scale = _tp_scale * _peak_stag
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
@@ -4471,7 +4501,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._peak_bar, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -4483,6 +4513,7 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._peak_bar[symbol] = self.bar_count
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
