@@ -1314,49 +1314,10 @@ class Strategy:
             # (confirmation) x per-symbol LOCAL trend-strength (gate). Continuous tanh.
             # Conservative 12% max relaxation; composes multiplicatively with the tighteners.
             _trend_relax_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-            # Exp1 (architectural, indep this session): CONVICTION-SCALED admission
-            # relaxation. Sanctioned untested lead (prior session-summary (a)): the crash
-            # Sharpe lever might extend FURTHER via a larger relaxation magnitude gated on a
-            # STRONGER cleanliness/quality signal -- "a cleanliness gate (MAE/efficiency)
-            # might allow more relaxation on the highest-quality trend-aligned shorts without
-            # the noise over-admission." The prior wall: raising the relaxation magnitude
-            # uniformly 0.06->0.12 crashed bull stability 0.799->0.768 (noise over-admission
-            # of MARGINAL trend-aligned entries: a low-conviction trend-aligned long during a
-            # bull pullback is noise-prone, and the uniform 12% admitted too many of them).
-            # MAE is a held-position property (unavailable at admission); the pre-entry
-            # quality proxy is the CONVICTION RATIO = side strong-sum / pre-relaxation
-            # admission threshold (captured before this block applies the trend-mag
-            # relaxation, so it is independent of the relaxation itself -- no circular dep).
-            # A HIGH conviction ratio (strong-sum well above the un-relaxed bar) = a
-            # decisive trend-aligned entry = genuine signal -> LARGER relaxation (admit at
-            # even lower effective threshold -> capture more of the high-quality trade ->
-            # extends the crash Sharpe lever on crash's high-conviction trend-aligned shorts,
-            # the winners). A MARGINAL conviction ratio (~1.0, barely passing) = noise-prone
-            # -> SMALLER relaxation (don't over-admit -> protects bull stability, the 12pct
-            # wall source). This is the cleanliness-gated larger relaxation, with conviction
-            # as the pre-entry quality proxy. Crash's trend-aligned shorts (strong bear
-            # votes in a deep downtrend -> high conviction) get UP TO 0.10 relaxation (vs
-            # 0.06 baseline) -> more winning crash shorts admitted -> crash Sharpe further
-            # up. Bull's marginal pullback longs (weak long signal during a pullback -> low
-            # conviction) get ~0.05 relaxation (vs 0.06) -> fewer noise admits -> bull
-            # stability preserved. Sideways byte-identical (rsi_trend_str gate zeros it);
-            # counter-trend byte-identical (alignment gate). NEW cross-component data dep:
-            # the admission relaxation magnitude depends on pre-relaxation conviction ratio
-            # (was a fixed 0.06). Continuous tanh on (conv_ratio-1.0)/0.5 (saturates by
-            # ratio 1.5; 0 at the admission bar, ~1 for decisive entries); FLOOR 0.5 keeps a
-            # baseline relaxation for marginal entries (don't zero -- that would revert
-            # toward no relaxation and lose the crash gain). Max magnitude 0.10 (between
-            # the validated 0.06 and the walled 0.12).
-            _trend_relax_mag = 0.10
-            _trend_relax_floor = 0.50
             if _port_trend_mag_dir > 0.0:
-                _conv_ratio_b = _bull_strong / max(_bull_strong_min, 1e-6)
-                _conv_scale_b = _trend_relax_floor + (1.0 - _trend_relax_floor) * max(0.0, min(1.0, np.tanh((_conv_ratio_b - 1.0) / 0.5)))
-                _bull_strong_min *= 1.0 - _trend_relax_mag * _port_trend_admit_relax * _trend_relax_gate * _conv_scale_b
+                _bull_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
             elif _port_trend_mag_dir < 0.0:
-                _conv_ratio_s = _bear_strong / max(_bear_strong_min, 1e-6)
-                _conv_scale_s = _trend_relax_floor + (1.0 - _trend_relax_floor) * max(0.0, min(1.0, np.tanh((_conv_ratio_s - 1.0) / 0.5)))
-                _bear_strong_min *= 1.0 - _trend_relax_mag * _port_trend_admit_relax * _trend_relax_gate * _conv_scale_s
+                _bear_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
