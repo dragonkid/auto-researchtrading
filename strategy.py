@@ -1476,7 +1476,7 @@ class Strategy:
             # High R^2 (clean linear multi-day trend) -> +0.02 commit; R^2<=0.5 -> 0
             # (byte-identical for choppy/curved paths, avoids the Exp4 base-reduction
             # trap). Independent of ER (path efficiency vs linear fit).
-            _r2_frac_adj = 0.02 * max(0.0, min(1.0, np.tanh((_vlong_r2 - 0.40) / 0.15)))
+            _r2_frac_adj = 0.02 * max(0.0, min(1.0, np.tanh((_vlong_r2 - 0.35) / 0.20)))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj + _r2_frac_adj)
 
             if current_pos == 0 and not in_cooldown:
