@@ -2466,13 +2466,21 @@ class Strategy:
                     # tanh ramp on rsi_trend_str/0.20 (saturates by ~0.4 trend strength --
                     # the SAME scale as the other trend gates).
                     _mom_pace_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate * _mom_pace_trend_gate
-                # branch step7: raise magnitude 0.8 -> 1.2 (step2 is the peak at +0.001377;
-                # test if the mixed/bull gains outpace the sideways/rally costs + std penalty
-                # at higher magnitude). Step2 gains (mixed +0.027, bull +0.002) vs costs
-                # (sideways -0.007, rally -0.004) ratio ~2.6:1. If roughly linear, higher mag
-                # scales gains faster than costs -> may cross +0.003 keep.
-                _entry_full_bars_dyn = _entry_full_bars_dyn + 1.2 * _mom_pace_slowdown
+                    # branch step8: WINNING-POSITION gate (pos_pnl > 0 during scale-in). Step2
+                    # is the peak at +0.001377 but sideways still regresses -0.007. The pace
+                    # slowdown is most damaging on UNDERWATER mean-reverters (sideways
+                    # positions that are losing during a directional leg -> slowing build-up
+                    # locks them smaller before the mean-reversion recovery). A WINNING
+                    # position during a fresh pullback (trend-aligned entry already in profit,
+                    # e.g. mixed's winning-trend entries) is less harmed by a slower pace
+                    # (it is already profitable; slowing just trims the incremental addition).
+                    # Gate the slowdown on pos_pnl > 0 (winning early) so sideways' underwater
+                    # mean-reverters are spared while mixed's winning-trend entries keep it.
+                    # Smooth tanh on pos_pnl/|stop| (ramp around 0, saturates by ~1 stop-magnitude
+                    # profit). Composes with step2's trend gate.
+                    _mom_pace_win_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                    _mom_pace_slowdown = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate * _mom_pace_trend_gate * _mom_pace_win_gate
+                _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
                 _entry_full_bars_dyn = _entry_full_bars_dyn + 0.8 * _mom_pace_slowdown
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
