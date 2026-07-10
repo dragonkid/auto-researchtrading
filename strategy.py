@@ -2696,7 +2696,23 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain
+                    # Exp4 (architectural, indep): apply the LIVE portfolio-DD circuit-breaker
+                    # to the scale-in full_target. The _port_dd_atten shrinks the cold-entry
+                    # first-bar target (line ~2366) but NOT the scale-in full_target -- so a
+                    # position entered during DD ramps back to un-shrunk `size` over bars 2-3,
+                    # undoing the DD protection for the held position. Applying the LIVE (not
+                    # cached) _port_dd_atten to scale-in keeps the circuit-breaker protection
+                    # for the whole hold. Distinct from Exp3 (this session, discarded) which
+                    # CACHED the entry-time _port_dd_atten -- caching a live asymmetric-EMA
+                    # created stale path-dependent state that diverged under noise (min_stab
+                    # 0.797->0.296, all-regime stability collapse). The LIVE _port_dd_atten is
+                    # recomputed each bar from the noise-stabilized asymmetric breaker-input EMA
+                    # (the span-3 equity EMA + alpha-0.05 slow-rise, validated noise-robust) ->
+                    # no stale state, no divergence. Byte-identical at portfolio peak
+                    # (_port_dd_atten=1.0 -> full_target unchanged) and in non-DD regimes. New
+                    # data dep: scale-in full_target reads the live portfolio-DD circuit-breaker
+                    # (was cold-entry-only). Shrink-only (safe family). Direction-agnostic.
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain * _port_dd_atten
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
