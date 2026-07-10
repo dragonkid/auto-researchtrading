@@ -413,6 +413,25 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
+# Exp1 (architectural, indep): CLEANLINESS-SCALED trend-magnitude admission relaxation.
+# The keep 7cb68a94's trend-magnitude-agreement admission relaxation uses a FIXED 6pct
+# magnitude. Prior sessions proved the magnitude axis is non-monotonic (4pct loses mixed,
+# 12pct loses bull stability via noise over-admission; 6pct is the sweet spot) when applied
+# UNIFORMLY. This scales the magnitude by the per-symbol 96-bar trend CLEANLINESS (R^2):
+# high R^2 (clean linear trend = crash deep monotone downtrend) -> up to 9pct relaxation
+# (admit more high-quality crash trend-aligned shorts at lower conviction); low R^2
+# (choppy path with same net |ret_vlong| = mixed oscillating down-legs) -> down to 3pct
+# (admit fewer marginal mixed entries). The cleanliness axis is independent of the
+# magnitude axis the prior 4pct/12pct uniform probes explored, so this is NOT a re-probe
+# of the saturated uniform-magnitude axis -- it is a per-symbol shape-conditioned magnitude.
+# Mag scales 3pct (low R^2) -> 9pct (high R^2) via tanh on (R^2-0.5)/0.20 (R^2=0.5 neutral
+# -> 6pct baseline; R^2=0.7 -> ~8.5pct; R^2=0.3 -> ~3.5pct). The rsi_trend_str gate +
+# alignment gate (already in baseline) keep sideways byte-identical (rsi_trend_str~0 in
+# sideways -> gate zeros the relaxation regardless of magnitude).
+PORT_TREND_CLEAN_RELAX_MAX = 0.09   # max relaxation magnitude at high cleanliness (R^2->1)
+PORT_TREND_CLEAN_RELAX_MIN = 0.03   # min relaxation magnitude at low cleanliness (R^2->0)
+PORT_TREND_CLEAN_CENTER = 0.50      # R^2 at which magnitude == baseline 6pct (neutral)
+PORT_TREND_CLEAN_SCALE = 0.20       # R^2 half-width of the tanh ramp
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -1059,6 +1078,33 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
+            # Exp1 (architectural, indep): 96-bar TREND CLEANLINESS (R^2) of the OLS
+            # log-HL2 regression whose slope defines ret_vlong. R^2 measures how LINEAR
+            # the multi-day trend is -- a deep, clean, monotone downtrend (crash's best
+            # trend-aligned shorts) has high R^2 (price tracks a straight line down);
+            # a choppy down-then-up-then-down path with the same net |ret_vlong|
+            # (mixed's oscillating down-legs) has low R^2. CRITICAL property: R^2 is
+            # INDEPENDENT of the slope magnitude -- a slow clean trend and a fast clean
+            # trend both have high R^2, so this signal does NOT saturate where the keep's
+            # _port_trend_mag_agree (min of agreeing |ret_vlong|) saturates. Prior
+            # session Exp1 (conviction-ratio-scaled relaxation) and Exp2 (multi-window
+            # slope-consensus-scaled relaxation) both produced the IDENTICAL pattern --
+            # crash byte-identical, mixed -0.0006 -- because their quality gates
+            # SATURATED where the broad-agreement + rsi_trend_str gates already pre-
+            # select high-conviction entries. R^2 is a genuinely different cleanliness
+            # axis (shape, not magnitude or conviction): the keep's relaxation fires on
+            # crash bars where the 96-bar trend is deep AND clean (high R^2) and on
+            # mixed bars where the 96-bar trend is shallow AND choppy (low R^2) -- so a
+            # cleanliness-scaled magnitude admits MORE high-quality crash trend-aligned
+            # shorts (R^2 high -> larger relaxation -> lower conviction threshold ->
+            # more winning crash shorts) while admitting FEWER marginal mixed entries
+            # (R^2 low -> smaller relaxation -> noise over-admission avoided). The 96-
+            # bar window averages ~96 bars of AR(1) noise (~1/sqrt(96) attenuation) so
+            # R^2 is bar-to-bar stable (smooth). New per-symbol data dep at admission:
+            # relaxation magnitude depends on the own-symbol 96-bar trend cleanliness.
+            # Sanctioned UNTESTED lead (keep 7cb68a94 summary (a)): a cleanliness gate
+            # allowing larger relaxation on the highest-quality trend-aligned shorts.
+            _vlong_r2 = _fast_r2(np.log(_hl2_vl))
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
@@ -1314,10 +1360,22 @@ class Strategy:
             # (confirmation) x per-symbol LOCAL trend-strength (gate). Continuous tanh.
             # Conservative 12% max relaxation; composes multiplicatively with the tighteners.
             _trend_relax_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+            # Exp1 (architectural, indep): CLEANLINESS-SCALED relaxation magnitude. Replace
+            # the fixed 0.06 with a per-symbol magnitude that scales by the 96-bar trend
+            # R^2 (cleanliness): clean linear trends (crash deep monotone downtrend, high
+            # R^2) get a LARGER relaxation -> admit more high-quality trend-aligned shorts
+            # at lower conviction; choppy same-net-magnitude paths (mixed oscillating
+            # down-legs, low R^2) get a SMALLER relaxation -> fewer marginal mixed admits.
+            # R^2 is independent of |ret_vlong| (the keep's broad-agreement signal) so it
+            # does NOT saturate where the broad-agreement + rsi_trend_str gates already
+            # pre-select entries (the wall that made prior conviction-ratio and slope-
+            # consensus scaling produce byte-identical crash + mixed -0.0006). Centered at
+            # R^2=0.5 -> 6pct (byte-identical to the keep at the neutral cleanliness level).
+            _clean_mag = PORT_TREND_CLEAN_RELAX_MIN + (PORT_TREND_CLEAN_RELAX_MAX - PORT_TREND_CLEAN_RELAX_MIN) * max(0.0, min(1.0, 0.5 * (1.0 + np.tanh((_vlong_r2 - PORT_TREND_CLEAN_CENTER) / PORT_TREND_CLEAN_SCALE))))
             if _port_trend_mag_dir > 0.0:
-                _bull_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
+                _bull_strong_min *= 1.0 - _clean_mag * _port_trend_admit_relax * _trend_relax_gate
             elif _port_trend_mag_dir < 0.0:
-                _bear_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
+                _bear_strong_min *= 1.0 - _clean_mag * _port_trend_admit_relax * _trend_relax_gate
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
