@@ -2974,6 +2974,54 @@ class Strategy:
                 # (long gate 0), ct (align 0), losers (profit gate 0).
                 _ta_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
                 _ta_dd_hold_ext_raw = 1.5 * _ta_long_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
+                # Exp1 (architectural, indep): SHORT-SIDE trend-aligned hold extension. The
+                # existing _ta_dd_hold_ext is LONG-ONLY (_ta_long_gate), so crash's
+                # trend-aligned SHORTS (its winners: 71.7% WR) get NO hold extension -- they
+                # hit time_pressure at the same baseline _max_hold as sideways noise. Yet
+                # crash is the highest-leverage regime (score == bare Sharpe -0.034; a
+                # Sharpe gain is 1:1 score gain, NOT blocked by its 17.73pct DD). Crash
+                # SHORTS profit from a persistent downtrend the same way bull LONGS profit
+                # from a persistent uptrend: a trend-aligned short should ride the downtrend
+                # longer (delay time-pressure onset) before giveback/slope-against exit.
+                # The long-side version is gated to LONG-ONLY for pp_pressure attenuation
+                # because pp-attenuation lets shorts ride BOUNCES (dangerous: bounces are
+                # sharp, pp_pressure is the giveback signal). A HOLD-EXTENSION is a
+                # different mechanism: it delays time_pressure (DURATION-based), NOT
+                # pp_pressure (giveback-based). The stop-loss (hard exit) and slope-against
+                # (exit source) still catch bounce-stopped shorts regardless of _max_hold.
+                # And _ta_align = tanh(ret_vlong*(-1)/0.01) for shorts naturally turns OFF
+                # during bounces (ret_vlong flips positive -> align 0) and ON during
+                # sustained downtrends (ret_vlong negative -> align 1) -> the extension
+                # only fires for trend-aligned shorts in persistent downtrends.
+                # CRASH-SAFETY GATES (mirror the long-side _ta_winner_gate stack):
+                #  (1) short-only structural gate (_ta_short_gate);
+                #  (2) trend-aligned at multi-day: _ta_align already encodes this
+                #      (tanh(ret_vlong*pos_dir/0.01) -> ~0 for shorts during bounces);
+                #  (3) in-profit: same _ta_profit_gate (losers byte-identical);
+                #  (4) BROAD-DOWNTREND CONFIRMATION: gate on the cross-symbol 96-bar
+                #      trend-magnitude agreement (the keep 7cb68a94's validated lever,
+                #      _port_trend_mag_agree) AND its direction negative (all 3 symbols
+                #      down together = broad bear, the crash signature). Sideways (broad
+                #      96-bar recovery drift but LOCAL chop) has _port_trend_mag_agree
+                #      moderate-to-low and rsi_trend_str~0 -> _ta_align~0 -> byte-identical.
+                #      This is a NEW data dep: max_hold reads cross-symbol broad-trend
+                #      AGREEMENT for shorts (distinct from the per-symbol ret_vlong align).
+                #  (5) PERSISTENT-DOWNTREND: mirror of the long-side _up_persist_gate.
+                #      The long-side gate uses _down_persist<0.40 (persistent uptrend) to
+                #      EXCLUDE crash bounce longs (ret_vlong flips positive during bounces).
+                #      The short-side mirror: _down_persist>0.60 (persistent downtrend) to
+                #      EXCLUDE bull pullback shorts (ret_vlong dips negative transiently but
+                #      _down_persist stays ~0.3). Crash _down_persist~0.9 -> full; bull/rally
+                #      ~0.3 -> gate 0 -> byte-identical. Continuous ramp.
+                # Direction-asymmetric structural property (long/short risk asymmetry, NOT
+                # a regime label -- the SAME rationale the long-side uses _ta_long_gate).
+                # Byte-identical for longs (_ta_short_gate 0), ct/losers (align/profit 0),
+                # and non-broad-downtrend regimes (agreement/dir gate 0). Continuous tanh.
+                _ta_short_gate = 1.0 if current_pos < 0 else 0.0  # short-only structural gate
+                _broad_down_gate = max(0.0, _port_trend_mag_agree) * (1.0 if _port_trend_mag_dir < 0.0 else 0.0)
+                _down_persist_gate_short = max(0.0, min(1.0, (_down_persist - 0.60) / 0.20))  # ~0 bull/rally (down_persist~0.3), ~1 crash (~0.9)
+                _ta_short_hold_ext = 1.5 * _ta_short_gate * _ta_align * _ta_profit_gate * _broad_down_gate * _down_persist_gate_short
+                _ta_dd_hold_ext_raw = _ta_dd_hold_ext_raw + _ta_short_hold_ext
                 # BRANCH (Exp1 opener, architectural): SMOOTH the hold-extension DECISION
                 # INPUT at the source. The keep 47cbe827 added bar-to-bar tracking error at
                 # the source: _ta_dd_hold_ext wobbles under AR(1) noise (profit_gate flips
