@@ -1214,7 +1214,7 @@ class Strategy:
             # on raw closes remains (the discriminating form); only the weight scales.
             _dvp9_rets = np.sign(np.diff(_dvp9_c))
             _dvp9 = float(np.sum(_dvp9_v * _dvp9_rets) / max(np.sum(_dvp9_v), 1e-10))  # in [-1, 1]
-            _dvp9_signal = _dvp9 / 0.20  # sharpness 0.20 (DVP magnitude ~0.1-0.3 in trends); >0 = volume confirms bull
+            _dvp9_signal = _dvp9 / 0.40  # step7: sharpness 0.40 (softer tanh -- DVP conf stays near 0.5 neutral for small |DVP|, smaller swing per noise sign-flip; only large |DVP| moves the conf)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1251,7 +1251,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.40)  # 8th: range/close efficiency (0.55); 9th: volume-flow DVP (0.40 step6 -- between 0.30 [stab 1.0, sideways +0.002] and 0.55 [stab 0.248, sideways +0.097 raw], find the stab>0.50 sweet spot)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.30)  # 8th: range/close efficiency (0.55); 9th: volume-flow DVP (0.30 step7 -- back to step5's stable weight; step6 weight 0.40 was non-monotonic worse)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
