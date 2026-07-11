@@ -3752,7 +3752,7 @@ class Strategy:
                         # onset fires fully only for SUSTAINED trend-aligned losers (rally
                         # pullback longs bleeding 4/4 bars).
                         _se_ta = _ta_align  # fire for trend-aligned losers (rally pullback longs), spare ct (mixed)
-                        _de_floor -= 0.30 * _se_trend * _se_ta * _sustained_loss
+                        _de_floor -= 0.20 * _se_trend * _se_ta * _sustained_loss
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
