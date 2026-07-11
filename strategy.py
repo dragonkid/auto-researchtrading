@@ -3520,11 +3520,16 @@ class Strategy:
                     # complements the de-risk concavity (step1) for rally without destabilizing
                     # mixed. Continuous, no boundary.
                     if _pnl_scale < 0.0:
-                        # branch step8: TIGHTER trend-align scale (0.04->0.02) so mixed's
-                        # MODEST rally-phase ret_vlong (the keep's ride-winner population) does
-                        # not fully saturate the gate -> smaller lowering for mixed -> recover
-                        # the -0.001366 mixed cost while keeping rally's solid-uptrend gain.
-                        _dr_ta_gate_thresh = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.02))
+                        # branch step10: MAGNITUDE FLOOR on ret_vlong*pos_dir (only fire above
+                        # 0.012) so mixed's WEAKEST rally phases (ret_vlong modest, the keep's
+                        # ride population that destabilizes when cut) are excluded, keeping
+                        # rally's solid uptrend (ret_vlong well above 0.012). step8's tighter
+                        # scale helped sideways but hurt mixed; a magnitude floor targets the
+                        # weakest mixed phases directly. Continuous tanh floor (ramps 0->1 over
+                        # [0.006, 0.018] = below 0.006 excluded, above 0.018 full).
+                        _dr_ta_raw = ret_vlong * (1.0 if current_pos > 0 else -1.0)
+                        _dr_ta_mag_floor = max(0.0, min(1.0, np.tanh((_dr_ta_raw - 0.012) / 0.006)))
+                        _dr_ta_gate_thresh = max(0.0, np.tanh(_dr_ta_raw / 0.02)) * _dr_ta_mag_floor
                         _exit_thresh = _exit_thresh * (1.0 - 0.03 * _dr_ta_gate_thresh)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
