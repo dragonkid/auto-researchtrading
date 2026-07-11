@@ -691,61 +691,6 @@ class Strategy:
             # excluded (gate ~0.5-0.8), rally/mixed sharp pullbacks still saturate -> keeps
             # the rally/mixed DD-cut while reducing sideways' gentle-oscillation shrink.
             _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
-            # Exp2 (architectural indep, session-context follow-up to Exp1): ASYMMETRIC
-            # RELEASE-FAST output-EMA on the equity-momentum shrink FACTOR. Exp1 (symmetric
-            # span-3 output-EMA) gave REAL rally +0.0068 + mixed +0.0069 (smoother shrink ->
-            # less per-bar size wobble -> Sharpe up in trends) + lifted bull stability
-            # (stab_factor 0.990->0.997) BUT hit the sideways mean-reversion-rebuild wall
-            # (-0.0086: the SYMMETRIC EMA persists the shrink across bars -> sustained
-            # shrink starved sideways' oscillation recovery, the SAME wall as cached
-            # _eq_mom_sustain). The asymmetric fix: SMOOTH the shrink only in the DEEPENING
-            # direction (when raw shrink < prev -> pullback worsening -> smooth the size
-            # reduction so per-bar size wobble is damped in trends), but SNAP BACK
-            # INSTANTLY in the RELEASE direction (when raw shrink >= prev -> pullback
-            # easing -> take the raw larger value immediately, NO smoothing lag). This
-            # preserves the rally/mixed trend smoothness benefit (the wobble is in the
-            # deepening direction during pullbacks) while RELEASING the shrink the instant
-            # momentum recovers -> sideways' mean-reversion rebuild is NOT starved (the
-            # shrink releases on the same bar the oscillation turns, same as the raw
-            # keep). New per-strategy state self._eq_mom_shrink_ema. Byte-identical when
-            # momentum >= 0 (shrink factor 1.0 -> both branches give 1.0). Distinct from
-            # Exp1 (symmetric EMA, persists through release) and Exp5 (input OLS-slope,
-            # lags DD-cut) and _eq_mom_sustain (cached at entry, permanent through hold).
-            _prev_shrink = getattr(self, "_eq_mom_shrink_ema", 1.0)
-            if _port_eq_mom_shrink < _prev_shrink:
-                # Deepening: smooth toward the new (smaller) shrink over span-3.
-                _smoothed = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
-                # step6: EQUITY-CURVE VOLATILITY GATE on the deepening-smooth -- smooth
-                # only LOW equity-vol gradual pullbacks (rally/mixed grind), RAW in HIGH
-                # equity-vol sharp pullbacks (bull). step5 used per-symbol vol_ratio which
-                # is NOT in scope at this top-level site (bug, reverted). The equity-curve
-                # realized vol IS computable here from _eq_hist (the 8-bar equity EMA
-                # history already maintained for _eq_mom). Bull's sharp pullbacks make the
-                # equity curve volatile; rally/mixed grind pullbacks are gradual -> equity
-                # vol is a portfolio-level bull/rally separator available at this site.
-                # Bull's DD rise at step1 (12.47->12.61) came from the smoothed shrink
-                # lagging raw during bull's sharp pullbacks -> positions bigger -> DD up.
-                # Gating the smooth OFF in high equity-vol -> bull uses RAW shrink (no DD
-                # lag -> DD recovers toward 12.47) while rally/mixed (low equity-vol) keep
-                # the span-3 smoothing -> Sharpe benefit preserved. Sideways (low equity-
-                # vol) keeps smoothing + release-fast rebuild. Equity vol = std of bar-to-
-                # bar equity EMA changes / peak equity; /0.008 scale (0.8pct peak-relative
-                # per-bar equity move saturates = sharp pullback; rally/mixed grind ~0.2-0.4pct).
-                _eq_diffs = np.diff(_eq_hist) / self._peak_equity
-                _eq_vol = float(np.std(_eq_diffs)) if len(_eq_diffs) >= 2 else 0.0
-                _smooth_vol_gate = max(0.0, min(1.0, (0.008 - _eq_vol) / 0.004))  # ~1 low eq-vol, ~0 high eq-vol
-                _port_eq_mom_shrink = _smoothed * _smooth_vol_gate + _port_eq_mom_shrink * (1.0 - _smooth_vol_gate)
-            else:
-                # step11: LIGHT release-side smoothing (span-5, much lighter than the
-                # deepening span-3) to reduce sideways release wobble. Exp1 (symmetric
-                # span-3) persisted too long through sideways rebuild -> starvation wall.
-                # A LIGHT span-5 release-smooth smooths the release bounce (sideways
-                # oscillates up-down rapidly -> the release wobbles) without persisting
-                # long enough to starve the rebuild (span-5 = ~2 bar convergence, the
-                # rebuild recovers within 1-2 bars). Targets sideways (the largest gain
-                # regime at +0.0064); deepening stays span-3 (the productive point).
-                _port_eq_mom_shrink = (2.0 / 6.0) * _port_eq_mom_shrink + (1.0 - 2.0 / 6.0) * _prev_shrink
-            self._eq_mom_shrink_ema = _port_eq_mom_shrink
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
