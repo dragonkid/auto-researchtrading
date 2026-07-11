@@ -3821,27 +3821,7 @@ class Strategy:
                         # rsi_trend_str/0.20 (no boundary); byte-identical in chop (gate 0 ->
                         # k stays 1.0 linear) AND for winners/profit (max(0,-_pnl_scale)=0 ->
                         # no concavity term). Max concavity k=0.70 at deep loss in strong trend.
-                        # branch step5: MULTI-DAY TREND-ALIGN gate (replaces rsi_trend_str gate).
-                        # step1's rsi_trend_str gate fires for BOTH rally (trend-aligned losers,
-                        # the +0.002024 gain) AND mixed (trending too) -> mixed saturates/over-cuts
-                        # above 0.50 (step2/3/4 all over-cut mixed). The clean rally/mixed
-                        # separator is MULTI-DAY TREND DIRECTION: rally's losers are pullback
-                        # longs in a persistent uptrend (ret_vlong>0, pos_dir=+1 -> TREND-ALIGNED
-                        # at multi-day) -> cutting faster helps (giveback-prone grind pullbacks).
-                        # mixed's losers are wrong-side longs in a down year (ret_vlong<0, pos_dir=
-                        # +1 -> COUNTER-TREND at multi-day) -> they are a different population (the
-                        # keep's local-trend hold extension targets them on the RIDE side; cutting
-                        # them faster on the EXIT side conflicts with the keep). Gate the concavity
-                        # on TREND-ALIGNED-AT-MULTI-DAY losers (ret_vlong*pos_dir>0) so it fires for
-                        # rally pullback losers and NOT for mixed wrong-side losers. Crash losing
-                        # longs (dead-cat bounce, ret_vlong<0, pos_dir=+1 -> product<0 -> ct) are
-                        # NOT trend-aligned -> spared (slope-against handles them). Bull losing
-                        # longs (pullback, ret_vlong>0, trend-aligned) WOULD pass but exit via the
-                        # binary path (concavity doesn't reach them -> byte-identical). Fast-
-                        # saturating /0.04 ret_vlong scale (near-constant, noise-free). Byte-
-                        # identical for ct losers (gate 0), chop (no trend-align), and winners.
-                        _dr_ta_gate = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
-                        _dr_loss_concave = 0.50 * max(0.0, -_pnl_scale) * _dr_ta_gate
+                        _dr_loss_concave = 0.50 * max(0.0, -_pnl_scale) * max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                         _dr_k = _dr_k - _dr_loss_concave
                         _dr_k = max(0.4, _dr_k)  # floor at 0.4 (allow deeper concavity)
                         _de_risk = 1.0 - _dr_x ** _dr_k
