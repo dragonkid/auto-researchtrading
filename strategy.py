@@ -713,8 +713,12 @@ class Strategy:
             # lags DD-cut) and _eq_mom_sustain (cached at entry, permanent through hold).
             _prev_shrink = getattr(self, "_eq_mom_shrink_ema", 1.0)
             if _port_eq_mom_shrink < _prev_shrink:
-                # Deepening: smooth toward the new (smaller) shrink over span-3.
-                _smoothed = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
+                # Deepening: smooth toward the new (smaller) shrink. step8: DEEPER
+                # span-2 blend (0.667 prev / 0.333 raw) vs step6 span-3 (0.5/0.5) to
+                # amplify the rally/mixed Sharpe benefit (more smoothing -> less per-bar
+                # size wobble -> higher Sharpe in trends), accepting more bull DD lag.
+                # Net test: do the amplified rally/mixed gains outweigh the extra bull DD?
+                _smoothed = (2.0 / 3.0) * _prev_shrink + (1.0 / 3.0) * _port_eq_mom_shrink
                 # step6: EQUITY-CURVE VOLATILITY GATE on the deepening-smooth -- smooth
                 # only LOW equity-vol gradual pullbacks (rally/mixed grind), RAW in HIGH
                 # equity-vol sharp pullbacks (bull). step5 used per-symbol vol_ratio which
