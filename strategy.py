@@ -3698,6 +3698,51 @@ class Strategy:
                         # boundary). Byte-identical at portfolio peak (both terms 0).
                         _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
                         _de_floor -= (0.13 * (1.0 - _port_dd_atten) + 0.07 * _port_dd_active) * _exit_dd_gate
+                        # STRUCTURAL_EXPLORATION (this session, opener): TREND-GATED
+                        # continuous loser de-risk ONSET lowering. This session's 5
+                        # architectural discards confirmed the loss-side exit is at a
+                        # STRUCTURAL CEILING for crash across ALL exit-pressure lever
+                        # types -- MAX-fusion pressure sources (weight prior cbf265bd,
+                        # shape Exp2), exit threshold (Exp1 sustained-loss+vol-spike,
+                        # Exp3 slope-against-mid), additive voter-bias (Exp5). Exp3's
+                        # verifiable diagnosis identified the ceiling precisely: the
+                        # exit-pressure->action conversion has a 0.85 loser de-risk FLOOR
+                        # that leaves the 0-0.85 band INACTIVE for losers -- mid-range
+                        # slope-against losers at _exit_pressure 0.4-0.65 can't reach the
+                        # 0.85 onset, so NO loss-side lever can act on them (stop-bound
+                        # deep OR too-early mid). The prior PORTFOLIO-DD de-risk floor
+                        # lowering (line ~3700 above, prior Exp3 keep) already lowers
+                        # _de_floor for losers during DD -- keys on PORTFOLIO DD +
+                        # sustained-loss, selecting the deep/stop-bound population (Exp1
+                        # wall). The prior UNGATED loser floor lowering (prior session
+                        # concave de-risk branch opener) was CATASTROPHIC -- cut crash
+                        # winning trend-aligned SHORTS dipping during dead-cat bounces AND
+                        # regressed sideways mean-reverters (chop oscillates near 0 -> the
+                        # 0-0.85 band activating in chop cuts recoveries). The STRUCTURAL
+                        # FIX those attempts lacked: a TREND-STRENGTH gate (rsi_trend_str,
+                        # the validated chop/trend separator) confining the lower onset to
+                        # TRENDING regimes (crash/bull/mixed trending -- where a mid-range
+                        # slope-against loser is a genuine adverse move, not a chop
+                        # oscillation), keeping sideways byte-identical (rsi_trend_str~0 in
+                        # chop -> gate 0 -> floor stays 0.85). SUBSYSTEM REWRITE: the exit-
+                        # pressure->action conversion CHANGES from a fixed 0.85 loser floor
+                        # (binary-ish: active only [0.85,1.0]) to a TREND-CONTINUOUS mapping
+                        # (active [0.55,1.0] in trends, [0.85,1.0] in chop) -- a structurally
+                        # different function form (the onset reads trend-strength, a new
+                        # data dep on the de-risk FLOOR not just DD/sustained-loss). The
+                        # 0.55 lower bound matches the profit-side floor (losers in trends
+                        # get the SAME active band width as winners, [0.55,1.0]=0.45 vs
+                        # baseline [0.85,1.0]=0.15) -> mid-range slope-against pressure
+                        # (0.55-0.85) NOW continuously shrinks trending losers (the
+                        # population Exp1-5 could not reach). Max lowering 0.30 (0.85 ->
+                        # 0.55) at deep trend, fast-saturating /0.20. Losers in chop byte-
+                        # identical (gate 0); winners byte-identical (this block is
+                        # _pnl_scale<0 only). WHY OLD MECHANISM AT CEILING: 3 architectural
+                        # discards this session (Exp1/Exp3 threshold, Exp2 pressure-source
+                        # shape) hit the wall that the 0.85 floor makes the mid-range loser
+                        # band inactive for ANY lever; rewriting the FLOOR mechanism (the
+                        # pressure->action conversion itself) is the only remaining axis.
+                        _de_floor -= 0.30 * max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
