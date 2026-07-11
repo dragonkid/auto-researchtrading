@@ -726,7 +726,7 @@ class Strategy:
                 # per-bar size wobble damped -> Sharpe benefit preserved. The cap is a
                 # tight FLOOR on how far the smoothed shrink can fall behind the raw.
                 _raw_depth = 1.0 - _port_eq_mom_shrink  # intended shrink depth [0, 0.15]
-                _shrink_floor = _port_eq_mom_shrink - 0.30 * _raw_depth  # smoothed can't be more than 30pct-of-depth above raw
+                _shrink_floor = _port_eq_mom_shrink - 0.15 * _raw_depth  # step4: 15pct-of-depth cap (step3 30pct was inert)
                 _port_eq_mom_shrink = max(_smoothed, _shrink_floor)
             # else: release (raw >= prev) -> take raw instantly (no smoothing)
             self._eq_mom_shrink_ema = _port_eq_mom_shrink
