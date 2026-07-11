@@ -3752,7 +3752,24 @@ class Strategy:
                         # onset fires fully only for SUSTAINED trend-aligned losers (rally
                         # pullback longs bleeding 4/4 bars).
                         _se_ta = _ta_align  # fire for trend-aligned losers (rally pullback longs), spare ct (mixed)
-                        _de_floor -= 0.20 * _se_trend * _se_ta * (max(0.0, _sustained_loss) ** 0.5)
+                        # step10: SMALL-PEAK loser gate. The magnitude 0.20 is capped by
+                        # mixed stability -- mixed's up-phase TREND-ALIGNED longs that dip
+                        # negative (they WON first, peak_pnl > _pp_min, then dipped) are the
+                        # over-cut population. A genuine rally pullback loser NEVER won
+                        # (peak_pnl ~0). Gate the lower onset by a SMALL-PEAK factor:
+                        # max(0, 1 - peak_pnl/(2*_pp_min)) -> 1 when peak~0 (never won,
+                        # genuine loser), 0 when peak_pnl >= 2*_pp_min (was a real winner
+                        # that dipped -> spare it -> mixed's winning-then-dipping longs
+                        # spared, allowing a higher magnitude for the genuine-loser
+                        # population). This separates the mixed over-cut population
+                        # (peak_pnl high) from the rally genuine-loser population (peak_pnl
+                        # ~0) by POSITION-LIFE-CYCLE (peak so far), not regime. With the
+                        # small-peak gate, raise magnitude 0.20->0.30 -- the genuine-loser
+                        # population (rally pullback never-won longs) gets 0.30, the
+                        # winner-then-dip population (mixed up-phase longs) gets the gate
+                        # fading to 0 -> mixed stability protected even at magnitude 0.30.
+                        _se_small_peak = max(0.0, 1.0 - self.peak_pnl.get(symbol, 0.0) / max(2.0 * _pp_min, 1e-6))
+                        _de_floor -= 0.30 * _se_trend * _se_ta * (max(0.0, _sustained_loss) ** 0.5) * _se_small_peak
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
