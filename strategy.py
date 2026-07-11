@@ -1059,26 +1059,6 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
-            # Exp5 (architectural, indep): 96-bar trend CLEANLINESS (R^2) for the
-            # initial-commit fraction (entry_frac). Distinct from Exp4 (R^2 on
-            # calm_boost SIZE multiplier -- crashed because it reduced the base 1.0 on
-            # choppy-path bars in high-vol regimes where calm_boost is inactive). Here
-            # the R^2 adjustment is ADDITIVE and ONE-SIDED-POSITIVE on entry_frac_dyn
-            # (a fraction 0.36-0.50, no base 1.0 to collapse): a CLEAN linear multi-day
-            # trend (high R^2 = price tracks a straight line) commits a LARGER initial
-            # fraction (+0.02, capture more of the clean move); a choppy path (low R^2)
-            # commits the standard fraction (no reduction, byte-identical for choppy
-            # regimes -- avoids the Exp4 base-reduction trap). R^2 is INDEPENDENT of ER
-            # (Kaufman efficiency, line 1450): ER measures path efficiency (net/total
-            # path), R^2 measures linear fit; a path can be efficient but non-linear
-            # (high ER, low R^2, curved) or linear but small (high R^2, low ER). The
-            # prior session confirmed R^2 is NOT redundant with ER (_tq_atten removal
-            # regressed -0.0085). The 96-bar window averages ~96 bars of AR(1) noise
-            # (~1/sqrt(96) attenuation) so R^2 is bar-to-bar stable. Byte-identical
-            # when R^2 < 0.50 (choppy/curved paths, sideways -- no change). New per-
-            # symbol data dep at entry sizing: entry_frac depends on the own-symbol
-            # 96-bar trend cleanliness.
-            _vlong_r2 = _fast_r2(np.log(_hl2_vl))
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
@@ -1472,12 +1452,7 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            # Exp5: 96-bar cleanliness (R^2) ADDITIVE ONE-SIDED-POSITIVE on entry_frac.
-            # High R^2 (clean linear multi-day trend) -> +0.02 commit; R^2<=0.5 -> 0
-            # (byte-identical for choppy/curved paths, avoids the Exp4 base-reduction
-            # trap). Independent of ER (path efficiency vs linear fit).
-            _r2_frac_adj = 0.02 * max(0.0, min(1.0, np.tanh((_vlong_r2 - 0.40) / 0.15)))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj + _r2_frac_adj)
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Exp5 (architectural simplification, indep): REMOVED dead
