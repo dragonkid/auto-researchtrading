@@ -2763,6 +2763,52 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp2 (architectural, indep): CONCAVE slope-against pressure SHAPE for
+                # LOSERS in trending regimes. Prior sessions established: (1) the 23-step
+                # loss-side concave de-risk branch left crash BYTE-IDENTICAL throughout --
+                # crash's LOSERS exit via SLOPE-AGAINST (the de-risk/binary path only
+                # reaches TREND-ALIGNED losers = rally/mixed/sideways; crash's dead-cat
+                # bounce longs are counter-trend longs facing slope-down, exited by
+                # _sl_slope_pressure, not the de-risk/binary path); (2) loss-side
+                # slope-WEIGHT amplification (cbf265bd) was MAX-absorbed byte-identical --
+                # amplifying the WEIGHT of a MAX-fusion term is absorbed when _sl_pressure
+                # (stop) saturates for deep losers; (3) the prior concave DE-RISK RAMP
+                # (modified _dr_k, the de-risk function shape) was UNGATED-catastrophic
+                # (cut crash's winning trend-aligned SHORTS that dip during dead-cat
+                # bounces) and crash byte-identical when gated. This experiment targets the
+                # untested lead (b): a CONCAVITY on the SLOPE-AGAINST PATH (the pressure
+                # SOURCE, not the weight, not the de-risk function) for LOSERS. The
+                # current _sl_slope_pressure is a LINEAR ramp [0,1] over the slope band.
+                # A CONCAVE ramp (x^k, k<1) rises FASTER in the early band (x^0.7 > x for
+                # x in (0,1)) so a mid-range slope-against (where slope-against is the
+                # BINDING exit for crash's counter-trend long losers, NOT stop-saturated)
+                # produces HIGHER pressure -> the binding slope-against exit triggers
+                # sooner -> smaller realized loss -> higher crash Sharpe (crash score ==
+                # bare Sharpe per compute_score, so any Sharpe gain is a direct 1:1 gain).
+                # Gates (each validated by prior sessions): (1) LOSS-side only -- a loser
+                # gate via max(0, -tanh(pos_pnl/|stop|)) = max(0,-_pnl_scale computed
+                # inline here since _pnl_scale is defined later at line ~3092); WINNERS
+                # (pos_pnl>=0 -> gate 0) keep the LINEAR ramp byte-identical (a concave
+                # winner ramp would cut trend-aligned pullback longs prematurely -- the
+                # exact harm the prior trend-aligned slope-pressure ATTENUATION removal
+                # corrected, so the concavity is strictly loss-side). (2) TREND-STRENGTH
+                # gate (rsi_trend_str/0.20, the validated chop/trend separator already
+                # used by _exit_dd_gate/_be_trend_gate): full concavity in trends (crash
+                # is trending; a slope-against loser in a trend is a genuine adverse
+                # move -> cut faster), near-zero in chop (sideways mean-reverters
+                # oscillate on slope-against noise -> spare them -> sideways byte-
+                # identical). Byte-identical for winners (loss gate 0) and chop (trend
+                # gate 0). NEW cross-component data dep: _sl_slope_pressure SHAPE reads
+                # pos_pnl-loss x trend-strength (the pressure source's RAMP SHAPE, not
+                # its weight or threshold -- a structurally distinct lever on the
+                # slope-against path that the prior weight-amp and de-risk-concavity
+                # experiments did not touch). Smooth (x^k continuous, no boundary),
+                # direction-agnostic general principle (no regime label): a losing
+                # position under adverse slope in a trending regime exits sooner.
+                _sl_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _sl_concave_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                _sl_concave_k = 1.0 - 0.30 * _sl_loss_gate * _sl_concave_trend_gate  # 1.0 winner/chop, ~0.70 deep-loss+trend
+                _sl_slope_pressure = max(0.0, min(1.0, _sl_slope_pressure ** _sl_concave_k))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
