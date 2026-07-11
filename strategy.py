@@ -3844,7 +3844,18 @@ class Strategy:
                         # rsi_trend_str/0.20 (no boundary); byte-identical in chop (gate 0 ->
                         # k stays 1.0 linear) AND for winners/profit (max(0,-_pnl_scale)=0 ->
                         # no concavity term). Max concavity k=0.70 at deep loss in strong trend.
-                        _dr_loss_concave = 0.50 * max(0.0, -_pnl_scale) * max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                        # branch step23: FLOOR-PROTECTED gate on concavity (mirror the binary-
+                        # path gate from step10-16). The concavity's rsi_trend_str gate (step1)
+                        # is equivalent to ret_vlong*pos_dir for the de-risk population (step5
+                        # proven) but does NOT have the magnitude floor that protects mixed on
+                        # the binary path. Use the SAME floor-protected gate (ret_vlong*pos_dir
+                        # above 0.015, ramp 0.006) so the concavity also spares mixed's weakest
+                        # phases. Keep magnitude 0.50 (step19 showed 0.60 neutral; 0.50 is the
+                        # concavity optimum). This may recover the small mixed cost the
+                        # concavity's un-floored rsi_trend_str gate incurs, pushing toward +0.003.
+                        _dr_ta_raw_cc = ret_vlong * (1.0 if current_pos > 0 else -1.0)
+                        _dr_ta_mag_floor_cc = max(0.0, min(1.0, np.tanh((_dr_ta_raw_cc - 0.015) / 0.006)))
+                        _dr_loss_concave = 0.50 * max(0.0, -_pnl_scale) * _dr_ta_mag_floor_cc
                         _dr_k = _dr_k - _dr_loss_concave
                         _dr_k = max(0.4, _dr_k)  # floor at 0.4 (allow deeper concavity)
                         _de_risk = 1.0 - _dr_x ** _dr_k
