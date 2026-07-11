@@ -3034,7 +3034,7 @@ class Strategy:
                 # 0), and outside portfolio DD. Targets mixed Sharpe (longer capture of
                 # the high-PF bounce winners).
                 _local_align = max(0.0, np.tanh(ret_long * _ta_dir / 0.04))
-                _local_hold_ext_raw = 3.0 * _ta_long_gate * (1.0 - _ta_align) * _local_align * _ta_profit_gate * (1.0 - _port_dd_atten)
+                _local_hold_ext_raw = 4.5 * _ta_long_gate * (1.0 - _ta_align) * _local_align * _ta_profit_gate * (1.0 - _port_dd_atten)
                 _prev_lhe = self._local_hold_ext_ema.get(symbol, _local_hold_ext_raw)
                 if _local_hold_ext_raw >= _prev_lhe:
                     _lhe_alpha = 0.55  # slow rise (stability)
