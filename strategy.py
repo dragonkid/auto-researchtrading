@@ -3530,7 +3530,7 @@ class Strategy:
                         _dr_ta_raw = ret_vlong * (1.0 if current_pos > 0 else -1.0)
                         _dr_ta_mag_floor = max(0.0, min(1.0, np.tanh((_dr_ta_raw - 0.015) / 0.006)))
                         _dr_ta_gate_thresh = max(0.0, np.tanh(_dr_ta_raw / 0.02)) * _dr_ta_mag_floor
-                        _exit_thresh = _exit_thresh * (1.0 - 0.11 * _dr_ta_gate_thresh)
+                        _exit_thresh = _exit_thresh * (1.0 - 0.115 * _dr_ta_gate_thresh)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
