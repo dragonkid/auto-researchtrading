@@ -3821,9 +3821,9 @@ class Strategy:
                         # rsi_trend_str/0.20 (no boundary); byte-identical in chop (gate 0 ->
                         # k stays 1.0 linear) AND for winners/profit (max(0,-_pnl_scale)=0 ->
                         # no concavity term). Max concavity k=0.70 at deep loss in strong trend.
-                        _dr_loss_concave = 0.30 * max(0.0, -_pnl_scale) * max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                        _dr_loss_concave = 0.50 * max(0.0, -_pnl_scale) * max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                         _dr_k = _dr_k - _dr_loss_concave
-                        _dr_k = max(0.5, _dr_k)  # floor at 0.5 (avoid over-aggressive cut)
+                        _dr_k = max(0.4, _dr_k)  # floor at 0.4 (allow deeper concavity)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
