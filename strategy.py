@@ -3508,6 +3508,46 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # Exp1 (architectural, indep): VOL-EXPANSION-gated exit-THRESHOLD
+                    # lowering for losers. Prior sessions established two structural facts:
+                    # (1) the MAX-fusion ABSORBS loss-side PRESSURE-source additions
+                    # (_sl_pressure saturates to ~1.0 for deep losers and dominates the
+                    # max; loss-side ve_pressure and loss-side slope-weight DD-amp were
+                    # both BYTE-IDENTICAL -- the MAX-fusion is the structural ceiling for
+                    # pressure-source tuning on the loss side); (2) the exit THRESHOLD
+                    # (pressure->action CONVERSION) BYPASSES the MAX wall -- changing the
+                    # _exit_thresh at which exit_pressure triggers full exit is NOT
+                    # absorbed (the dominant _sl_pressure still saturates but full-exit
+                    # triggers at a lower pressure -> cut losers ~1 bar earlier). The prior
+                    # session's untested lead (a): a NON-slope NON-harvest crash giveback
+                    # lever via vol-spike exit, since vol-of-price expansion may LEAD the
+                    # price slope on a bounce's first bar (slope is a lagging OLS fit;
+                    # realized vol expands the moment the bar's range widens, before the
+                    # 12/16/22-bar slope mean flips). All prior ve experiments modified the
+                    # ve_pressure PRESSURE source (profit-side _w_ve, MAX-absorbed for
+                    # losers). This is the THRESHOLD lever on the vol-spike signal: a losing
+                    # position under a vol-expansion (vol_6/vol_18 > 1.3 = adverse regime
+                    # shift / bounce first bar) triggers full exit at a LOWER exit_pressure
+                    # -> cut the loser ~1 bar before slope-against confirms -> smaller
+                    # realized loss -> higher Sharpe in negative-Sharpe regimes (crash
+                    # -0.034, sideways -0.012 -- whose score IS the bare Sharpe per
+                    # compute_score, so any Sharpe gain is a direct unmultiplicated gain).
+                    # Loss-side only (gated on _pnl_scale<0 -> winners byte-identical,
+                    # _exit_thresh unchanged for them). Trend-strength gate (rsi_trend_str,
+                    # the validated chop/trend separator already used by _exit_dd_gate):
+                    # full effect in trends (crash/bull/mixed losers where a vol-spike is a
+                    # genuine adverse regime shift), near-zero in chop (sideways mean-
+                    # reverters oscillate on vol-spike noise -> spare them). Byte-identical
+                    # at low vol (vol_expansion<=1.3 -> _vol_spike_gate 0 -> lowering 0).
+                    # NEW cross-component data dep: _exit_thresh reads vol-of-price
+                    # expansion (the _vol_6/_vol_18 already computed at line ~3214 for the
+                    # ve_pressure source) at the THRESHOLD decision -- a vol-spike-driven
+                    # pressure->action conversion, structurally distinct from the ve
+                    # pressure SOURCE (which is MAX-absorbed for losers). Smooth tanh, no
+                    # boundary. Direction-agnostic general principle (no regime label): a
+                    # losing position under a vol-expansion regime shift exits sooner.
+                    _vol_spike_gate = max(0.0, min(1.0, np.tanh((_vol_expansion - 1.3) / 0.4)))
+                    _exit_thresh = _exit_thresh * (1.0 - 0.12 * _vol_spike_gate * _sustained_loss_trend_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
