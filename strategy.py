@@ -733,19 +733,7 @@ class Strategy:
                 # per-bar equity move saturates = sharp pullback; rally/mixed grind ~0.2-0.4pct).
                 _eq_diffs = np.diff(_eq_hist) / self._peak_equity
                 _eq_vol = float(np.std(_eq_diffs)) if len(_eq_diffs) >= 2 else 0.0
-                # step7: use a SHORT raw-equity history (3 bars, unsmoothed) for the vol
-                # gate so the gate detects bull's SHARP per-bar pullback drops that the 8-bar
-                # span-3 EMA smooths over (step6's gate missed bull because the EMA history
-                # is too smooth to see bull's sharp bars). The raw equity is tracked in a
-                # 3-bar rolling window; its std-of-diffs / peak detects sharp per-bar drops.
-                _eq_raw_hist = getattr(self, "_equity_raw_hist3", [])
-                _eq_raw_hist.append(equity)
-                if len(_eq_raw_hist) > 3:
-                    _eq_raw_hist = _eq_raw_hist[-3:]
-                self._equity_raw_hist3 = _eq_raw_hist
-                _eq_raw_diffs = np.diff(_eq_raw_hist) / self._peak_equity if len(_eq_raw_hist) >= 2 else np.array([0.0])
-                _eq_vol_raw = float(np.std(_eq_raw_diffs)) if len(_eq_raw_diffs) >= 2 else 0.0
-                _smooth_vol_gate = max(0.0, min(1.0, (0.012 - _eq_vol_raw) / 0.006))  # ~1 low raw eq-vol, ~0 high
+                _smooth_vol_gate = max(0.0, min(1.0, (0.008 - _eq_vol) / 0.004))  # ~1 low eq-vol, ~0 high eq-vol
                 _port_eq_mom_shrink = _smoothed * _smooth_vol_gate + _port_eq_mom_shrink * (1.0 - _smooth_vol_gate)
             # else: release (raw >= prev) -> take raw instantly (no smoothing)
             self._eq_mom_shrink_ema = _port_eq_mom_shrink
