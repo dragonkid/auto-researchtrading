@@ -2763,6 +2763,50 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp2 (architectural, indep): SHORT-ONLY FAST-SLOPE LEADING-EDGE on slope-against.
+                # The documented crash binding constraint (keep aaebca9d, Exp1 this session) is
+                # bounce TIMING: crash winning shorts ride the downtrend, then GIVE BACK on the
+                # bounce before the multi-window _exit_slope (12/16/22-bar MEAN) triggers the
+                # slope-against exit -- the mean AVERAGES the bounce's first bars with the prior
+                # downtrend bars -> stays negative for several bars after the bounce starts ->
+                # the giveback accumulates during those bars. NEW data dep on the exit subsystem:
+                # a FAST 5-bar slope (computed fresh, distinct from the 12/16/22 mean) added to
+                # _slope_against for SHORTS, so the pressure starts RISING on the bounce's first
+                # CONFIRMED bars instead of waiting for the mean to flip. GATED to avoid the two
+                # known walls: (a) SHORT-ONLY (long gate 0) -- the forward-looking-outcome wall is
+                # on LONGS (bull/mixed pullback longs RECOVER; a faster slope-against would cut
+                # their winners), so longs are byte-identical by construction; (b) CONFIRMATION
+                # gate -- the fast slope addend fires ONLY when BOTH the fast 5-bar slope AND the
+                # multi-window mean slope are POSITIVE (against the short): a 1-bar noise spike
+                # that flips the fast slope but leaves the mean still negative -> gate 0 -> no
+                # addend -> no noise-induced exit. The confirmation (both agree the move is up =
+                # against the short) is the structural separator between a real bounce (sustained
+                # enough to flip both windows) and a 1-bar spike (fast slope up, mean unchanged).
+                # (c) WINNER-PROFIT gate -- fires only when the short is IN PROFIT (pos_pnl>0):
+                # this targets crash WINNING shorts (the giveback-on-bounce population), NOT
+                # losing shorts (whose bounce-exit is already handled by slope-against + the
+                # MAX-fusion dominant _sl_pressure; Exp4 905541c8 confirmed a 7th loss-side
+                # velocity source is MAX-absorbed there). The addend is a bounded fraction of the
+                # fast slope (max 40pct of the mean magnitude), so it LEADS the mean toward the
+                # threshold without dominating the robust multi-window signal. Continuous tanh
+                # gates (no boundary). Byte-identical for longs (gate 0), losing shorts (profit
+                # gate 0), and unconfirmed bounces (confirmation gate 0). Targets crash Sharpe via
+                # faster bounce DETECTION (the untested lead from Exp1 -- earlier HARVEST was
+                # wrong; faster EXIT-on-confirmed-bounce is the distinct mechanism).
+                if current_pos < 0:
+                    _fast_w = 5
+                    if len(_hl2) >= _fast_w + 1:
+                        _fast_sl_val = float(_fast_slope(np.log(_hl2[-_fast_w:])))
+                        # fast slope positive = up move = against the short (bounce)
+                        _fast_confirm = max(0.0, min(1.0, np.tanh(_fast_sl_val / 0.0008)))
+                        # mean must also be positive (against short) = confirmation (both agree up)
+                        _mean_confirm = max(0.0, min(1.0, np.tanh(_exit_slope / 0.0004)))
+                        # winner-profit gate (pos_pnl>0 = winning short)
+                        _fast_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                        _fast_lead = 0.40 * _fast_confirm * _mean_confirm * _fast_profit_gate
+                        if _fast_lead > 0.0:
+                            _slope_against = _slope_against + _fast_lead * max(_fast_sl_val, 0.0)
+                            _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
