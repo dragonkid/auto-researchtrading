@@ -2892,6 +2892,36 @@ class Strategy:
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
+                # Exp2 (architectural, indep, this session): PORTFOLIO-DD FADE on the
+                # trend-aligned-winner pp-attenuation. NEW cross-component data dep: the
+                # pp-attenuation (which lets trend-aligned longs ride pullbacks = the
+                # documented bull DD source, magnitude 0.95 near-complete suppression)
+                # now ALSO reads the PORTFOLIO DD LEVEL. The attenuation rides winners
+                # through SHALLOW pullbacks (the Sharpe source: bull longs capturing the
+                # recovery after a shallow dip) BUT releases the winner (lets pp_pressure
+                # resume -> harvests at the peak -> caps further DD) when the portfolio is
+                # in DEEP DD. The existing gates (_gb_mag_gate giveback_ratio<0.15,
+                # _slope_against<0.0004, long-only, up_persist<0.40) do NOT catch the
+                # deep-portfolio-DD case: a GRADUAL pullback can keep giveback_ratio low
+                # AND slope_against small AND up_persist low (persistent uptrend) while the
+                # PORTFOLIO DD deepens to 12pct -- the position gates all pass but the
+                # portfolio is deep in DD. The pp-attenuation fires at full 0.95 magnitude
+                # regardless of portfolio DD -> the winner keeps riding the deep pullback ->
+                # bull's 12.47pct DD. This fade engages ONLY in the deep-DD region (onset
+                # past the 5pct dd_gate knee, leverage-coupled scale matching the existing
+                # giveback-tightening/tp-harvest-relax disciplines) so shallow pullbacks
+                # (the Sharpe source) are BYTE-IDENTICAL (fade clamps to 1.0 below onset).
+                # At deep DD the fade -> 0 -> pp_pressure resumes at full -> harvest the
+                # winner at its peak -> cap the DD from riding through the deepest pullback.
+                # Byte-identical for: shorts (long_only_gate 0 -> _ta_winner_gate 0 already),
+                # non-trending (up_persist gate 0), sharp reversals (slope/giveback gates 0),
+                # and ALL shallow-pullback bars (dd_frac <= onset -> fade 1.0). Only
+                # trend-aligned LONG winners in a GRADUAL pullback at DEEP portfolio DD are
+                # affected -> precisely the bull 2021 May-Jul correction population.
+                # Onset 0.06 (6pct portfolio DD, past the 5pct knee); scale 0.04 (fades over
+                # 6-10pct, near-zero by 10pct). Continuous tanh (no boundary).
+                _pp_ta_dd_fade = max(0.0, min(1.0, 1.0 - np.tanh((_port_dd_frac - 0.06) / 0.04)))
+                _ta_winner_gate = _ta_winner_gate * _pp_ta_dd_fade
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
