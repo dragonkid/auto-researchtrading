@@ -3034,7 +3034,24 @@ class Strategy:
                 # 0), and outside portfolio DD. Targets mixed Sharpe (longer capture of
                 # the high-PF bounce winners).
                 _local_align = max(0.0, np.tanh(ret_long * _ta_dir / 0.03))
-                _local_hold_ext_raw = 3.0 * _ta_long_gate * (1.0 - _ta_align) * _local_align * _ta_profit_gate * (1.0 - _port_dd_atten)
+                # branch step6: DEEP-BEAR EXCLUSION on the local-trend extension.
+                # step3 (magnitude 4.5) over-extended crash bounce longs (dead-cat
+                # bounces: counter-trend-at-96-bar [ret_vlong<0] + local-trend-aligned
+                # [ret_long>0 during the bounce] + in-profit) -> rode the bounce into the
+                # next decline leg -> crash -0.0016. mixed's bounce longs (a down year but
+                # SHALLOWER multi-day downtrend, ret_vlong~-0.01..-0.02) persist; crash's
+                # (DEEP bear, ret_vlong<-0.03) reverse. Exclude the extension for DEEP-bear
+                # positions (ret_vlong<-0.03) so magnitude can rise (helping rally/mixed
+                # bounce longs in shallow/moderate downtrends) WITHOUT over-extending crash
+                # dead-cat bounce longs. Continuous tanh fade on -ret_vlong (the bear
+                # magnitude): 1.0 (no exclusion) above -0.03, fading to 0 by -0.04.
+                # Byte-identical for bull/rally (ret_vlong>0 -> no exclusion) and mixed
+                # (ret_vlong~-0.01..-0.02 > -0.03 -> no exclusion); excludes only deep-bear
+                # (crash). General principle (no regime label): a local-trend bounce in a
+                # DEEP multi-day downtrend is a dead-cat bounce (reverses); in a SHALLOW
+                # downtrend it is a recovery bounce (persists).
+                _deep_bear_excl = 1.0 - max(0.0, min(1.0, np.tanh((-ret_vlong - 0.03) / 0.01)))
+                _local_hold_ext_raw = 4.5 * _ta_long_gate * (1.0 - _ta_align) * _local_align * _ta_profit_gate * (1.0 - _port_dd_atten) * _deep_bear_excl
                 _prev_lhe = self._local_hold_ext_ema.get(symbol, _local_hold_ext_raw)
                 if _local_hold_ext_raw >= _prev_lhe:
                     _lhe_alpha = 0.55  # slow rise (stability)
