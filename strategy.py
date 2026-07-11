@@ -498,6 +498,11 @@ class Strategy:
         # state + new control flow: _max_hold reads a temporally-smoothed hold-extension
         # magnitude (was the instantaneous product). Reset on full exit.
         self._hold_ext_ema = {}
+        # Exp4 (this session): per-symbol EMA of the LOCAL-trend hold-extension
+        # magnitude (mirrors _hold_ext_ema for the local 20-bar-trend extension that
+        # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
+        # (slow-rise / fast-fall). Reset on full exit; default 0.0.
+        self._local_hold_ext_ema = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -3001,7 +3006,43 @@ class Strategy:
                     _he_alpha = 0.15  # fast fall: release immediately on winner->loser (raw)
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
                 self._hold_ext_ema[symbol] = _ta_dd_hold_ext
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext
+                # Exp4 (architectural, indep, this session): LOCAL-TREND hold extension
+                # for COUNTER-TREND-AT-MULTI-DAY in-profit longs (mixed's bounce winners).
+                # The existing _ta_dd_hold_ext extends hold for longs that are 96-bar
+                # trend-aligned (_ta_align = tanh(ret_vlong*dir/0.01) ~1) -> fires for
+                # bull/rally longs. mixed is a multi-day DOWN year (ret_vlong<0 for held
+                # longs) -> _ta_align ~0 -> mixed longs get NO hold extension, so mixed's
+                # bounce winners (PF 3.9, the highest) are held at baseline max_hold and
+                # exit via time-pressure before the local bounce fully plays out. NEW
+                # hold-extension signal: LOCAL 20-bar trend-align (ret_long*dir>0 = the
+                # position is aligned with the 20-bar local move, i.e. a bounce leg in the
+                # down year) GATED on LOW 96-bar align (1 - _ta_align high = COUNTER-TREND
+                # at multi-day) so bull/rally (96-bar aligned, _ta_align~1 -> 1-_ta_align~0)
+                # are BYTE-IDENTICAL. Fires for: long-only + in-profit (developing winner,
+                # not a loser riding down) + during portfolio DD (1 - _port_dd_atten) +
+                # counter-trend-at-96-bar + local-trend-aligned-at-20-bar = mixed's rally-
+                # phase bounce longs during the down-year decline. Composes ADDITIVELY
+                # with _ta_dd_hold_ext on _max_hold (the two are mutually exclusive by the
+                # _ta_align vs (1-_ta_align) gates: a long is either 96-bar-aligned OR
+                # counter-trend-at-96-bar, not both -> at most one extension fires per
+                # position -> no double-extension). Asymmetric EMA-smoothed (mirrors the
+                # validated _hold_ext_ema: slow-rise to damp AR(1) wobble, fast-fall to
+                # release on winner->loser transition). New cross-timescale data dep +
+                # new control flow on the hold-duration subsystem: a LOCAL-trend hold
+                # extension distinct from the multi-day one. Byte-identical for shorts
+                # (long gate 0), 96-bar-aligned longs (1-_ta_align~0), losers (profit gate
+                # 0), and outside portfolio DD. Targets mixed Sharpe (longer capture of
+                # the high-PF bounce winners).
+                _local_align = max(0.0, np.tanh(ret_long * _ta_dir / 0.04))
+                _local_hold_ext_raw = 1.5 * _ta_long_gate * (1.0 - _ta_align) * _local_align * _ta_profit_gate * (1.0 - _port_dd_atten)
+                _prev_lhe = self._local_hold_ext_ema.get(symbol, _local_hold_ext_raw)
+                if _local_hold_ext_raw >= _prev_lhe:
+                    _lhe_alpha = 0.55  # slow rise (stability)
+                else:
+                    _lhe_alpha = 0.15  # fast fall (release on winner->loser)
+                _local_hold_ext = (1.0 - _lhe_alpha) * _local_hold_ext_raw + _lhe_alpha * _prev_lhe
+                self._local_hold_ext_ema[symbol] = _local_hold_ext
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
@@ -4471,7 +4512,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
