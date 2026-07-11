@@ -1242,7 +1242,7 @@ class Strategy:
             # is retained (step1's discriminating form); the gate zeros the SIGNAL not
             # the sign, so near-zero bars contribute 0 signal (conf 0.5) not a
             # sign-flipped signal.
-            _dvp9_mag_gate = max(0.0, np.tanh(abs(_dvp9) / 0.10))
+            _dvp9_mag_gate = max(0.0, np.tanh(abs(_dvp9) / 0.20))  # step9: raise threshold 0.10->0.20 (pin more noise bars, keep only strong-|DVP| signal bars; decouple noise reduction from signal loss)
             _dvp9_signal = _dvp9_signal * _dvp9_mag_gate
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
