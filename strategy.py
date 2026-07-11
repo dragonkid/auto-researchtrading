@@ -715,19 +715,19 @@ class Strategy:
             if _port_eq_mom_shrink < _prev_shrink:
                 # Deepening: smooth toward the new (smaller) shrink over span-3.
                 _smoothed = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
-                # step3: BOUNDED-LAG CAP -- the smoothed shrink can lag the raw shrink by
-                # at most 30pct of the raw shrink DEPTH (1.0 - raw). Without the cap the
-                # EMA lag lets positions stay bigger than raw during the early pullback ->
-                # bull DD rises (12.47->12.61, the -0.0004 bull drag at step1). Capping the
-                # lag means: for a SHARP deepening (large raw shrink depth) the cap binds
-                # -> shrink engages closer to raw -> DD lag capped (bull's sharp pullbacks
-                # protected); for a GRADUAL deepening (small raw shrink depth, rally/mixed
-                # grind pullbacks) the cap does not bind -> full span-3 smoothing -> the
-                # per-bar size wobble damped -> Sharpe benefit preserved. The cap is a
-                # tight FLOOR on how far the smoothed shrink can fall behind the raw.
-                _raw_depth = 1.0 - _port_eq_mom_shrink  # intended shrink depth [0, 0.15]
-                _shrink_floor = _port_eq_mom_shrink - 0.15 * _raw_depth  # step4: 15pct-of-depth cap (step3 30pct was inert)
-                _port_eq_mom_shrink = max(_smoothed, _shrink_floor)
+                # step5: VOL-RATIO GATE on the deepening-smooth -- smooth only LOW-vol
+                # gradual pullbacks (rally/mixed grind, vol_ratio<1.0), RAW in HIGH-vol
+                # sharp pullbacks (bull, vol_ratio>1.0). The validated bull/rally separator
+                # (the scale-in quantization keep used vol_ratio: bull HIGH-vol SHARP vs
+                # rally LOW-vol GRIND). Bull's DD rise at step1 (12.47->12.61) came from
+                # the smoothed shrink lagging raw during bull's sharp pullbacks -> positions
+                # bigger -> DD up. Gating the smooth OFF in high-vol -> bull uses RAW shrink
+                # (no DD lag -> DD recovers toward 12.47) while rally/mixed (low-vol) keep
+                # the span-3 smoothing -> Sharpe benefit preserved. Sideways (low-vol) keeps
+                # smoothing too but release-fast handles rebuild. Continuous tanh ramp
+                # [1.0 at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.2].
+                _smooth_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
+                _port_eq_mom_shrink = _smoothed * _smooth_vol_gate + _port_eq_mom_shrink * (1.0 - _smooth_vol_gate)
             # else: release (raw >= prev) -> take raw instantly (no smoothing)
             self._eq_mom_shrink_ema = _port_eq_mom_shrink
 
