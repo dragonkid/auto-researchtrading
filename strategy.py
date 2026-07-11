@@ -3034,21 +3034,7 @@ class Strategy:
                 # 0), and outside portfolio DD. Targets mixed Sharpe (longer capture of
                 # the high-PF bounce winners).
                 _local_align = max(0.0, np.tanh(ret_long * _ta_dir / 0.03))
-                # branch step7: VOL-NORMALIZED magnitude boost on the local-trend
-                # extension. The magnitude ceiling (3.0) is set by crash over-extension
-                # (dead-cat bounce longs over-extend at 4.5). crash is HIGH-vol (vol_ratio
-                # ~1.3); rally/mixed (the beneficial bounce-long populations) are calmer
-                # (vol_ratio ~0.8-1.0). Boost the extension magnitude up to +50pct in LOW-
-                # vol (calm grind, rally/mixed) -> longer hold on the beneficial bounce
-                # longs; NO boost in high-vol (crash/bull) -> crash dead-cat bounce longs
-                # stay at base 3.0 (not over-extended). Same vol-gate discipline as the
-                # existing _vlong_vol_gate / opp-exit vol-gate (low-vol grind, spares
-                # high-vol). Continuous tanh on (1 - vol_ratio). Byte-identical at
-                # vol_ratio>=1.0 (no boost). Targets rally (calm uptrend, the swing variable
-                # still gaining at higher magnitude); crash protected by the high-vol
-                # exclusion.
-                _local_vol_boost = 1.0 + 0.5 * max(0.0, np.tanh((1.0 - vol_ratio) / 0.2))
-                _local_hold_ext_raw = 3.0 * _ta_long_gate * (1.0 - _ta_align) * _local_align * _ta_profit_gate * (1.0 - _port_dd_atten) * _local_vol_boost
+                _local_hold_ext_raw = 3.0 * _ta_long_gate * (1.0 - _ta_align) * _local_align * _ta_profit_gate * (1.0 - _port_dd_atten)
                 _prev_lhe = self._local_hold_ext_ema.get(symbol, _local_hold_ext_raw)
                 if _local_hold_ext_raw >= _prev_lhe:
                     _lhe_alpha = 0.55  # slow rise (stability)
