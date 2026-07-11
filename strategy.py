@@ -2737,34 +2737,6 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Exp3 (architectural, indep, this session): TREND-ALIGNED-WINNER
-                # stop-widening. NEW cross-component data dep on the stop-loss: the
-                # effective stop width now reads (trend-align, profit, hold-duration).
-                # A trend-aligned (ret_vlong*pos_dir>0) WINNER (pos_pnl>0) past scale-in
-                # (bars_held>ENTRY_FULL_BARS) gets a WIDER effective stop (up to +30pct)
-                # so a noise-driven adverse spike that would have hit the hard stop (and
-                # stopped out a developing winner before the trend resumes) is absorbed.
-                # This is the stop-loss analog of the pp-attenuation (which lets winners
-                # ride giveback SOFT-exit pressure); here we let winners ride the HARD
-                # stop through transient adverse noise. Targets the Sharpe axis: bull/
-                # rally trend-aligned winners that get stopped on pullback noise spikes
-                # before the trend resumes -> fewer noise-stopouts -> higher Sharpe.
-                # Conservative safety: profit-gate is SMOOTH (tanh on pos_pnl/|stop|) so
-                # the widening fades to 0 as the position dips toward loss -> a winner
-                # giving back to near-breakeven loses the widening -> snaps back to the
-                # original (tighter) stop BEFORE going negative -> no discontinuity into
-                # the loss region (losers byte-identical: pos_pnl<0 -> profit-gate 0 ->
-                # no widening). Counter-trend (gate 0) and fresh entries (held gate 0)
-                # byte-identical. Continuous tanh throughout, no new decision boundary.
-                # Distinct from the pp-attenuation (different subsystem: hard-stop floor
-                # vs soft giveback pressure) and from the de-risk convex cushion
-                # (different lever: stop WIDTH vs de-risk RAMP SHAPE).
-                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
-                _sl_ta_align = max(0.0, np.tanh(ret_vlong * _pos_dir_sl / 0.04))
-                _sl_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _sl_held_gate = 1.0 if bars_held > ENTRY_FULL_BARS else 0.0
-                _sl_widen = 1.0 + 0.30 * _sl_ta_align * _sl_profit_gate * _sl_held_gate
-                _stop_abs = max(0.018, min(0.045, _stop_abs * _sl_widen))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
