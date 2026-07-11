@@ -3508,55 +3508,6 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
-                    # Exp3 (architectural, indep): exit-THRESHOLD lowering gated on
-                    # SLOPE-AGAINST-DOMINATED mid-range losers (NOT stop-saturated). This
-                    # session's Exp1 + Exp2 confirmed the absorption wall extends to the
-                    # THRESHOLD lever gated on sustained-loss+vol-spike (Exp1, inert -- the
-                    # gate selected STOP-BOUND deep losers where _sl_pressure saturates and
-                    # dominates; lowering _exit_thresh cannot move an exit_pressure already
-                    # at/above 1.0 from the stop) AND to the pressure-SOURCE SHAPE lever
-                    # (Exp2, MAX-absorbed -- concave _sl_slope_pressure absorbed at deep by
-                    # stop, at mid by near-saturation/non-binding-max). The UNTESTED
-                    # remaining (per Exp2's conclusion): a THRESHOLD lever (the proven MAX-
-                    # bypass -- the portfolio-DD exit_thresh keep +0.003462) gated to select
-                    # the SLOPE-AGAINST-DOMINATED MID-RANGE loser population where slope-
-                    # against is the BINDING exit (NOT stop-saturated). The prior sustained-
-                    # loss DD lowering above selects SUSTAINED (4/4 neg) losers -> deep ->
-                    # stop-bound (Exp1 wall). This selects the COMPLEMENTARY population:
-                    # a loser where _sl_slope_pressure (slope-against, line ~2765) is in a
-                    # MID band (slope-against is the active soft term, not near 0 and not
-                    # near-saturated) AND _sl_pressure (stop proximity, line ~2747) is LOW
-                    # (stop NOT saturated -> there IS threshold headroom to lower). For this
-                    # population, slope-against is the binding exit path (crash's counter-
-                    # trend long losers exit via slope-against per the 23-step branch), and
-                    # the exit is MID-range -> lowering _exit_thresh triggers the full exit
-                    # sooner -> cut the slope-against loser ~1 bar earlier -> smaller
-                    # realized loss -> higher crash Sharpe (score == bare Sharpe). Gate:
-                    # (1) _sa_dom = tanh((_sl_slope_pressure - 0.25)/0.20) -- ramps in over
-                    # [0.25, 0.65] slope-against pressure (mid band, not the early 0-0.25
-                    # where slope-against is non-binding, not the 0.65+ near-saturation
-                    # where concavity/weight were absorbed); (2) _stop_clear = 1 -
-                    # tanh((_sl_pressure - 0.30)/0.25) -- 1 when stop LOW (clear of stop),
-                    # fading to 0 by _sl_pressure=0.55 (stop encroaching -> the sustained-
-                    # loss DD lowering above handles stop-bound losers, this must NOT
-                    # double-fire -> the _stop_clear fade prevents overlap). (3) trend-
-                    # strength gate (rsi_trend_str/0.20, the validated separator) spares
-                    # sideways mean-reverters (a mid-range slope-against in chop is noise,
-                    # not an adverse regime move). Loss-side only (already in the
-                    # _pnl_scale<0 block; winners byte-identical). Byte-identical when
-                    # _sl_slope_pressure<0.25 (gate 0), when stop saturated (gate 0), or in
-                    # chop (gate 0). NEW cross-component data dep: _exit_thresh reads the
-                    # JOINT (slope-against mid-range x stop-clear x trend-strength) -- a
-                    # gate that selects the slope-against-DOMINATED non-stop-saturated
-                    # population the prior threshold levers (sustained-loss DD, vol-spike)
-                    # MISSED because they selected stop-bound losers. Smooth tanh, no
-                    # boundary. Direction-agnostic general principle (no regime label): a
-                    # losing position under adverse slope (stop not yet encroaching) in a
-                    # trending regime exits sooner.
-                    _sa_mid = max(0.0, min(1.0, np.tanh((_sl_slope_pressure - 0.25) / 0.20)))
-                    _stop_clear = 1.0 - max(0.0, min(1.0, np.tanh((_sl_pressure - 0.30) / 0.25)))
-                    _sa_dom_gate = _sa_mid * _stop_clear * _sustained_loss_trend_gate
-                    _exit_thresh = _exit_thresh * (1.0 - 0.10 * _sa_dom_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
