@@ -1191,28 +1191,27 @@ class Strategy:
             # confs (tanh on +/- signal) and strong-sum aggregation are list-length-
             # agnostic; the persistence code is updated to 9.
             _dvp9_n = 12
-            _dvp9_c = smoothed_closes[-_dvp9_n - 1:]  # step4: use SMOOTHED closes for the sign (noise-attenuated -> no sign-flip on sub-5bps perturbations)
+            _dvp9_c = closes[-_dvp9_n - 1:]  # step5: revert to RAW closes + hard sign (step1's discriminating form) but reduce DVP WEIGHT to lessen noise impact
             _dvp9_v = bd.history["volume"].values[-_dvp9_n:]
-            # BRANCH step4 (fix step1 noise-sensitivity): use SMOOTHED closes for the
-            # DVP sign. Step1 (hard sign on raw closes) gave sideways raw +0.097 Sharpe
-            # (the volume-confirmation genuinely filters marginal entries) BUT
-            # stability crashed 1.0->0.248: np.sign(np.diff(raw_closes)) flips on sub-
-            # 5bps close perturbations (a near-zero close-change flips sign -> flips
-            # the volume weight -> flips DVP -> entry-timing divergence). Step2
-            # (smooth tanh/close_diff/sigma) recovered stability but LOST the raw gain
-            # (sideways -0.024, the tanh over-blended genuine moves). Step3 (deadzone
-            # sign) was worse (-0.029, the deadzone changed the DVP distribution). The
-            # root cause: the hard SIGN's crispness gives the discrimination, but it
-            # must operate on a NOISE-ROBUST input. smoothed_closes (EMA-smoothed,
-            # already used by ret_short/ER voter line ~1113/1512) is noise-attenuated:
-            # a sub-5bps perturbation to the RAW close moves the SMOOTHED close by
-            # ~smooth_alpha * 5bps (small, EMA low-pass), and the smoothed close-DIFF
-            # sign is stable (the smoothing absorbs the near-zero perturbation before
-            # it can flip a diff sign). This keeps the CRISP hard sign (preserving the
-            # discrimination that gave sideways +0.097 raw) on a NOISE-ROBUST input
-            # (the smoothed close-diff doesn't flip under AR(1)) -> stability preserved
-            # AND raw gain preserved. The volume weights still use raw volume (volume
-            # is not perturbed by the noise test, which only perturbs close/high/low).
+            # BRANCH step5: revert to step1's RAW-close hard sign (the ONLY form that
+            # gave sideways raw +0.097 Sharpe) but reduce the DVP VOTER WEIGHT 0.55 ->
+            # 0.30 to lessen the noise impact on stability. Step1 (weight 0.55, hard
+            # sign) gave sideways raw +0.097 BUT stability crashed 0.248 (the hard
+            # sign's near-zero flips caused entry-timing divergence). Steps 2-4 tried
+            # to fix stability via the SIGN function (smooth tanh / deadzone /
+            # smoothed-closes) -- ALL lost the sideways raw gain (the discrimination
+            # came from the crisp hard sign on raw closes; softening it removed the
+            # signal). NEW approach: keep the discriminating hard sign on raw closes
+            # (preserving sideways raw) but HALVE the voter WEIGHT so the noise-driven
+            # sign-flips contribute LESS to the strong-sum -> the entry-timing
+            # divergence shrinks (a noise-flipped DVP voter shifts _bull_strong by
+            # ~0.30*0.8 instead of ~0.55*0.8) -> stability recovers toward the 0.50
+            # knee (need only >0.50 for a nonzero sideways score; stab 0.60 -> factor
+            # 0.33 -> sideways score ~0.085*0.33 = 0.028 vs baseline -0.012 = +0.040).
+            # The smaller weight trades some raw gain (less volume-confirmation
+            # amplitude) for stability recovery (less noise impact) -- the stab/raw
+            # tension resolution via WEIGHT rather than sign-function. The hard sign
+            # on raw closes remains (the discriminating form); only the weight scales.
             _dvp9_rets = np.sign(np.diff(_dvp9_c))
             _dvp9 = float(np.sum(_dvp9_v * _dvp9_rets) / max(np.sum(_dvp9_v), 1e-10))  # in [-1, 1]
             _dvp9_signal = _dvp9 / 0.20  # sharpness 0.20 (DVP magnitude ~0.1-0.3 in trends); >0 = volume confirms bull
@@ -1252,7 +1251,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency; 9th: volume-flow DVP (both small fixed weight, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.30)  # 8th: range/close efficiency (0.55); 9th: volume-flow DVP (0.30 step5 -- reduced from 0.55 to lessen noise impact on stability, keep raw sideways gain)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
