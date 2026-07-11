@@ -3579,6 +3579,37 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
+                    # Exp (architectural, indep): SHORT-SIDE DEEP-PEAK partial _ts_supp release.
+                    # The documented crash binding constraint (keep aaebca9d) is bounce TIMING:
+                    # crash winning shorts ride the downtrend (suppressed by _ts_supp), then
+                    # GIVE BACK on the bounce before slope-against (12/16/22-bar mean, LAGGING)
+                    # triggers the full exit. The giveback between peak and slope-against is the
+                    # irreducible crash DD/return drag. NEW data dep on the tp-harvest path: for
+                    # SHORT positions at VERY deep peaks (tp_ratio>=3.0) while the multi-day
+                    # trend STILL strongly confirms the short (ret_vlong*pos_dir strongly >0 =
+                    # downtrend intact, the trend-align factor of _ts_supp already high), release
+                    # a SMALL fraction (max 25%) of _ts_supp so a partial tp_harvest locks some
+                    # realized gain at the deep peak -> when the bounce comes, less paper gain is
+                    # given back -> smaller crash DD/loss. DISTINCT from the DD-tp-relax above
+                    # (keys on portfolio DD, not position direction/peak depth): this keys on
+                    # (position direction SHORT, peak depth, multi-day trend confirmation) --
+                    # direction-asymmetric structural property (short-side giveback is the
+                    # crash-specific bounce risk; long-side giveback recovers in bull/rally
+                    # uptrends, so LONGS keep full suppression -> byte-identical for all long
+                    # regimes). The multi-day trend-confirmation requirement (ret_vlong*pos_dir
+                    # must STILL be high) means the release only fires while the downtrend is
+                    # genuinely intact -- if the multi-day trend is weakening (the bounce is
+                    # becoming a real reversal), _ts_supp's trend-align factor drops to 0 -> the
+                    # release multiplies a near-zero _ts_supp -> near-zero effect (no over-harvest
+                    # into a genuine reversal; slope-against handles the real exit). Byte-identical
+                    # for longs (short gate 0), shallow-peak shorts (tp_ratio<3.0 -> depth gate 0),
+                    # and non-trend shorts (trend-align factor 0 -> _ts_supp 0 -> release of 0).
+                    _short_deep_release = 0.0
+                    if current_pos < 0 and _tp_ratio >= 3.0:
+                        _short_deep_gate = max(0.0, min(1.0, np.tanh((_tp_ratio - 3.0) / 1.0)))
+                        _short_trend_conf = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                        _short_deep_release = 0.25 * _short_deep_gate * _short_trend_conf
+                    _ts_supp = _ts_supp * (1.0 - _short_deep_release)
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
                     # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
