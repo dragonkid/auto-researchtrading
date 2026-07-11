@@ -3710,6 +3710,54 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # Exp1 (architectural, indep): VOL-EXPANSION-GATED de-risk floor lowering
+                    # for TREND-ALIGNED WINNERS. NEW cross-component data dep on the de-risk
+                    # action-conversion subsystem: _de_floor (the ramp onset) now reads the
+                    # vol-of-price expansion signal (_vol_expansion = vol_6/vol_18, the
+                    # validated regime-shift detector already powering _ve_pressure at line
+                    # ~3216). Prior sessions PROVED bull's 12.47pct DD (the dominant cap:
+                    # dd_gate ~0.021 crushes bull's 0.507 Sharpe to score 0.006) is structurally
+                    # a SHARP-REVERSAL DD, NOT a gradual-pullback-ride DD (two independent
+                    # disprovals: harvesting stale-peak/fast-giveback winners cut Sharpe
+                    # WITHOUT moving DD; the DD-source bars have the 5 attenuation gates OFF
+                    # so pp_pressure fires fully -- the position exits the sharp reversal at
+                    # near-full size). Reducing bull DD requires a mechanism on the
+                    # sharp-reversal EXIT path; the slope-against/stop paths are heavily
+                    # tuned/dead. The UNTESTED lever: a LEADING-INDICATOR pre-emptive size
+                    # reduction -- vol-expansion (vol_6 >> vol_18) PRECEDES sharp reversals
+                    # (regime-shift detection); when it fires for a trend-aligned winner,
+                    # LOWER the de-risk floor so the position begins its graduated de-risk
+                    # ramp at LOWER exit_pressure -- by the time the sharp reversal's
+                    # exit_pressure arrives, more size is already cut -> smaller realized
+                    # loss on the reversal bar -> lower DD -> relaxed dd_gate -> higher bull
+                    # score (the dominant cap). Distinct from: (a) _ve_pressure (MAX-absorbed
+                    # exit source -- this changes the FLOOR/action-conversion, not a pressure
+                    # source, bypassing the MAX-fusion absorption wall); (b) the
+                    # trend-aligned floor relaxation at line ~3712 (LOWERS floor to ride
+                    # winners through gradual pullbacks -- this ADDITIONALLY lowers when a
+                    # regime shift is IMMINENT, the opposite intent: start de-risking
+                    # earlier because the pullback is likely to BECOME a sharp reversal);
+                    # (c) the failed floor-RAISE to 0.92 (95f568f1, near-binary cut of
+                    # everything including recoverable trend longs -- this is a floor LOWER
+                    # with a narrow vol-expansion x trend-aligned x profit gate, gradual not
+                    # blunt). Gated on trend-aligned (so crash ct-bounce longs, ret_long*
+                    # pos_dir<0, are byte-identical) + profit (losers byte-identical, already
+                    # at 0.85 loss floor) + vol-expansion (calm regimes byte-identical, the
+                    # gate that makes this fire ONLY on regime-shift-risk bars). Max extra
+                    # lowering 0.15 (a trend-aligned winner at full vol-expansion saturation
+                    # gets floor 0.55 - 0.10 [trend-align relax] - 0.15 [ve pre-empt] = 0.30,
+                    # starting the de-risk ramp at 30pct of exit_thresh instead of 55pct).
+                    # Continuous tanh on (vol_expansion - 1.3)/0.4 (same onset/saturation as
+                    # _ve_pressure, the validated regime-shift scale). Byte-identical when
+                    # _vol_expansion <= 1.3 (calm/normal vol: bull grind, rally, sideways,
+                    # mixed -- only the sharp-reversal-precursor bars fire) OR trend-align=0
+                    # (crash ct longs) OR profit=0 (losers). Direction-agnostic general
+                    # principle (no regime label): a winning position facing a vol-expansion
+                    # regime shift is at elevated sharp-reversal risk -> start trimming
+                    # sooner. Targets bull (the DD-crushed regime); spares all others via the
+                    # triple gate.
+                    _ve_de_gate = max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                    _de_floor -= 0.15 * _ve_de_gate * _ta_de_align * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
