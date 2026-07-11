@@ -690,7 +690,7 @@ class Strategy:
             # V-shaped). /0.01 saturates by -1pct -> sideways gentle down-swings partially
             # excluded (gate ~0.5-0.8), rally/mixed sharp pullbacks still saturate -> keeps
             # the rally/mixed DD-cut while reducing sideways' gentle-oscillation shrink.
-            _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
+            _port_eq_mom_shrink = 1.0 - 0.165 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
             # Exp2 (architectural indep, session-context follow-up to Exp1): ASYMMETRIC
             # RELEASE-FAST output-EMA on the equity-momentum shrink FACTOR. Exp1 (symmetric
             # span-3 output-EMA) gave REAL rally +0.0068 + mixed +0.0069 (smoother shrink ->
