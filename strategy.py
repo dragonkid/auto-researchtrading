@@ -3891,53 +3891,6 @@ class Strategy:
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
-                    # Exp2 (architectural, indep): CHOP-REGIME partial-exit floor on the
-                    # opp-gate. NEW cross-component data dep on the opp-gate action-
-                    # conversion: the opp-gate exit fraction now reads the LOCAL trend
-                    # strength (rsi_trend_str, the validated chop separator) JOINTLY with
-                    # the existing _grad_gate (trend-align x profit). The opp-gate fires
-                    # when opposite-side votes pass AND trend_avg opposes the position.
-                    # In trending regimes (crash/bull/rally), trend_avg opposing a
-                    # trend-aligned position is a real reversal signal -> binary full
-                    # exit (cut fast) is correct, and _grad_gate (trend-align x profit)
-                    # already graduates the winning-trend case. In CHOP (sideways,
-                    # rsi_trend_str~0), trend_avg oscillates around 0 and opp-voter
-                    # spikes are NOISE (the mean-reversion dip, not a reversal) -> the
-                    # binary full exit (1.0) on every opp-voter spike WHIPSAWS: cuts the
-                    # position fully on a noise spike, realizes a small loss, re-enters
-                    # on the next bar -> accumulates whipsaw losses across sideways's
-                    # 148 trades (PF 1.3 gross but Sh -0.012 net -- the losers are too
-                    # big partly from these whipsaw full-exits). Apply a PARTIAL-exit
-                    # floor in chop so the opp-gate trims (0.65) instead of full-exiting
-                    # (1.0) on the BINARY path (when _grad_gate~0): the position survives
-                    # the noise spike (mean-reverts, the documented sideways property)
-                    # instead of being whipsawed -> fewer realized whipsaw losses ->
-                    # higher sideways Sharpe. The score for negative-Sharpe regimes IS
-                    # the bare Sharpe (compute_score returns sharpe for sharpe<=0), so a
-                    # sideways Sharpe gain is a direct 1:1 score gain (the highest-
-                    # leverage unmultiplicated lever). GATE: fires only in LOW trend
-                    # (rsi_trend_str low = chop), fading to 0 by rsi_trend_str~0.40
-                    # (where trending regimes' binary full-exit is correct). Distinct
-                    # from _grad_gate (trend-align x profit, which graduates WINNING
-                    # trend positions): this graduates the BINARY path (not trend-
-                    # aligned OR losing) in CHOP specifically. The chop floor blends
-                    # _opp_exit_frac toward 0.65 ONLY on the binary path -- gated by
-                    # (1 - _grad_gate) so the trend-aligned+profit graduated path is
-                    # byte-identical. Trending regimes (rsi_trend_str>0.40) byte-
-                    # identical (chop gate 0 -> no floor). Counter-trend trend regimes
-                    # (rally pullback shorts: rsi_trend_str high but _trend_align_og~0)
-                    # byte-identical (chop gate 0 in trend -> binary full exit preserved,
-                    # the correct fast cut for rally ct losers). The gate that makes
-                    # this fire ONLY in chop is the SAME rsi_trend_str separator used by
-                    # _w_time / _be_trend_gate / _exit_dd_gate. Continuous tanh, no
-                    # boundary. Byte-identical when rsi_trend_str >= ~0.40 OR
-                    # _grad_gate~1. Targets sideways (the negative-Sharpe regime whose
-                    # score == bare Sharpe; reducing whipsaw full-exits raises Sharpe
-                    # directly). Max partial floor 0.65 (35pct trim on opp-spike in
-                    # deep chop binary path, vs 100pct binary).
-                    _chop_opp_gate = max(0.0, min(1.0, np.tanh((0.40 - rsi_trend_str) / 0.20)))
-                    _chop_blend = _chop_opp_gate * (1.0 - _grad_gate)  # only binary path, only chop
-                    _opp_exit_frac = _opp_exit_frac * (1.0 - _chop_blend) + 0.65 * _chop_blend
                     target = current_pos * (1.0 - _opp_exit_frac)
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
