@@ -1214,7 +1214,36 @@ class Strategy:
             # on raw closes remains (the discriminating form); only the weight scales.
             _dvp9_rets = np.sign(np.diff(_dvp9_c))
             _dvp9 = float(np.sum(_dvp9_v * _dvp9_rets) / max(np.sum(_dvp9_v), 1e-10))  # in [-1, 1]
-            _dvp9_signal = _dvp9 / 0.40  # step7: sharpness 0.40 (softer tanh -- DVP conf stays near 0.5 neutral for small |DVP|, smaller swing per noise sign-flip; only large |DVP| moves the conf)
+            _dvp9_signal = _dvp9 / 0.20  # sharpness 0.20 (back to step1 -- the conf magnitude-gate below handles noise, not the sharpness)
+            # BRANCH step8: MAGNITUDE GATE on the DVP conf to fix step1's stability
+            # crash WITHOUT losing the raw sideways gain (the weight reduction in
+            # step5 lost the gain; the sign-function softening in steps 2-4 lost it).
+            # The step1 stability crash (sideways 1.0->0.248) was caused by the DVP
+            # conf SWINGING when a near-zero |DVP| sign-flips under AR(1) noise: at
+            # sharpness 0.20, DVP=+0.05 -> conf 0.598, DVP=-0.05 -> conf 0.402, a 0.196
+            # swing per sign-flip -> enough to flip admission near the strong-sum
+            # boundary -> entry-timing divergence. The fix: PIN the DVP conf at 0.5
+            # (neutral, no swing) when |DVP| is small, and let it move to full +/- only
+            # when |DVP| is large. Apply a magnitude gate to the SIGNAL before the conf
+            # computation: _dvp9_signal *= tanh(|DVP|/gate_threshold). When |DVP|~0
+            # (noise), the gate ~0 -> signal ~0 -> conf 0.5 (pinned neutral, NO swing
+            # under sign-flip -- the conf stays 0.5 regardless of which way DVP
+            # sign-flips near zero). When |DVP| large (genuine volume confirmation), the
+            # gate ~1 -> signal full -> conf moves to 0.9/0.1 (full contribution).
+            # This decouples the NOISE bars (conf pinned at 0.5, no entry-timing
+            # divergence) from the SIGNAL bars (full DVP contribution, sideways raw
+            # gain preserved). Gate threshold 0.10 (|DVP|>0.10 = genuine volume
+            # direction; |DVP|<0.10 = balanced/noise -> pinned). The threshold is on
+            # |DVP| which is a volume-weighted AVERAGE (-1,1), smooth under AR(1) (the
+            # volume weights don't change, only the signs; pinning near-zero |DVP|
+            # bars removes the flipping-sign bars from the conf entirely). Continuous
+            # tanh gate, no decision boundary. Byte-identical for strong-|DVP| bars
+            # (gate ~1); pinned for noise bars (gate ~0). The hard sign on raw closes
+            # is retained (step1's discriminating form); the gate zeros the SIGNAL not
+            # the sign, so near-zero bars contribute 0 signal (conf 0.5) not a
+            # sign-flipped signal.
+            _dvp9_mag_gate = max(0.0, np.tanh(abs(_dvp9) / 0.10))
+            _dvp9_signal = _dvp9_signal * _dvp9_mag_gate
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1251,7 +1280,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.30)  # 8th: range/close efficiency (0.55); 9th: volume-flow DVP (0.30 step7 -- back to step5's stable weight; step6 weight 0.40 was non-monotonic worse)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency (0.55); 9th: volume-flow DVP (0.55 step8 -- back to step1 weight for the raw sideways gain; magnitude-gate the CONF to fix stability)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
