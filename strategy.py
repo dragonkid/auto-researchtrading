@@ -3752,16 +3752,7 @@ class Strategy:
                         # onset fires fully only for SUSTAINED trend-aligned losers (rally
                         # pullback longs bleeding 4/4 bars).
                         _se_ta = _ta_align  # fire for trend-aligned losers (rally pullback longs), spare ct (mixed)
-                        # step12: LOW-VOL-GRIND magnitude boost (additional 0.10 in low-vol
-                        # rally grind where pullback losers are cleanest, mixed higher-vol
-                        # up-phase dips noisier -> the boost separates rally from mixed on
-                        # the vol_ratio axis). _vlong_vol_gate ~1 rally (vol_ratio<=0.8-1.0),
-                        # ~0 mixed high-vol. Total magnitude 0.20 base + 0.10 boost = 0.30
-                        # in rally low-vol grind; 0.20 base only in mixed higher-vol -> rally
-                        # gets the deeper onset (0.55->0.45 in low-vol grind) while mixed
-                        # keeps 0.55 -> mixed stability protected at the rally-favoring boost.
-                        _se_vol_boost = _vlong_vol_gate  # ~1 rally low-vol, ~0 mixed high-vol
-                        _de_floor -= (0.20 + 0.10 * _se_vol_boost) * _se_trend * _se_ta * (max(0.0, _sustained_loss) ** 0.5)
+                        _de_floor -= 0.20 * _se_trend * _se_ta * (max(0.0, _sustained_loss) ** 0.5)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
