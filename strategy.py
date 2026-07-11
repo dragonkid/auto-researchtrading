@@ -714,7 +714,27 @@ class Strategy:
             _prev_shrink = getattr(self, "_eq_mom_shrink_ema", 1.0)
             if _port_eq_mom_shrink < _prev_shrink:
                 # Deepening: smooth toward the new (smaller) shrink over span-3.
-                _port_eq_mom_shrink = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
+                _smoothed = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
+                # step6: EQUITY-CURVE VOLATILITY GATE on the deepening-smooth -- smooth
+                # only LOW equity-vol gradual pullbacks (rally/mixed grind), RAW in HIGH
+                # equity-vol sharp pullbacks (bull). step5 used per-symbol vol_ratio which
+                # is NOT in scope at this top-level site (bug, reverted). The equity-curve
+                # realized vol IS computable here from _eq_hist (the 8-bar equity EMA
+                # history already maintained for _eq_mom). Bull's sharp pullbacks make the
+                # equity curve volatile; rally/mixed grind pullbacks are gradual -> equity
+                # vol is a portfolio-level bull/rally separator available at this site.
+                # Bull's DD rise at step1 (12.47->12.61) came from the smoothed shrink
+                # lagging raw during bull's sharp pullbacks -> positions bigger -> DD up.
+                # Gating the smooth OFF in high equity-vol -> bull uses RAW shrink (no DD
+                # lag -> DD recovers toward 12.47) while rally/mixed (low equity-vol) keep
+                # the span-3 smoothing -> Sharpe benefit preserved. Sideways (low equity-
+                # vol) keeps smoothing + release-fast rebuild. Equity vol = std of bar-to-
+                # bar equity EMA changes / peak equity; /0.008 scale (0.8pct peak-relative
+                # per-bar equity move saturates = sharp pullback; rally/mixed grind ~0.2-0.4pct).
+                _eq_diffs = np.diff(_eq_hist) / self._peak_equity
+                _eq_vol = float(np.std(_eq_diffs)) if len(_eq_diffs) >= 2 else 0.0
+                _smooth_vol_gate = max(0.0, min(1.0, (0.008 - _eq_vol) / 0.004))  # ~1 low eq-vol, ~0 high eq-vol
+                _port_eq_mom_shrink = _smoothed * _smooth_vol_gate + _port_eq_mom_shrink * (1.0 - _smooth_vol_gate)
             # else: release (raw >= prev) -> take raw instantly (no smoothing)
             self._eq_mom_shrink_ema = _port_eq_mom_shrink
 
