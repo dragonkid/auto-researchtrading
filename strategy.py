@@ -3508,6 +3508,27 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # branch step6: TREND-ALIGNED-LOSER exit_thresh lowering (binary path,
+                    # complements the de-risk concavity). The concavity (step1) cuts trend-
+                    # aligned losers faster on the GRADUAL de-risk ramp; but rally/bull trend-
+                    # aligned losers that exit via the BINARY path (exit_pressure crossing
+                    # _exit_thresh) are NOT reached by the concavity. Lower _exit_thresh for
+                    # trend-aligned LOSERS (ret_vlong*pos_dir>0 + pos_pnl<0) so the binary full-
+                    # exit triggers sooner -> cut the trend-aligned loser ~1 bar earlier ->
+                    # smaller realized loss -> higher rally Sharpe (the rally pullback-loser
+                    # population, some of which exit via the binary path). NOT DD-gated (the
+                    # concavity isn't either; rally has low DD so the DD-gate above rarely fires
+                    # for rally). Gated on the SAME multi-day trend-align (ret_vlong*pos_dir/0.04,
+                    # proven step5-equivalent to rsi_trend_str) so it fires for rally trend-aligned
+                    # losers and NOT for mixed ct losers (mixed wrong-side longs: ret_vlong<0,
+                    # pos_dir=+1 -> product<0 -> gate 0 -> spared). Crash losing longs (ct) spared.
+                    # Bull losing longs (trend-aligned) WOULD fire -- but bull losers exit via the
+                    # de-risk/pp path before the binary threshold (bull's pp giveback trailing);
+                    # monitor bull. Max 8pct threshold lowering (smaller than the DD-gate's 12pct
+                    # since this is not DD-conditional). Continuous, no boundary.
+                    if _pnl_scale < 0.0:
+                        _dr_ta_gate_thresh = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                        _exit_thresh = _exit_thresh * (1.0 - 0.08 * _dr_ta_gate_thresh)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
