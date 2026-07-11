@@ -3737,7 +3737,7 @@ class Strategy:
                         # longs. Byte-identical: shorts (excluded by (1-_ta_align)),
                         # ct longs (excluded, mixed keep-protected), sideways (ret_vlong~0
                         # multi-day gate 0), winners (loss block), chop (gate 0).
-                        _se_trend = max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.035)))
+                        _se_trend = max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.04)))
                         # Fire the lower onset for TREND-ALIGNED losers (rally pullback
                         # longs, _ta_align high); SPARE counter-trend losers (mixed ct
                         # longs, _ta_align~0 -> keep the 0.85 floor -> mixed byte-
