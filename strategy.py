@@ -714,7 +714,20 @@ class Strategy:
             _prev_shrink = getattr(self, "_eq_mom_shrink_ema", 1.0)
             if _port_eq_mom_shrink < _prev_shrink:
                 # Deepening: smooth toward the new (smaller) shrink over span-3.
-                _port_eq_mom_shrink = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
+                _smoothed = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
+                # step3: BOUNDED-LAG CAP -- the smoothed shrink can lag the raw shrink by
+                # at most 30pct of the raw shrink DEPTH (1.0 - raw). Without the cap the
+                # EMA lag lets positions stay bigger than raw during the early pullback ->
+                # bull DD rises (12.47->12.61, the -0.0004 bull drag at step1). Capping the
+                # lag means: for a SHARP deepening (large raw shrink depth) the cap binds
+                # -> shrink engages closer to raw -> DD lag capped (bull's sharp pullbacks
+                # protected); for a GRADUAL deepening (small raw shrink depth, rally/mixed
+                # grind pullbacks) the cap does not bind -> full span-3 smoothing -> the
+                # per-bar size wobble damped -> Sharpe benefit preserved. The cap is a
+                # tight FLOOR on how far the smoothed shrink can fall behind the raw.
+                _raw_depth = 1.0 - _port_eq_mom_shrink  # intended shrink depth [0, 0.15]
+                _shrink_floor = _port_eq_mom_shrink - 0.30 * _raw_depth  # smoothed can't be more than 30pct-of-depth above raw
+                _port_eq_mom_shrink = max(_smoothed, _shrink_floor)
             # else: release (raw >= prev) -> take raw instantly (no smoothing)
             self._eq_mom_shrink_ema = _port_eq_mom_shrink
 
