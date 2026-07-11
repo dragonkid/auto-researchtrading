@@ -3033,7 +3033,7 @@ class Strategy:
                 # (long gate 0), 96-bar-aligned longs (1-_ta_align~0), losers (profit gate
                 # 0), and outside portfolio DD. Targets mixed Sharpe (longer capture of
                 # the high-PF bounce winners).
-                _local_align = max(0.0, np.tanh(ret_long * _ta_dir / 0.025))
+                _local_align = max(0.0, np.tanh(ret_long * _ta_dir / 0.03))
                 _local_hold_ext_raw = 3.0 * _ta_long_gate * (1.0 - _ta_align) * _local_align * _ta_profit_gate * (1.0 - _port_dd_atten)
                 _prev_lhe = self._local_hold_ext_ema.get(symbol, _local_hold_ext_raw)
                 if _local_hold_ext_raw >= _prev_lhe:
