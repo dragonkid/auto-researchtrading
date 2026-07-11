@@ -3698,51 +3698,61 @@ class Strategy:
                         # boundary). Byte-identical at portfolio peak (both terms 0).
                         _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
                         _de_floor -= (0.13 * (1.0 - _port_dd_atten) + 0.07 * _port_dd_active) * _exit_dd_gate
-                        # STRUCTURAL_EXPLORATION (this session, opener): TREND-GATED
-                        # continuous loser de-risk ONSET lowering. This session's 5
-                        # architectural discards confirmed the loss-side exit is at a
-                        # STRUCTURAL CEILING for crash across ALL exit-pressure lever
-                        # types -- MAX-fusion pressure sources (weight prior cbf265bd,
-                        # shape Exp2), exit threshold (Exp1 sustained-loss+vol-spike,
-                        # Exp3 slope-against-mid), additive voter-bias (Exp5). Exp3's
-                        # verifiable diagnosis identified the ceiling precisely: the
-                        # exit-pressure->action conversion has a 0.85 loser de-risk FLOOR
-                        # that leaves the 0-0.85 band INACTIVE for losers -- mid-range
-                        # slope-against losers at _exit_pressure 0.4-0.65 can't reach the
-                        # 0.85 onset, so NO loss-side lever can act on them (stop-bound
-                        # deep OR too-early mid). The prior PORTFOLIO-DD de-risk floor
-                        # lowering (line ~3700 above, prior Exp3 keep) already lowers
-                        # _de_floor for losers during DD -- keys on PORTFOLIO DD +
-                        # sustained-loss, selecting the deep/stop-bound population (Exp1
-                        # wall). The prior UNGATED loser floor lowering (prior session
-                        # concave de-risk branch opener) was CATASTROPHIC -- cut crash
-                        # winning trend-aligned SHORTS dipping during dead-cat bounces AND
-                        # regressed sideways mean-reverters (chop oscillates near 0 -> the
-                        # 0-0.85 band activating in chop cuts recoveries). The STRUCTURAL
-                        # FIX those attempts lacked: a TREND-STRENGTH gate (rsi_trend_str,
-                        # the validated chop/trend separator) confining the lower onset to
-                        # TRENDING regimes (crash/bull/mixed trending -- where a mid-range
-                        # slope-against loser is a genuine adverse move, not a chop
-                        # oscillation), keeping sideways byte-identical (rsi_trend_str~0 in
-                        # chop -> gate 0 -> floor stays 0.85). SUBSYSTEM REWRITE: the exit-
-                        # pressure->action conversion CHANGES from a fixed 0.85 loser floor
-                        # (binary-ish: active only [0.85,1.0]) to a TREND-CONTINUOUS mapping
-                        # (active [0.55,1.0] in trends, [0.85,1.0] in chop) -- a structurally
-                        # different function form (the onset reads trend-strength, a new
-                        # data dep on the de-risk FLOOR not just DD/sustained-loss). The
-                        # 0.55 lower bound matches the profit-side floor (losers in trends
-                        # get the SAME active band width as winners, [0.55,1.0]=0.45 vs
-                        # baseline [0.85,1.0]=0.15) -> mid-range slope-against pressure
-                        # (0.55-0.85) NOW continuously shrinks trending losers (the
-                        # population Exp1-5 could not reach). Max lowering 0.30 (0.85 ->
-                        # 0.55) at deep trend, fast-saturating /0.20. Losers in chop byte-
-                        # identical (gate 0); winners byte-identical (this block is
-                        # _pnl_scale<0 only). WHY OLD MECHANISM AT CEILING: 3 architectural
-                        # discards this session (Exp1/Exp3 threshold, Exp2 pressure-source
-                        # shape) hit the wall that the 0.85 floor makes the mid-range loser
-                        # band inactive for ANY lever; rewriting the FLOOR mechanism (the
-                        # pressure->action conversion itself) is the only remaining axis.
-                        _de_floor -= 0.30 * max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                        # STRUCTURAL_EXPLORATION step2: FIX step1 gate breaches. step1
+                        # (rsi_trend_str/0.20 gate, magnitude 0.30) regressed sideways
+                        # (-0.025, Sh -0.012->-0.037) -- sideways has TRENDING stretches in
+                        # 2023 multi-day directional legs where the 20-bar rsi_trend_str
+                        # spikes -> gate fired -> cut sideways losers that RECOVER. AND
+                        # mixed stability collapsed (0.146) -- mixed's counter-trend-at-
+                        # 96-day LOSING longs in the down-phase (the SAME population the
+                        # keep _local_hold_ext RIDE-WINNER targets when they bounce) were
+                        # continuously cut at the lower onset -> exit-timing noise ->
+                        # stability collapse; the keep holds mixed bounce longs LONGER,
+                        # step1 cut mixed down-phase losers SOONER -- same long population
+                        # at different lifecycle stages. step1's rally +0.0124 (Sh
+                        # 0.918->0.926) IS the target signal -- the [0.55,0.85] band DOES
+                        # continuously shrink rally pullback losers. Fix the GATES:
+                        # (a) switch trend gate from 20-bar rsi_trend_str (flickers in
+                        # sideways multi-day legs) to MULTI-DAY |ret_vlong| (the validated
+                        # 96-bar trend separator, near-constant noise-free, does NOT
+                        # flicker in sideways legs -- sideways ret_vlong~0 across the
+                        # multi-day legs that spike rsi_trend_str). (b) EXCLUDE the keep's
+                        # ride-winner population: counter-trend-at-96-day longs ((1-
+                        # _ta_align) high) are the keep _local_hold_ext targets; their
+                        # down-phase LOSING bars must NOT be cut by the lower onset (a
+                        # (1-_ta_align) EXCLUSION gate spares them -> the lower onset only
+                        # fires for TREND-ALIGNED losers [ret_vlong*pos_dir>0, _ta_align
+                        # high -> (1-_ta_align)~0 -> excluded] -- the rally pullback longs
+                        # that are trend-aligned-at-96-day and losing, NOT mixed's ct
+                        # bounce longs). (c) reduce magnitude 0.30->0.10 (probe the
+                        # minimum that moves rally without the mixed/sideways cost).
+                        # Trend-aligned losers = rally pullback longs (ret_vlong>0, long,
+                        # losing in a pullback) = the step1 rally +0.0124 population.
+                        # Crash trend-aligned SHORTS in profit-then-dipping are excluded
+                        # (the prior ungated wall: a short dipping negative looks like a
+                        # loser; the (1-_ta_align) gate excludes trend-aligned shorts
+                        # too since _ta_align for a short is tanh(ret_vlong*-
+                        # 1/0.01)>0 in downtrend -> (1-_ta_align)~0 -> excluded). So the
+                        # gate fires ONLY for trend-aligned LONG losers = rally pullback
+                        # longs. Byte-identical: shorts (excluded by (1-_ta_align)),
+                        # ct longs (excluded, mixed keep-protected), sideways (ret_vlong~0
+                        # multi-day gate 0), winners (loss block), chop (gate 0).
+                        _se_trend = max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.04)))
+                        # Fire the lower onset for TREND-ALIGNED losers (rally pullback
+                        # longs, _ta_align high); SPARE counter-trend losers (mixed ct
+                        # longs, _ta_align~0 -> keep the 0.85 floor -> mixed byte-
+                        # identical, keep-protected). Crash trend-aligned SHORTS
+                        # (_ta_align high in downtrend) would get the lower onset too, BUT
+                        # crash shorts are in PROFIT during the downtrend (pos_pnl>0 ->
+                        # not in the _pnl_scale<0 loss block -> byte-identical); crash
+                        # shorts that DIP negative on a bounce are the prior ungated wall
+                        # -> the SUSTAINED-LOSS sub-gate (already computed above as
+                        # _sustained_loss) spares FRESH dips (crash short bounce-dips are
+                        # 1-2 bars neg -> sustained_loss<1 -> partial gate); the lower
+                        # onset fires fully only for SUSTAINED trend-aligned losers (rally
+                        # pullback longs bleeding 4/4 bars).
+                        _se_ta = _ta_align  # fire for trend-aligned losers (rally pullback longs), spare ct (mixed)
+                        _de_floor -= 0.10 * _se_trend * _se_ta * _sustained_loss
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
