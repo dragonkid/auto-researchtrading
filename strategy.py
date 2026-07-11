@@ -3528,8 +3528,15 @@ class Strategy:
                         # weakest mixed phases directly. Continuous tanh floor (ramps 0->1 over
                         # [0.006, 0.018] = below 0.006 excluded, above 0.018 full).
                         _dr_ta_raw = ret_vlong * (1.0 if current_pos > 0 else -1.0)
-                        _dr_ta_mag_floor = max(0.0, min(1.0, np.tanh((_dr_ta_raw - 0.015) / 0.006)))
-                        _dr_ta_gate_thresh = max(0.0, np.tanh(_dr_ta_raw / 0.02)) * _dr_ta_mag_floor
+                        # branch step21: raise floor 0.015->0.020 (exclude mixed moderate phases
+                        # entirely) + tighter scale 0.02->0.015 (rally solid uptrend saturates the
+                        # gate -> full 11pct lowering on more rally bars). Trades mixed moderate-
+                        # phase exclusion for stronger rally saturation. mixed weak+moderate
+                        # phases (ret_vlong<0.020) excluded -> mixed byte-identical-ish (no
+                        # over-cut); sideways (ret_vlong<0.020) excluded -> sideways byte-
+                        # identical. rally (ret_vlong>0.020) gets full saturation.
+                        _dr_ta_mag_floor = max(0.0, min(1.0, np.tanh((_dr_ta_raw - 0.020) / 0.004)))
+                        _dr_ta_gate_thresh = max(0.0, np.tanh(_dr_ta_raw / 0.015)) * _dr_ta_mag_floor
                         _exit_thresh = _exit_thresh * (1.0 - 0.11 * _dr_ta_gate_thresh)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
