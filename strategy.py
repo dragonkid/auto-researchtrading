@@ -1418,6 +1418,51 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
+            # Exp1 (architectural, indep): PER-SYMBOL PRICE-MOMENTUM entry-size shrink.
+            # Sanctioned UNTESTED lead (prior session-summary): move the eq_mom shrink
+            # computation INTO the per-symbol loop and gate on the SYMBOL's OWN vol/ER
+            # (per-symbol gate, not portfolio equity-vol) -- "a structurally different
+            # mechanism" since the shrink is currently portfolio-level at line 693. The
+            # prior session's step5 attempt used vol_ratio at the TOP-LEVEL shrink site
+            # (line ~714, OUT of the per-symbol loop) -> per-symbol var read a stale
+            # prior-bar value -> catastrophic -0.592 bug. The fix here: compute a NEW
+            # per-symbol shrink INSIDE the loop where vol_ratio/ret_vlong/rsi_trend_str
+            # are live, and apply it at THIS symbol's `size` only.
+            #
+            # MECHANISM (distinct from every existing shrink): _port_eq_mom_shrink reads
+            # the PORTFOLIO equity trajectory (8-bar rate of change of smoothed equity vs
+            # peak) -> fires uniformly on ALL symbols when the WHOLE portfolio declines.
+            # This reads the SYMBOL's OWN 8-bar close return -> fires on the specific
+            # symbol that is declining, EVEN when the portfolio is stable (an idiosyncratic
+            # single-symbol pullback with the other two stable). Sharper DD-cut on the
+            # falling symbol without starving the stable symbols' recovery entries. The
+            # portfolio version catches broad declines; the per-symbol version catches
+            # idiosyncratic declines -> orthogonal, compose multiplicatively (both
+            # shrink-only).
+            #
+            # GATES (each validated as a separator in prior sessions):
+            #  (a) vol_ratio > 1.0 onset (high-vol = real directional move, not chop noise);
+            #      byte-identical in calm (rally grind vol_ratio<1.0). The prior session
+            #      found the per-symbol vol gate is the productive axis (step5/step6
+            #      conclusion: portfolio equity-vol CANNOT cleanly separate bull from
+            #      rally/mixed at the equity level, but the SYMBOL's own vol_ratio CAN
+            #      separate a real high-vol pullback from a calm grind).
+            #  (b) rsi_trend_str (the validated LOCAL-trend separator: ~0 in sideways
+            #      chop -> sideways byte-identical; high in trending bull/crash/rally).
+            #  Shrink fires only when BOTH the symbol is declining AND it is a real
+            #  trending high-vol decline (not calm chop). Max 15% shrink (same magnitude
+            #  as _port_eq_mom_shrink so the two compose to at most ~28% at full overlap).
+            #  Byte-identical when _sym_ret8 >= 0 (rising symbols spared: bull/rally
+            #  uptrend entries byte-identical; only the falling symbol during a pullback
+            #  gets the extra shrink). New per-symbol data dep + new control flow at
+            #  entry sizing: a per-symbol price-trajectory signal (distinct from the
+            #  portfolio-equity trajectory and the 96-bar ret_vlong trend).
+            SYM_MOM_SHRINK_MAX = 0.15
+            SYM_MOM_VOL_ONSET = 1.0
+            _sym_ret8 = (closes[-1] - closes[-9]) / closes[-9] if len(closes) >= 9 else 0.0
+            _sym_mom_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - SYM_MOM_VOL_ONSET) / 0.25)))
+            _sym_mom_trend_gate = rsi_trend_str
+            _sym_mom_shrink = 1.0 - SYM_MOM_SHRINK_MAX * max(0.0, min(1.0, np.tanh(-_sym_ret8 / 0.02))) * _sym_mom_vol_gate * _sym_mom_trend_gate
             # Exp1: apply portfolio deep-bear size cap (computed at top level). Shrinks
             # `size` -> both first-bar entry target AND scale-in targets smaller in
             # persistent deep-bear (crash). Byte-identical when _port_bear_cap=1.0 (bull,
@@ -1426,7 +1471,9 @@ class Strategy:
             # when any symbol has persistent weak multi-day trend (mixed's consolidation).
             # Exp3: apply portfolio equity-MOMENTUM (trajectory-derivative) shrink, computed
             # at top level. Composes with the deep-bear/weak-trend caps (all shrink-only).
-            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink
+            # Exp1 (this session): compose the per-symbol price-momentum shrink
+            # (shrink-only, byte-identical for rising symbols / calm chop).
+            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink * _sym_mom_shrink
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
