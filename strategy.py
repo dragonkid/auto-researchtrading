@@ -714,20 +714,7 @@ class Strategy:
             _prev_shrink = getattr(self, "_eq_mom_shrink_ema", 1.0)
             if _port_eq_mom_shrink < _prev_shrink:
                 # Deepening: smooth toward the new (smaller) shrink over span-3.
-                _smoothed = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
-                # step5: VOL-RATIO GATE on the deepening-smooth -- smooth only LOW-vol
-                # gradual pullbacks (rally/mixed grind, vol_ratio<1.0), RAW in HIGH-vol
-                # sharp pullbacks (bull, vol_ratio>1.0). The validated bull/rally separator
-                # (the scale-in quantization keep used vol_ratio: bull HIGH-vol SHARP vs
-                # rally LOW-vol GRIND). Bull's DD rise at step1 (12.47->12.61) came from
-                # the smoothed shrink lagging raw during bull's sharp pullbacks -> positions
-                # bigger -> DD up. Gating the smooth OFF in high-vol -> bull uses RAW shrink
-                # (no DD lag -> DD recovers toward 12.47) while rally/mixed (low-vol) keep
-                # the span-3 smoothing -> Sharpe benefit preserved. Sideways (low-vol) keeps
-                # smoothing too but release-fast handles rebuild. Continuous tanh ramp
-                # [1.0 at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.2].
-                _smooth_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
-                _port_eq_mom_shrink = _smoothed * _smooth_vol_gate + _port_eq_mom_shrink * (1.0 - _smooth_vol_gate)
+                _port_eq_mom_shrink = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
             # else: release (raw >= prev) -> take raw instantly (no smoothing)
             self._eq_mom_shrink_ema = _port_eq_mom_shrink
 
