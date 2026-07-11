@@ -3037,7 +3037,7 @@ class Strategy:
                 _local_hold_ext_raw = 3.0 * _ta_long_gate * (1.0 - _ta_align) * _local_align * _ta_profit_gate * (1.0 - _port_dd_atten)
                 _prev_lhe = self._local_hold_ext_ema.get(symbol, _local_hold_ext_raw)
                 if _local_hold_ext_raw >= _prev_lhe:
-                    _lhe_alpha = 0.55  # slow rise (stability)
+                    _lhe_alpha = 0.7  # branch step8: faster rise (engage the bounce extension quicker, less smoothing lag)
                 else:
                     _lhe_alpha = 0.15  # fast fall (release on winner->loser)
                 _local_hold_ext = (1.0 - _lhe_alpha) * _local_hold_ext_raw + _lhe_alpha * _prev_lhe
