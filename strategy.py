@@ -735,7 +735,16 @@ class Strategy:
                 _eq_vol = float(np.std(_eq_diffs)) if len(_eq_diffs) >= 2 else 0.0
                 _smooth_vol_gate = max(0.0, min(1.0, (0.008 - _eq_vol) / 0.004))  # ~1 low eq-vol, ~0 high eq-vol
                 _port_eq_mom_shrink = _smoothed * _smooth_vol_gate + _port_eq_mom_shrink * (1.0 - _smooth_vol_gate)
-            # else: release (raw >= prev) -> take raw instantly (no smoothing)
+            else:
+                # step11: LIGHT release-side smoothing (span-5, much lighter than the
+                # deepening span-3) to reduce sideways release wobble. Exp1 (symmetric
+                # span-3) persisted too long through sideways rebuild -> starvation wall.
+                # A LIGHT span-5 release-smooth smooths the release bounce (sideways
+                # oscillates up-down rapidly -> the release wobbles) without persisting
+                # long enough to starve the rebuild (span-5 = ~2 bar convergence, the
+                # rebuild recovers within 1-2 bars). Targets sideways (the largest gain
+                # regime at +0.0064); deepening stays span-3 (the productive point).
+                _port_eq_mom_shrink = (2.0 / 6.0) * _port_eq_mom_shrink + (1.0 - 2.0 / 6.0) * _prev_shrink
             self._eq_mom_shrink_ema = _port_eq_mom_shrink
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
