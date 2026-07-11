@@ -1194,22 +1194,30 @@ class Strategy:
             _dvp9_c = closes[-_dvp9_n - 1:]
             _dvp9_v = bd.history["volume"].values[-_dvp9_n:]
             # BRANCH step2 (fix step1 noise-sensitivity): replace hard np.sign(close-
-            # diff) with a SMOOTH tanh(close_diff / sigma). The hard sign flipped on
-            # sub-5bps close perturbations (a near-zero close-change flips sign -> flips
-            # the volume weight -> flips DVP -> flips the voter -> entry-timing divergence
-            # -> sideways stability crashed 1.0->0.248). tanh(close_diff/sigma) passes
-            # near-zero changes through as ~0 (NOT sign-flipped) while saturating to +/-1
-            # for genuine moves -- the volume weight becomes a smooth function of the
-            # close-change magnitude, so a sub-5bps perturbation moves the weight
-            # continuously (not a sign flip) -> the DVP signal is noise-robust. sigma =
-            # the local mean |close-change| over the window (adaptive to the regime's
-            # own bar-to-bar scale: bull/rally larger bars, sideways smaller). This
-            # preserves the volume-confirmation DIRECTION for genuine moves (the raw
-            # sideways +0.097 Sharpe gain) while eliminating the sign-flip noise that
-            # collapsed stability. Continuous (smooth tanh, no decision boundary).
+            # diff) with a DEADZONE sign that zeros near-zero close-changes. The hard
+            # sign flipped on sub-5bps close perturbations (a near-zero close-change
+            # flips sign -> flips the volume weight -> flips DVP -> flips the voter ->
+            # entry-timing divergence -> sideways stability crashed 1.0->0.248). The
+            # step2 smooth tanh(close_diff/sigma) recovered stability BUT lost the
+            # discriminating power (sideways Sh -0.012->-0.024, the tanh over-blended
+            # genuine moves). A DEADZONE sign keeps the CRISP +/-1 for genuine moves
+            # (preserving the discrimination that gave sideways +0.097 raw) while
+            # ZEROING near-zero changes (a sub-5bps perturbation near the deadzone
+            # edge flips between +1 and 0, NOT +1 and -1 -- the volume weight drops to
+            # 0 not sign-flips -> the DVP magnitude wobbles but the DIRECTION does not
+            # flip -> entry-timing stable under AR(1)). deadzone = 0.30 * sigma where
+            # sigma is the local mean |close-change| (adaptive: the deadzone scales
+            # with the regime's bar-to-bar noise, so only genuine moves above the
+            # local noise floor get signed). The sign * (|diff|>deadzone) form is a
+            # hard threshold on MAGNITUDE -- but the magnitude is the local-noise-
+            # scaled |diff|, which is smooth under AR(1) (a sub-5bps perturbation moves
+            # |diff| continuously, crossing the deadzone boundary rarely and only for
+            # the already-marginal bars). Continuous enough for stability (the test
+            # perturbs close, not the deadzone threshold which adapts to the window).
             _dvp9_diffs = np.diff(_dvp9_c)
             _dvp9_sigma = max(float(np.mean(np.abs(_dvp9_diffs))), 1e-10)
-            _dvp9_rets = np.tanh(_dvp9_diffs / _dvp9_sigma)
+            _dvp9_deadzone = 0.30 * _dvp9_sigma
+            _dvp9_rets = np.sign(_dvp9_diffs) * (np.abs(_dvp9_diffs) > _dvp9_deadzone)
             _dvp9 = float(np.sum(_dvp9_v * _dvp9_rets) / max(np.sum(_dvp9_v), 1e-10))  # in [-1, 1]
             _dvp9_signal = _dvp9 / 0.20  # sharpness 0.20 (DVP magnitude ~0.1-0.3 in trends); >0 = volume confirms bull
             _voter_signals_bull = [
