@@ -3630,6 +3630,20 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
+                    # branch step3: TREND-GATED loss-side de-risk floor lowering. The loss-side
+                    # concave ramp (Exp3) cuts losers faster but operates in the narrow [0.85, 1.0]
+                    # band (loss floor 0.85 for deep losers). Widen the band for LOSERS in TRENDING
+                    # regimes (the rally pullback-loser population the concavity helped) by
+                    # lowering the loss-side floor when rsi_trend_str is high. Chop (sideways)
+                    # keeps the 0.85 floor (mean-reverters recover -> keep the narrow near-binary
+                    # loss ramp). Trending losers (rally pullback longs that giveback-prone) get a
+                    # wider concave ramp -> the concavity engages across more of the pressure
+                    # range -> more of the rally loser gain. Max 0.10 floor lowering at deep loss
+                    # in strong trend (0.85 -> 0.75). Continuous tanh on rsi_trend_str/0.20 (same
+                    # gate as the concavity); byte-identical in chop (gate 0) AND for winners
+                    # (max(0,-_pnl_scale)=0). Composes with the concavity (both trend-gated on the
+                    # same separator, both loss-only).
+                    _de_floor -= 0.10 * max(0.0, -_pnl_scale) * max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     # Exp3 (architectural, indep): PORTFOLIO-DD-ADAPTIVE de-risk floor
                     # lowering for LOSERS. NEW cross-component data dep on the de-risk
                     # graduation ramp: _de_floor (the lower bound of the graduated partial-
