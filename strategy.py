@@ -3201,51 +3201,6 @@ class Strategy:
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
-                # Exp5 (architectural, indep): LOSS-GATED amplification of the ADDITIVE
-                # opp-voter-bias. This session's Exp1-Exp3 confirmed the loss-side exit
-                # is at a STRUCTURAL CEILING on the MAX-fusion pressure sources AND the
-                # exit threshold: (a) threshold lowering gated on sustained-loss+vol-
-                # spike (Exp1, inert -- selects stop-bound deep losers); (b) concave
-                # slope-against pressure SOURCE SHAPE (Exp2, MAX-absorbed at deep by stop,
-                # at mid by near-saturation); (c) threshold lowering gated on slope-
-                # against-dominated mid-range (Exp3, inert -- mid-range _exit_pressure
-                # 0.4-0.65 is FAR below the 0.85 loser de-risk floor / 1.0 binary). The
-                # MAX-fusion ABSORBS all pressure-source and threshold levers for crash's
-                # losers (deep -> stop dominates; mid -> exit_pressure far below
-                # thresholds). The _voter_bias is the ONE exit-pressure contribution that
-                # is ADDITIVE (not in the MAX-fusion): _exit_pressure = max(_sl_pressure,
-                # _soft_max) + _voter_bias. So a _voter_bias amplification is NOT MAX-
-                # absorbed -- it adds to exit_pressure directly. For crash's COUNTER-
-                # TREND bounce LONGS (the loser population the prior 23-step de-risk
-                # branch left byte-identical -- crash losers exit via slope-against but
-                # that path is MAX-absorbed), the opp-voter-bias already fires: crash is
-                # trending (_opp_trend_amp ~1), the longs are counter-trend (_trend_align_vb
-                # ~0 -> _opp_atten ~1, full), and the bounce spikes BEAR voters (_opp_margin
-                # high -> tanh(_opp_margin/0.30) high). The opp-bias ADDS exit pressure on
-                # the bounce -> cuts the ct loser sooner. Amplify the opp-bias ADDITIVELY
-                # for LOSERS so the ct bounce long exits sooner -> smaller realized loss ->
-                # higher crash Sharpe (score == bare Sharpe). Gate: (1) LOSS-side only --
-                # _vb_loss_gate = max(0, -tanh(pos_pnl/|stop|)) = max(0,-_pnl_scale inline);
-                # WINNERS (pos_pnl>=0 -> gate 0) keep baseline opp-bias byte-identical (a
-                # winner-bias amplification would over-harvest trend-aligned winners -- the
-                # exact harm avoided). (2) TREND-STRENGTH gate (rsi_trend_str/0.20, the
-                # validated chop/trend separator) -- full boost in trends (crash trending;
-                # opp-voter conviction in a trend is a genuine reversal signal), near-zero
-                # in chop (sideways mean-reverters oscillate on opp-voter noise -> spare
-                # them -> sideways byte-identical). The opp-side term (the ADDITIVE exit
-                # pressure) is the one amplified; the own-side subtraction (the -0.20*
-                # _chop_amp own-side hold term) is UNCHANGED. Byte-identical for winners
-                # (loss gate 0) and chop (trend gate 0). NEW cross-component data dep: the
-                # opp-voter-bias ADDITIVE term reads pos_pnl-loss x trend-strength (a
-                # structurally distinct lever -- ADDITIVE not MAX, so it escapes the
-                # absorption wall that blocked Exp1-3). Smooth tanh, no boundary.
-                # Direction-agnostic general principle (no regime label): a losing
-                # position facing opposite-side voter conviction in a trending regime
-                # exits sooner (the opp-bias adds exit pressure additively, bypassing MAX).
-                _vb_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _vb_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                _vb_loss_boost = 1.0 + 0.50 * _vb_loss_gate * _vb_trend_gate  # 1.0 winner/chop, up to ~1.50 deep-loss+trend
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + _vb_loss_boost * 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
