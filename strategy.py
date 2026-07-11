@@ -1251,7 +1251,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.30)  # 8th: range/close efficiency (0.55); 9th: volume-flow DVP (0.30 step5 -- reduced from 0.55 to lessen noise impact on stability, keep raw sideways gain)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.40)  # 8th: range/close efficiency (0.55); 9th: volume-flow DVP (0.40 step6 -- between 0.30 [stab 1.0, sideways +0.002] and 0.55 [stab 0.248, sideways +0.097 raw], find the stab>0.50 sweet spot)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
