@@ -691,6 +691,32 @@ class Strategy:
             # excluded (gate ~0.5-0.8), rally/mixed sharp pullbacks still saturate -> keeps
             # the rally/mixed DD-cut while reducing sideways' gentle-oscillation shrink.
             _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
+            # Exp2 (architectural indep, session-context follow-up to Exp1): ASYMMETRIC
+            # RELEASE-FAST output-EMA on the equity-momentum shrink FACTOR. Exp1 (symmetric
+            # span-3 output-EMA) gave REAL rally +0.0068 + mixed +0.0069 (smoother shrink ->
+            # less per-bar size wobble -> Sharpe up in trends) + lifted bull stability
+            # (stab_factor 0.990->0.997) BUT hit the sideways mean-reversion-rebuild wall
+            # (-0.0086: the SYMMETRIC EMA persists the shrink across bars -> sustained
+            # shrink starved sideways' oscillation recovery, the SAME wall as cached
+            # _eq_mom_sustain). The asymmetric fix: SMOOTH the shrink only in the DEEPENING
+            # direction (when raw shrink < prev -> pullback worsening -> smooth the size
+            # reduction so per-bar size wobble is damped in trends), but SNAP BACK
+            # INSTANTLY in the RELEASE direction (when raw shrink >= prev -> pullback
+            # easing -> take the raw larger value immediately, NO smoothing lag). This
+            # preserves the rally/mixed trend smoothness benefit (the wobble is in the
+            # deepening direction during pullbacks) while RELEASING the shrink the instant
+            # momentum recovers -> sideways' mean-reversion rebuild is NOT starved (the
+            # shrink releases on the same bar the oscillation turns, same as the raw
+            # keep). New per-strategy state self._eq_mom_shrink_ema. Byte-identical when
+            # momentum >= 0 (shrink factor 1.0 -> both branches give 1.0). Distinct from
+            # Exp1 (symmetric EMA, persists through release) and Exp5 (input OLS-slope,
+            # lags DD-cut) and _eq_mom_sustain (cached at entry, permanent through hold).
+            _prev_shrink = getattr(self, "_eq_mom_shrink_ema", 1.0)
+            if _port_eq_mom_shrink < _prev_shrink:
+                # Deepening: smooth toward the new (smaller) shrink over span-3.
+                _port_eq_mom_shrink = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
+            # else: release (raw >= prev) -> take raw instantly (no smoothing)
+            self._eq_mom_shrink_ema = _port_eq_mom_shrink
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
