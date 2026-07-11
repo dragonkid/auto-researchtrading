@@ -713,8 +713,11 @@ class Strategy:
             # lags DD-cut) and _eq_mom_sustain (cached at entry, permanent through hold).
             _prev_shrink = getattr(self, "_eq_mom_shrink_ema", 1.0)
             if _port_eq_mom_shrink < _prev_shrink:
-                # Deepening: smooth toward the new (smaller) shrink over span-3.
-                _port_eq_mom_shrink = 0.5 * _port_eq_mom_shrink + 0.5 * _prev_shrink
+                # Deepening: smooth toward the new (smaller) shrink over span-5 (lighter
+                # than Exp2 opener span-3 0.5/0.5 -> faster shrink engagement in the
+                # deepening direction -> less DD lag for bull, while keeping enough
+                # smoothing to damp rally/mixed per-bar size wobble).
+                _port_eq_mom_shrink = (2.0 / 6.0) * _port_eq_mom_shrink + (1.0 - 2.0 / 6.0) * _prev_shrink
             # else: release (raw >= prev) -> take raw instantly (no smoothing)
             self._eq_mom_shrink_ema = _port_eq_mom_shrink
 
