@@ -3799,6 +3799,31 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp3 (architectural, indep): LOSS-SIDE CONCAVE de-risk ramp. The profit
+                        # side gets a CONVEX ramp (k up to 1.6, holds near full size through mid-
+                        # range pressure then cuts sharply) so winners ride pullback noise. The
+                        # loss side is LINEAR (k=1.0): losers de-risk proportionally to exit
+                        # pressure across the [0.85, 1.0] band. A CONCAVE ramp (k<1) on the loss
+                        # side cuts losers FASTER in the early part of the band (x^0.7 < x for x
+                        # in (0,1) -> 1-x^0.7 > 1-x = more de-risk at the same pressure) so a
+                        # losing position under mounting pressure begins shrinking sooner ->
+                        # smaller realized losses -> higher Sharpe in the negative-Sharpe
+                        # regimes (crash/sideways/bull whose PF is dragged by large losers).
+                        # NEW control-flow branch on the de-risk function shape for the loss
+                        # side (was linear-only; now concave for losers, convex for winners).
+                        # GATED on trend strength (rsi_trend_str, the validated chop/trend
+                        # separator used by _w_time/_be_pressure): full concavity in TRENDING
+                        # regimes (crash/bull reversals are real -- a loser under high pressure
+                        # in a trend is a genuine reversal, cutting faster locks the loss
+                        # smaller); ~0 concavity in CHOP (sideways mean-reverters RECOVER -- a
+                        # losing position under pressure in chop may bounce back, so keep the
+                        # linear ramp to not over-cut recoverers). Continuous tanh on
+                        # rsi_trend_str/0.20 (no boundary); byte-identical in chop (gate 0 ->
+                        # k stays 1.0 linear) AND for winners/profit (max(0,-_pnl_scale)=0 ->
+                        # no concavity term). Max concavity k=0.70 at deep loss in strong trend.
+                        _dr_loss_concave = 0.30 * max(0.0, -_pnl_scale) * max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                        _dr_k = _dr_k - _dr_loss_concave
+                        _dr_k = max(0.5, _dr_k)  # floor at 0.5 (avoid over-aggressive cut)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
