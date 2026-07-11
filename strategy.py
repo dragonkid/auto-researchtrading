@@ -3508,29 +3508,6 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
-                    # branch step7: SMALL trend-aligned-loser exit_thresh lowering (binary
-                    # path, smaller magnitude than step6's 8pct which collapsed mixed stab).
-                    # Step6 showed the binary-path lowering helps rally a LOT (+0.006236) but
-                    # hurt mixed stability (0.96) from exit-timing noise (the threshold change
-                    # destabilized mixed's exit pattern even though the gate correctly targeted
-                    # losers). The stability collapse was MAGNITUDE-driven (8pct) -- a smaller
-                    # 3pct lowering may give a partial rally gain without the mixed stability
-                    # collapse. Same multi-day trend-align gate (ret_vlong*pos_dir/0.04) +
-                    # loser gate (_pnl_scale<0). Tests whether a small binary-path nudge
-                    # complements the de-risk concavity (step1) for rally without destabilizing
-                    # mixed. Continuous, no boundary.
-                    if _pnl_scale < 0.0:
-                        # branch step10: MAGNITUDE FLOOR on ret_vlong*pos_dir (only fire above
-                        # 0.012) so mixed's WEAKEST rally phases (ret_vlong modest, the keep's
-                        # ride population that destabilizes when cut) are excluded, keeping
-                        # rally's solid uptrend (ret_vlong well above 0.012). step8's tighter
-                        # scale helped sideways but hurt mixed; a magnitude floor targets the
-                        # weakest mixed phases directly. Continuous tanh floor (ramps 0->1 over
-                        # [0.006, 0.018] = below 0.006 excluded, above 0.018 full).
-                        _dr_ta_raw = ret_vlong * (1.0 if current_pos > 0 else -1.0)
-                        _dr_ta_mag_floor = max(0.0, min(1.0, np.tanh((_dr_ta_raw - 0.015) / 0.006)))
-                        _dr_ta_gate_thresh = max(0.0, np.tanh(_dr_ta_raw / 0.02)) * _dr_ta_mag_floor
-                        _exit_thresh = _exit_thresh * (1.0 - 0.11 * _dr_ta_gate_thresh)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -3822,31 +3799,6 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
-                        # Exp3 (architectural, indep): LOSS-SIDE CONCAVE de-risk ramp. The profit
-                        # side gets a CONVEX ramp (k up to 1.6, holds near full size through mid-
-                        # range pressure then cuts sharply) so winners ride pullback noise. The
-                        # loss side is LINEAR (k=1.0): losers de-risk proportionally to exit
-                        # pressure across the [0.85, 1.0] band. A CONCAVE ramp (k<1) on the loss
-                        # side cuts losers FASTER in the early part of the band (x^0.7 < x for x
-                        # in (0,1) -> 1-x^0.7 > 1-x = more de-risk at the same pressure) so a
-                        # losing position under mounting pressure begins shrinking sooner ->
-                        # smaller realized losses -> higher Sharpe in the negative-Sharpe
-                        # regimes (crash/sideways/bull whose PF is dragged by large losers).
-                        # NEW control-flow branch on the de-risk function shape for the loss
-                        # side (was linear-only; now concave for losers, convex for winners).
-                        # GATED on trend strength (rsi_trend_str, the validated chop/trend
-                        # separator used by _w_time/_be_pressure): full concavity in TRENDING
-                        # regimes (crash/bull reversals are real -- a loser under high pressure
-                        # in a trend is a genuine reversal, cutting faster locks the loss
-                        # smaller); ~0 concavity in CHOP (sideways mean-reverters RECOVER -- a
-                        # losing position under pressure in chop may bounce back, so keep the
-                        # linear ramp to not over-cut recoverers). Continuous tanh on
-                        # rsi_trend_str/0.20 (no boundary); byte-identical in chop (gate 0 ->
-                        # k stays 1.0 linear) AND for winners/profit (max(0,-_pnl_scale)=0 ->
-                        # no concavity term). Max concavity k=0.70 at deep loss in strong trend.
-                        _dr_loss_concave = 0.50 * max(0.0, -_pnl_scale) * max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                        _dr_k = _dr_k - _dr_loss_concave
-                        _dr_k = max(0.4, _dr_k)  # floor at 0.4 (allow deeper concavity)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
