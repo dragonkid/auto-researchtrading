@@ -3752,7 +3752,20 @@ class Strategy:
                         # onset fires fully only for SUSTAINED trend-aligned losers (rally
                         # pullback longs bleeding 4/4 bars).
                         _se_ta = _ta_align  # fire for trend-aligned losers (rally pullback longs), spare ct (mixed)
-                        _de_floor -= 0.20 * _se_trend * _se_ta * (max(0.0, _sustained_loss) ** 0.5)
+                        # step9: ADDITIONAL deep-sustained boost. The 0.20 base magnitude
+                        # is capped by mixed stability (step4 showed 0.30 collapses mixed
+                        # for the 3/4-bar sustained losers the concave ^0.5 engages). An
+                        # ADDITIONAL boost for the DEEPEST sustained losers (4/4 bars,
+                        # sustained_loss=1.0) targets the most-likely-extending trend-
+                        # aligned losers with a larger onset, while keeping the 0.20 base
+                        # for the 3/4-bar population (mixed-stability-safe). The deep-
+                        # sustained boost is gated by (sustained_loss - 0.75)/0.25 -> 0 at
+                        # 3/4 bars (mixed-stability-safe), 1 at 4/4 bars (deepest). Max
+                        # additional 0.10 (total 0.30 at 4/4, but only the deep-sustained
+                        # 4/4 subpopulation gets 0.30, NOT the 3/4 mixed population that
+                        # collapsed at step4). Smooth tanh.
+                        _se_deep = max(0.0, min(1.0, np.tanh((max(0.0, _sustained_loss) - 0.75) / 0.25)))
+                        _de_floor -= (0.20 + 0.10 * _se_deep) * _se_trend * _se_ta * (max(0.0, _sustained_loss) ** 0.5)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
