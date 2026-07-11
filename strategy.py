@@ -691,26 +691,6 @@ class Strategy:
             # excluded (gate ~0.5-0.8), rally/mixed sharp pullbacks still saturate -> keeps
             # the rally/mixed DD-cut while reducing sideways' gentle-oscillation shrink.
             _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
-            # Exp1 (architectural, indep): OUTPUT-EMA smoothing of the equity-momentum
-            # shrink FACTOR (distinct from prior Exp5 which smoothed the INPUT signal via
-            # OLS slope and LAGGED the DD-cut). Keep 1142132f noted the bull-stability
-            # lead (b): the raw per-bar shrink wobbles -> bull stability slipped 0.800->
-            # 0.799 below the 0.80 knee (stab_factor 0.997). Exp5 fixed it by smoothing
-            # the INPUT (8-bar OLS slope of equity) but that LAGGED the DD-cut (averages
-            # over the window -> catches the pullback later -> smaller/later shrink ->
-            # bull/rally/mixed DD-cuts all reduced). This keeps the INPUT fresh (endpoint
-            # difference -> the DD-cut timing is unchanged: the shrink engages the SAME
-            # bar momentum first goes negative) but EMA-smooths the OUTPUT shrink FACTOR
-            # over a fast span-3 window so the shrink AMOUNT is bar-to-bar stable instead
-            # of jumping with each perturbed momentum reading -> the per-bar size variance
-            # that drives bull tracking error is damped WITHOUT lagging the DD-cut. The
-            # span-3 EMA on a bounded [0.85, 1.0] factor converges in ~2 bars (the shrink
-            # still engages promptly; only the AMOUNT ramps smoothly). New per-strategy
-            # state: self._eq_mom_shrink_ema. Byte-identical when momentum >= 0 (shrink
-            # factor 1.0 -> EMA(1.0)=1.0 -> no effect on the rising-equity population).
-            _prev_shrink = getattr(self, "_eq_mom_shrink_ema", 1.0)
-            _port_eq_mom_shrink = (2.0 / 4.0) * _port_eq_mom_shrink + (1.0 - 2.0 / 4.0) * _prev_shrink
-            self._eq_mom_shrink_ema = _port_eq_mom_shrink
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
