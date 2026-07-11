@@ -1242,7 +1242,7 @@ class Strategy:
             # is retained (step1's discriminating form); the gate zeros the SIGNAL not
             # the sign, so near-zero bars contribute 0 signal (conf 0.5) not a
             # sign-flipped signal.
-            _dvp9_mag_gate = max(0.0, np.tanh(abs(_dvp9) / 0.40))  # step10: raise threshold 0.20->0.40 (step9 threshold 0.20 still crashed stability 0.277; higher threshold pins more bars to push stability above 0.50 knee)
+            _dvp9_mag_gate = max(0.0, np.tanh(abs(_dvp9) / 0.30))  # step11: threshold 0.30 (between 0.20 [stab 0.277, raw +0.085] and 0.40 [stab 1.0, raw -0.010] -- find the stab>0.50 sweet spot)
             _dvp9_signal = _dvp9_signal * _dvp9_mag_gate
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
