@@ -3480,9 +3480,6 @@ class Strategy:
                 # leverage-coupled 0.008*LEVERAGE_K scale). Smooth (no boundary), direction-
                 # agnostic general principle (no regime label): a losing position during a
                 # portfolio drawdown is at correlated-regime-hit risk -> exit sooner.
-                # step11: default for winners (the block below only runs for losers); the
-                # de-risk-ramp concavity at line ~3877 reads _sustained_loss unconditionally.
-                _sustained_loss = 0.0
                 if _pnl_scale < 0.0:
                     # branch step5: REPLACE ct-gate with SUSTAINED-LOSS gate. The ct-gate
                     # (step1) excluded all trend-aligned losers (the main bull/crash problem).
@@ -3633,10 +3630,6 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
-                    # step11: defaults so the de-risk-ramp concavity (line ~3877, outside
-                    # the _pnl_scale<0 blocks) is safe for winners (byte-identical 0 there).
-                    _se_trend = 0.0
-                    _se_ta = 0.0
                     # Exp3 (architectural, indep): PORTFOLIO-DD-ADAPTIVE de-risk floor
                     # lowering for LOSERS. NEW cross-component data dep on the de-risk
                     # graduation ramp: _de_floor (the lower bound of the graduated partial-
@@ -3861,27 +3854,6 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
-                        # STRUCTURAL_EXPLORATION step11: CONCAVE de-risk ramp SHAPE for
-                        # the trend-aligned-loser population (composes with step7 lower
-                        # ONSET). The lower onset (step7, _de_floor 0.85->0.55 for
-                        # trend-aligned sustained losers) made the [0.55,1.0] band ACTIVE;
-                        # the ramp SHAPE in that band is still LINEAR (_dr_k=1.0 for
-                        # losers). A CONCAVE ramp (_dr_k<1 -> 1 - _dr_x^k, k<1 -> _dr_x^k >
-                        # _dr_x -> _de_risk smaller -> MORE shrinking in the EARLY band
-                        # [0.55,0.7]) cuts the genuine trend-aligned loser faster at mid-
-                        # pressure -> smaller realized loss -> higher rally Sharpe. Gate
-                        # on the SAME step7 population (_se_trend * _se_ta * sustained_loss)
-                        # so the concavity fires ONLY for trend-aligned sustained losers
-                        # (the lower-onset population), not for all losers (sideways/ct/
-                        # winners byte-identical). Max concavity _dr_k=0.80 at deep
-                        # trend-aligned sustained loss (mild -- the prior session concave
-                        # de-risk branch walled at 0.50 magnitude for mixed; here the gate
-                        # restricts to trend-aligned sustained, and the lower onset already
-                        # selected the genuine-loser population). Composes: lower onset
-                        # (step7) widens the active band; concave shape (step11) cuts
-                        # faster in the early band -> both act on the same mid-pressure
-                        # genuine-loser population.
-                        _dr_k = _dr_k - 0.20 * _se_trend * _se_ta * (max(0.0, _sustained_loss) ** 0.5)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
