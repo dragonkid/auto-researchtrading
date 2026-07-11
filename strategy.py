@@ -3230,26 +3230,18 @@ class Strategy:
                 # _voter_bias_ema is live). The _mae state is RETAINED (still used by
                 # _ts_supp at the tp-harvest gate). Code-structure removal: -2 dead
                 # assignments, -2 dead tuple entries, -1 dead state dict + its reset pop.
-                # Exp4 (architectural, indep): volume-climax exit pressure (6th soft source).
-                # NEW data dependency: volume is used in entry (VWAP voter, calm_boost) but
-                # NEVER in the exit subsystem — all 5 existing soft sources (slope/pp/time/
-                # ve/ar) use price-derived series only. A volume spike after a winning run
-                # is a classic exhaustion/climax signature (rally tops, crash capitulation
-                # bounces) -> harvest the winner before the pullback. Distinct from
-                # _ve_pressure (vol-of-PRICE expansion, not volume) and _pp_pressure (peak
-                # giveback magnitude, not bar-volume). Profit-side only (lock gains at
-                # exhaustion; don't punish losers for volume - slope-against handles them).
-                # Compute 20-bar volume z-score; activate above ~2 sigma, saturate ~4 sigma.
-                # Continuous tanh, no boundary. New exit-pressure source + new control flow
-                # in the MAX fusion. Targets rally raw (volume-climax tops precede pullback
-                # giveback - the documented rally drag).
-                _vol_arr_e = bd.history["volume"].values[-21:-1]
-                _vol_mean_e = float(np.mean(_vol_arr_e))
-                _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
-                _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
-                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                _w_vc = max(0.0, _pnl_scale)  # profit-side only
-
+                # Exp4 (architectural simplification, this session): REMOVED the
+                # volume-climax exit pressure (_vc_pressure, 6th soft source). Prior
+                # sessions found the vc signal "noisier than ve" and "net-negative" for
+                # DD-boost in several contexts (volume-climax fires on sideways chop-volume
+                # spikes and rally/mixed non-regime-shift volume events). Test whether it
+                # is load-bearing (ever the binding MAX term at rally tops / crash
+                # capitulation) or redundant (MAX-absorbed by _pp_pressure giveback and
+                # _ve_pressure vol-of-price expansion, which fire on the same exhaustion
+                # events). If byte-identical or score-neutral, the simplification is
+                # justified (fewer exit-pressure sources = less correlated-noise surface
+                # for the MAX-fusion, less code). Removal: drop the computation block and
+                # its tuple entry in _soft_terms below.
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
                 # crash/sideways (PF 0.7/0.3/0.4) -- many positions survive scale-in then
@@ -3342,7 +3334,6 @@ class Strategy:
                     _w_pp * _pp_pressure,
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
-                    _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
                 )
                 _soft_max = max(_soft_terms)
