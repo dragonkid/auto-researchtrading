@@ -1491,6 +1491,42 @@ class Strategy:
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
+            # Exp2 (architectural, indep): CONVICTION-GATED sideways_boost (trade-quality
+            # mechanism for the near-zero sideways regime). Prior-session CROSS-EXPERIMENT
+            # CONCLUSION: sideways is walled on 3 LOSS-CUT axes (sustained-loss exit cut,
+            # _be_pressure MAE band, first-bar shrink AMP -- sideways mean-reverters RECOVER
+            # from dips, so cutting them early on ANY adverse signal hurts) AND on the
+            # winner-EXTENSION axis (chop-winner hold-extension discarded: sideways
+            # winners give back into the next oscillation). The remaining untested
+            # category is TRADE-QUALITY at entry (non-loss-cut, non-winner-extension).
+            # The sideways_boost (+65pct size in deep chop at LEVERAGE_K=4) currently fires
+            # UNCONDITIONALLY on rsi_trend_str (every sideways entry gets the full boost).
+            # A marginal-conviction sideways entry (spike barely above the strong-sum
+            # threshold = noisy reversion setup) gets the SAME +65pct size as a high-
+            # conviction entry (clean spike = clean reversion) -> the marginal trade's
+            # larger size realizes a bigger loss when the mean-reversion fails -> the
+            # marginal sideways losers drag Sh toward 0. GATE the boost on the entry
+            # conviction margin (the strong-sum margin of whichever side is admitting =
+            # the spike strength that IS the mean-reversion setup quality): full boost
+            # at high conviction (margin >= 0.5 above threshold), ramping DOWN to ~30pct
+            # of the boost at low conviction (margin ~0 = marginal spike). NEW cross-
+            # component data dep: sideways_boost reads the entry conviction margin
+            # (_bull_margin/_bear_margin, the strong-sum margin already computed at line
+            # ~1370), a sizing multiplier that previously depended only on the regime
+            # trend-strength now also depends on per-trade conviction. Continuous tanh
+            # gate (no boundary, noise-robust -- a hard gate on the boost would create a
+            # size-flip boundary -> stability crash, the validated lesson from the
+            # fade-shrink hard-gate). Direction-agnostic (max of the two side-margins =
+            # the conviction of the admitting side). Byte-identical in TRENDS
+            # (rsi_trend_str high -> (1 - rsi_trend_str**1.45) ~0 -> sideways_boost ~1.0
+            # regardless of the conviction gate -> bull/rally/crash byte-identical).
+            # Targets sideways (Sh -0.0007, score == bare Sharpe; concentrating size on
+            # the high-quality sideways mean-reverters raises their per-trade expectation
+            # -> raises sideways Sharpe without cutting trades (sample_factor preserved)
+            # or extending winners (giveback walled)).
+            _side_q_margin = max(_bull_margin, _bear_margin)  # conviction of the admitting side (direction-agnostic)
+            _sideways_q_gate = max(0.0, min(1.0, np.tanh((_side_q_margin - 0.10) / 0.20)))  # ~0 marginal, ~1 high-conviction (0.10 onset absorbs near-boundary noise wobble)
+            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45) * (0.30 + 0.70 * _sideways_q_gate)  # 30-100% of the boost scaled by conviction
 
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             # Architectural simplification: removed HIGH_VOTE_BOOST_MULT (constant 1.20).
