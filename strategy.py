@@ -2749,7 +2749,17 @@ class Strategy:
                     # where _mae_depth_si is already nonzero (crash). Max total AMP 0.90
                     # (0.60 base + 0.30 extra), still under 1.0 (slowdown factor floored at
                     # ~0.10 of full pace, not a hard freeze).
-                    _acc_fade_amp = 0.60 + 0.30 * _mae_depth_si
+                    # branch step3: raise the BASE AMP 0.60->0.70 (the prior-session sanctioned
+                    # crash lever -- keep: AMP 0.35->0.60 moved crash Sh -0.027->-0.017
+                    # monotonically; 0.60->0.70 should continue the linear scaling). The MAE
+                    # extra-AMP (0.30*_mae_depth_si) amplifies on top of the higher base for
+                    # underwater-during-scale-in losers. Max total AMP 1.00 (0.70+0.30),
+                    # floored by the slowdown factor (1-1.0*slowdown = 0 at full activation =
+                    # full freeze of scale-in pace for the deepest-MAE bars, consistent with
+                    # _adv_freeze's hard freeze on the same population). Sideways byte-
+                    # identical (mae~0 -> extra 0 -> base 0.70; but sideways gate ~0 in deep
+                    # chop -> slowdown 0 -> AMP inert for sideways regardless).
+                    _acc_fade_amp = 0.70 + 0.30 * _mae_depth_si
                     _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
