@@ -3919,6 +3919,19 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # BRANCH step10: ACCELERATION component on the exit threshold lowering.
+                    # The DD-LEVEL term above ((1-_port_dd_atten) = DD level) cuts sustained
+                    # losers faster during deep DD. Add a SECOND term for the DD-ACCELERATION
+                    # (2nd derivative, the step5 signal): during a CASCADING drawdown (deepening
+                    # fast), sustained losers are even more likely to extend -> cut them faster.
+                    # Distinct path from the step5 ADMISSION tightening (cuts TRADE COUNT at
+                    # entry): this cuts HELD losers faster (exit threshold). Uses the SAME
+                    # _port_dd_accel_tighten (top-level, in scope) gated by the SAME high-dd_frac
+                    # gate (spares sideways shallow drawdowns). Loss-side only (inside the
+                    # _pnl_scale<0 block). Byte-identical at peak/no-cascade (tighten=1.0 ->
+                    # accel-1=0). Smaller magnitude (0.06) since it stacks on the 0.12 level term.
+                    _exit_accel_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - 0.01) / 0.04)))
+                    _exit_thresh = _exit_thresh * (1.0 - 0.06 * (_port_dd_accel_tighten - 1.0) * _exit_accel_gate * _exit_dd_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
