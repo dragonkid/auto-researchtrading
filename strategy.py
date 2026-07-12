@@ -432,6 +432,30 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
 
+# Exp3 (architectural, indep): NOISE-ROBUST volume-flow CHOP ADMISSION BOOST.
+# Exp1 (sizing) was inert; Exp2 (admission TIGHTEN -- block unconfirmed) was
+# catastrophic because sideways profits come from LOW-volume-confirmed mean-
+# reverters (entered on price drops without volume push) -- the tighten blocked
+# exactly the profitable sideways trades. The prior DVP-9th-voter gave +0.097
+# sideways raw because it was ADDITIVE (boosted volume-confirmed entries, did
+# NOT block unconfirmed). The additive direction is the validated one.
+# This applies the noise-robust dvp_smooth (volume-weighted net per-bar return,
+# no sign-flip -- Exp1/Exp2 validated the formulation preserves stability) as an
+# ADDITIVE admission RELAX: LOWER _strong_min when volume CONFIRMS the entry
+# direction in chop, so volume-confirmed sideways entries are admitted more
+# easily (the prior voter's mechanism). Unconfirmed entries pass at the standard
+# threshold (NOT blocked -- the difference from Exp2's catastrophic tighten).
+# One-directional RELAX on confirmation (cannot tighten under noise -- the safety
+# vs the prior additive voter that could flip both ways). Byte-identical when no
+# confirmation (confirm_mag~0 -> relax~0) or in trends (chop gate ~0). The prior
+# voter crashed stability because sign(close-diff) flipped the contribution
+# BOTH ways under noise; the noise-robust dvp_smooth is smooth (no flip) AND the
+# relax is one-directional (only lowers threshold, never raises), so noise can
+# only make the relax slightly weaker/stronger, never reverse it -> no entry-
+# timing divergence -> stability preserved.
+DVP_SMOOTH_ADMIT_MAX_RELAX = 0.20  # max fractional LOWER of _strong_min at full volume-confirm in chop
+DVP_SMOOTH_CHOP_GATE = 0.30    # rsi_trend_str above which chop-gate is fully off (trends); ramped via tanh
+
 
 class Strategy:
     def __init__(self):
@@ -1138,6 +1162,19 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
+            # Exp3 (architectural, indep): NOISE-ROBUST volume-flow signal (replaces
+            # the noise-sensitive np.sign(np.diff) with a volume-weighted net per-bar
+            # return). A near-zero noise bar contributes ~0 (NOT a flipped +/-1), so
+            # entry timing does not diverge under AR(1) close perturbation, while
+            # genuine moves contribute full magnitude (discrimination preserved).
+            # Computed here (before _strong_min) so the admission relax below reads it.
+            # See DVP_SMOOTH_ADMIT_MAX_RELAX header for the prior-session rationale.
+            _dvps_n = 12
+            _dvps_c = closes[-_dvps_n - 1:]
+            _dvps_v = bd.history["volume"].values[-_dvps_n:]
+            _dvps_rets = np.diff(_dvps_c) / mid  # per-bar RETURNS (not sign), scale-free
+            _dvps_sigma = max(float(np.std(_dvps_rets)), 1e-10)  # realized per-bar vol
+            _dvp_smooth = float(np.sum(_dvps_v * _dvps_rets) / max(np.sum(_dvps_v) * _dvps_sigma, 1e-10))
             # Exp4 (architectural, indep): 8th voter -- RANGE/CLOSE efficiency-continuation.
             # Prior session CROSS-EXPERIMENT CONCLUSION: the ONLY un-disproven axis for
             # moving a regime raw is "a fundamentally new orthogonal DATA-SOURCE voter
@@ -1252,6 +1289,18 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp3: apply chop-gated noise-robust volume-confirmation admission RELAX
+            # (the prior DVP-9th-voter's +0.097 direction -- ADDITIVE boost, not the
+            # Exp2 catastrophic tighten). rsi_trend_str gates the chop region; _dvp_smooth
+            # (computed near VWAP above) is the noise-robust volume-flow direction. When in
+            # chop AND volume CONFIRMS the entry direction (|dvp_smooth| large), LOWER
+            # _strong_min so the volume-confirmed entry is admitted more easily. One-
+            # directional relax (only lowers, never raises -- cannot tighten under noise).
+            # Byte-identical when no confirmation (confirm~0) or in trends (chop gate ~0).
+            _dvp_chop_gate = max(0.0, min(1.0, 1.0 - np.tanh(rsi_trend_str / DVP_SMOOTH_CHOP_GATE)))
+            _dvp_confirm_mag = max(0.0, min(1.0, np.tanh(abs(_dvp_smooth) / 0.10)))
+            _dvp_smooth_admit_relax = 1.0 - DVP_SMOOTH_ADMIT_MAX_RELAX * _dvp_chop_gate * _dvp_confirm_mag
+            _strong_min = _strong_min * _dvp_smooth_admit_relax
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
