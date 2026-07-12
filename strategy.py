@@ -1346,57 +1346,60 @@ class Strategy:
             _acc_b = ENTRY_ACCUM_RHO * _prev_acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
             _acc_s = ENTRY_ACCUM_RHO * _prev_acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
-            # Exp1 (architectural, indep): RISING-EDGE conviction confirmation on the
-            # admission gate. The EMA accumulator (ENTRY_ACCUM_RHO=0.5) crosses
-            # _entry_thresh_dd to admit, but the EMA LAGS the raw margin by ~1-2 bars:
-            # a position can be admitted AFTER the conviction margin has peaked and is
-            # FADING (the spike that filled the accumulator has passed) -> the entry
-            # chases a decelerating signal (worse fill, more noise-driven false entries
-            # in chop and crash dead-cat bounces). NEW co-gate on the admission
-            # decision: require the instantaneous raw margin to be >= the accumulator's
-            # PREVIOUS-bar value (_bull_margin >= _prev_acc_b). Since
-            # _acc_b = RHO*_prev + (1-RHO)*_margin, this condition is exactly
-            # `_margin >= _prev_acc` (for RHO>0) = the EMA is non-decreasing this bar =
-            # the conviction is still RISING (or at peak), NOT fading from a prior
-            # spike. This is a new data dep on admission (instantaneous margin vs its
-            # own EMA's previous value -- a rising-edge confirmation), distinct from
-            # the EMA level threshold. Noise-robust: compares the raw margin to an
-            # already-smoothed reference (not two noisy instantaneous values). No new
-            # parameter (the exact rising-edge; conservative: a fade by even 1 unit
-            # of the EMA's last value blocks admission, but the EMA re-crosses next
-            # bar if the fade is noise -> at most 1 bar of admission delay on genuine
-            # re-strengthening). Byte-identical when margin is already rising through
-            # the threshold (the normal strong-entry case: margin >= prev_acc holds).
-            # Filters the decelerating-plateau-fade entries (marginal noise entries
-            # in chop/crash bounces where the EMA carries stale post-spike
-            # conviction). Continuous, direction-symmetric (both bull and bear
-            # sides), no regime label.
-            # branch step2: NOISE-ROBUST deadzone on the rising-edge. Step1's exact
-            # rising-edge (_margin >= _prev_acc) gave sideways raw Sharpe +1.39 BUT
-            # stability crashed 1.0->0.0 (min_stab 0.463): the raw margin-vs-EMA
-            # comparison flips sign under sub-5bps AR(1) perturbation (the margin
-            # hovers near _prev_acc at the admission boundary -> tiny close noise
-            # crosses the comparison both ways across the ensemble -> the entry
-            # bar shifts -> stability collapses). Add a DEADZONE band so only
-            # MEANINGFUL fades (margin below prev_acc by more than the band) block
-            # admission; noise-scale fades (within the band) still admit -> the
-            # comparison no longer flips on noise -> stability preserved. The band
-            # is a fixed fraction of the margin's normalized-ratio scale (margin is
-            # (strong-min)/min, typically ~0..2). A 0.10 band absorbs the AR(1)
-            # margin wobble (validated calibration: close std 4.5bps -> quintic
-            # confidence wobble ~0.05 -> margin wobble ~0.08-0.10 near the boundary)
-            # while still blocking genuine conviction deceleration (a fade from
-            # prev_acc 0.5 to margin 0.3 = 0.2 fade >> band -> blocked). Preserves the
-            # bull filter (marginal pullback entries fade by >0.10) while keeping
-            # sideways noise-stable. Continuous (the deadzone is a soft band, not a
-            # hard switch). Direction-symmetric.
-            _RISE_DEADZONE = 0.10
-            _rising_b = _bull_margin >= _prev_acc_b - _RISE_DEADZONE
-            _rising_s = _bear_margin >= _prev_acc_s - _RISE_DEADZONE
+            # Exp1 (architectural, indep -> BRANCH): RISING-EDGE conviction
+            # confirmation on the admission gate. The EMA accumulator
+            # (ENTRY_ACCUM_RHO=0.5) crosses _entry_thresh_dd to admit, but the EMA
+            # LAGS the raw margin by ~1-2 bars: a position can be admitted AFTER the
+            # conviction margin has peaked and is FADING (the spike that filled the
+            # accumulator has passed) -> the entry chases a decelerating signal (worse
+            # fill, more noise-driven false entries in chop/crash dead-cat bounces).
+            # The admission decision should depend on whether conviction is still
+            # RISING vs FADING, not just on the EMA level. NEW data dep on admission:
+            # the margin's bar-to-bar direction (margin vs the accumulator's previous
+            # value = rising-edge). Since _acc_b = RHO*_prev + (1-RHO)*_margin, the
+            # fade is (prev_acc - margin); a positive fade = conviction fading.
+            # branch step3: CONTINUOUS threshold-raise (replaces step1/2 boolean
+            # co-gate). Step1's hard boolean `_margin >= _prev_acc` AND step2's
+            # deadzone variant BOTH crashed sideways stability to 0.0 (min_stab
+            # 0.38-0.46): ANY hard admission co-gate that compares the raw margin to a
+            # reference near the admission boundary creates a FLIP BOUNDARY (the
+            # boolean output flips under sub-5bps AR(1) noise -> the entry bar shifts
+            # across the ensemble -> stability collapses), exactly the lesson the
+            # codebase's validated noise-robust patterns established (hard gates on
+            # noise-perturbed comparisons are forbidden; use continuous tanh ramps or
+            # fast-saturating gates that sit in flat tails). Replace the boolean
+            # co-gate with a CONTINUOUS admission-threshold RAISE proportional to the
+            # fade magnitude: when conviction is fading (margin < prev_acc), raise the
+            # threshold so the accumulator must cross HIGHER to admit (harder to
+            # admit a decelerating signal); when rising (margin >= prev_acc), no
+            # raise. This is SHRINK-ONLY on the fade side (harder admission, never
+            # easier) and CONTINUOUS (tanh on the fade -> no flip boundary: a
+            # noise-wobble that puts margin slightly below prev_acc only slightly
+            # raises the threshold, not a hard block -> the accumulator can still
+            # cross if genuinely above -> admission bar stable under AR(1)). Filters
+            # the decelerating-plateau-fade entries (bull's marginal pullback entries
+            # where conviction peaked and is fading meaningfully) while keeping
+            # sideways noise-stable (no hard flip). The fade is clamped to >= 0
+            # (rising conviction never raises the threshold -> byte-identical on the
+            # rising side). Direction-symmetric. New control flow: admission
+            # threshold depends on the conviction fade (margin vs its EMA prev).
+            _fade_b = max(0.0, _prev_acc_b - _bull_margin)
+            _fade_s = max(0.0, _prev_acc_s - _bear_margin)
+            # Fast-saturating /0.10 scale: a 0.10 fade saturates the raise. bull's
+            # marginal pullback fades are ~0.1-0.3 (conviction peaked then dropped
+            # well below the EMA) -> saturates -> full raise; sideways noise-wobble
+            # fades are ~0.02-0.05 (within the ramp) -> small raise -> stable. Max
+            # raise 0.15 (conservative; the accumulator must cross thresh+0.15 to
+            # admit a fading-conviction entry; strong genuine entries cross well
+            # above this so are unaffected).
+            _RISE_FADE_AMP = 0.15
+            _RISE_FADE_SCALE = 0.10
+            _rise_raise_b = _RISE_FADE_AMP * max(0.0, min(1.0, np.tanh(_fade_b / _RISE_FADE_SCALE)))
+            _rise_raise_s = _RISE_FADE_AMP * max(0.0, min(1.0, np.tanh(_fade_s / _RISE_FADE_SCALE)))
             _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
-            _bull_ready = _acc_b >= _entry_thresh_dd and _rising_b
-            _bear_ready = _acc_s >= _entry_thresh_dd and _rising_s
+            _bull_ready = _acc_b >= _entry_thresh_dd + _rise_raise_b
+            _bear_ready = _acc_s >= _entry_thresh_dd + _rise_raise_s
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
