@@ -1138,6 +1138,20 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
+            # Exp5 (architectural, indep): NOISE-ROBUST volume-flow signal (replaces
+            # the noise-sensitive np.sign(np.diff) used by the prior DVP-9th-voter with
+            # a volume-weighted net per-bar return). A near-zero noise bar contributes
+            # ~0 (NOT a flipped +/-1), so the voter conf does not flip under AR(1) close
+            # perturbation (the source of the prior voter's stability crash 1.0->0.248),
+            # while genuine moves contribute full magnitude (discrimination preserved).
+            # Used as the 9th voter below -- the prior DVP-voter mechanism that gave
+            # +0.097 sideways raw, with the noise-robust fix. See 9th voter comment.
+            _dvps_n = 12
+            _dvps_c = closes[-_dvps_n - 1:]
+            _dvps_v = bd.history["volume"].values[-_dvps_n:]
+            _dvps_rets = np.diff(_dvps_c) / mid  # per-bar RETURNS (not sign), scale-free
+            _dvps_sigma = max(float(np.std(_dvps_rets)), 1e-10)  # realized per-bar vol
+            _dvp_smooth = float(np.sum(_dvps_v * _dvps_rets) / max(np.sum(_dvps_v) * _dvps_sigma, 1e-10))
             # Exp4 (architectural, indep): 8th voter -- RANGE/CLOSE efficiency-continuation.
             # Prior session CROSS-EXPERIMENT CONCLUSION: the ONLY un-disproven axis for
             # moving a regime raw is "a fundamentally new orthogonal DATA-SOURCE voter
@@ -1171,6 +1185,17 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
+                # 9th voter (Exp5): NOISE-ROBUST volume-flow direction (dvp_smooth).
+                # The prior DVP-9th-voter (hard sign) gave +0.097 sideways raw BUT crashed
+                # stability via sign(close-diff) flips. This is the NOISE-ROBUST version
+                # (volume-weighted net per-bar return -- no sign flip). The voter
+                # contributes to strong-sum via the quintic ramp (amplifies quality), NOT
+                # a blanket threshold relax (Exp3/Exp4 admission relax was leaky). The
+                # signal: dvp_smooth (smooth [-1,+1] volume-flow direction) / 0.10 sharpness
+                # -> tanh transitions around |dvp_smooth|=0.10 (consistent with the
+                # _dvp_confirm_mag scale). Small fixed weight (0.55 like the 8th voter),
+                # appended WITHOUT touching existing _base_weights.
+                _dvp_smooth / 0.10,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1197,7 +1222,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency; 9th: noise-robust DVP (small fixed weights, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -1219,13 +1244,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 8)
+                _arr = np.array(_sig_hist)  # (K, 9)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)
+                _persistence_mult = np.ones(9)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
