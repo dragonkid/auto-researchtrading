@@ -471,6 +471,21 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # Exp3 branch (this session): per-symbol LATCHED MAE-depth for the acc-fade
+        # scale-in slowdown AMP. The opener's continuous per-bar
+        # _mae_depth_si = tanh(-mae/(|stop|*0.15)) wobbles under AR(1) close noise
+        # (pos_pnl trajectory noise -> mae wobble -> AMP wobble -> scale-in pace
+        # wobble -> exit-timing tracking error over crash's 13-month continuous DD ->
+        # crash stab crashed 1.0->0.081). The keep's short-side profit-latch pattern:
+        # latch a value ONCE on a one-time threshold crossing, hold it CONSTANT
+        # thereafter -> no per-bar wobble -> stability preserved. Here: when the
+        # position first goes deep-underwater (mae crosses a deep threshold), latch
+        # the MAE-depth to FULL (1.0) once; the AMP reads the cached constant, not a
+        # per-bar recompute. Pre-latch: 0.0 (no MAE extra -> baseline AMP 0.60, byte-
+        # identical to keep for never-deep-underwater positions). Post-latch: 1.0
+        # (full MAE extra AMP for the rest of the hold, constant). Sentinel semantics
+        # like _short_hold_cache: 0.0 = not latched, 1.0 = latched. Reset on full exit.
+        self._acc_fade_mae_latch = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
@@ -2845,7 +2860,37 @@ class Strategy:
                     # the MAE extra only fires on underwater positions [sideways mae~0 ->
                     # extra 0] so the sideways directional-leg bars keep base 0.60).
                     ACC_FADE_MAE_EXTRA = 0.40  # prior session step5 validated ceiling (step6/step9 widening inert)
-                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
+                    # BRANCH step1: LATCHED MAE-depth (replaces the opener's continuous
+                    # per-bar _mae_depth_si that crashed crash stab 1.0->0.081). The
+                    # opener recomputed tanh(-mae/(|stop|*0.15)) EACH bar -> the noisy
+                    # pos_pnl trajectory -> mae wobble -> AMP wobble -> scale-in pace
+                    # wobble -> exit-timing tracking error over crash's 13-month
+                    # continuous DD -> stab crash (the same stab/raw cliff the prior
+                    # session characterized for the short-side hold-extension). The
+                    # keep's validated fix for that cliff: latch ONCE on a threshold
+                    # crossing, hold CONSTANT thereafter (no per-bar recompute -> no
+                    # wobble). Here: latch the MAE-depth to FULL (1.0) the first bar
+                    # the position goes DEEP-underwater (mae <= -ACC_FADE_MAE_LATCH_THRESH*stop,
+                    # the same 0.15 band). Pre-latch: cache 0.0 -> MAE extra 0 ->
+                    # baseline AMP 0.60 (byte-identical to keep for never-deep-underwater
+                    # positions AND for the early scale-in bars before any underwater
+                    # excursion). Post-latch: cache 1.0 -> full MAE extra AMP for the
+                    # rest of the hold (CONSTANT -> no per-bar wobble -> stability
+                    # preserved). The latch is a one-time 0->1 flip (the latch BAR may
+                    # shift +-1 under noise, but the post-latch AMP is a constant 1.00
+                    # -> the scale-in pace past the latch bar is deterministic). The
+                    # crash underwater-during-scale-in population still gets the
+                    # stronger slowdown (the latch fires for them, exactly the
+                    # opener's target population) WITHOUT the per-bar AMP wobble.
+                    # Sideways byte-identical: gate ~0 -> slowdown 0 -> latch inert
+                    # regardless, AND sideways mae~0 -> never crosses the deep threshold
+                    # -> never latches. Byte-identical for flat/never-deep-underwater
+                    # positions (mae stays shallow -> never latches -> baseline AMP).
+                    ACC_FADE_MAE_LATCH_THRESH = 0.15  # latch when mae <= -0.15*stop (same band as opener)
+                    _mae_depth_si = self._acc_fade_mae_latch.get(symbol, 0.0)
+                    if _mae_depth_si < 0.5 and self._mae.get(symbol, 0.0) <= -(ACC_FADE_MAE_LATCH_THRESH * abs(STOP_LOSS_PCT)):
+                        _mae_depth_si = 1.0  # one-time LATCH (stays 1.0)
+                        self._acc_fade_mae_latch[symbol] = _mae_depth_si
                     _acc_fade_amp_eff = 0.60 + ACC_FADE_MAE_EXTRA * _mae_depth_si
                     _eff_progress = _eff_progress * (1.0 - _acc_fade_amp_eff * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
@@ -4880,7 +4925,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._acc_fade_mae_latch):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
