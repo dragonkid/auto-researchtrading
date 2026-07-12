@@ -4085,6 +4085,30 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # branch step4: WINNER-QUALITY strengthening of the trend-aligned de-risk
+                    # relaxation for LONG winners. The keep's _ta_de_align relaxation (0.10,
+                    # ret_long trend-align, profit-gated) widens the de-risk ramp for trend-
+                    # aligned winners so they de-risk more gradually through pullback noise.
+                    # The opener's winner-quality pp-attenuation (MFE-dominance, long-only)
+                    # let rally deep-pullback long WINNERS ride giveback (+0.000616 rally).
+                    # This is the de-risk-cushion ANALOG: a trend-aligned long winner with
+                    # HIGH MFE-dominance (clean advancer, large peak, small MAE) de-risks EVEN
+                    # MORE gradually (additional floor relaxation up to 0.05) so the cushion
+                    # holds longer through deep pullbacks -> captures more of the resuming
+                    # uptrend -> higher rally Sharpe. The MFE-dominance gate (long-only via
+                    # current_pos>0, profit-gated via _ta_de_profit, plus _winner_quality_gate)
+                    # restricts the extra relaxation to CONFIRMED clean advancers only (the
+                    # population the pp-attenuation opener validated as let-run-safe on rally).
+                    # Crash byte-identical: crash shorts (current_pos<0 -> _ta_de_profit uses
+                    # _pnl_scale which is <0 for losers, but _ta_de_profit=max(0,_pnl_scale)=0
+                    # for losers so the term is 0; crash WINNING shorts have _ta_de_profit>0
+                    # but current_pos<0 so the long-only guard current_pos>0 floors the extra
+                    # relaxation at 0). Sideways byte-identical (low trend-align + low MFE).
+                    # Byte-identical when not a long clean-advancer in profit. New cross-
+                    # component data dep: de-risk floor relaxation reads MFE-dominance (peak_pnl,
+                    # self._mae) jointly with trend-align.
+                    if current_pos > 0:
+                        _de_floor -= 0.05 * _winner_quality_gate * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
