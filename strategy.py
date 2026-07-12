@@ -432,36 +432,6 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
 
-# Exp1 (architectural, indep): NOISE-ROBUST VOLUME-FLOW chop entry-size shrink.
-# Prior-session-sanctioned untested lead: the DVP 9th voter on the ADMISSION
-# boundary gave sideways raw Sharpe +0.097 (the largest single-regime raw gain
-# last session -- volume-confirmation genuinely filters marginal sideways
-# entries) BUT stability crashed 1.0->0.248 because np.sign(np.diff(closes))
-# flips on sub-5bps close perturbations -> entry-timing divergence. The sanctioned
-# fix: a NON-sign(close-diff) implementation. This replaces the per-bar hard
-# sign with a VOLUME-WEIGHTED NET PER-BAR RETURN:
-#   dvp_smooth = sum(vol[i]*(c[i]-c[i-1])) / (sum(vol[i]) * sigma)
-# A near-zero noise bar contributes ~0 (its return ~0, NOT a flipped +/-1); a
-# genuine up/down bar contributes its full magnitude with sign. tanh(dvp_smooth)
-# is a smooth direction in [-1,+1] that (a) does NOT flip on sub-noise moves
-# (contributes ~0 -> no entry-timing divergence under AR(1) close perturbation)
-# and (b) preserves the discrimination of genuine moves (magnitude preserved,
-# unlike the prior tanh(close_diff/sigma) step2 which over-blended). This is the
-# "volume-balance/co-integration version without sign(close-diff)" the prior
-# session named as the standing untested lead.
-# APPLICATION axis: a chop-gated ENTRY-SIZE SHRINK (NOT admission -- admission is
-# what crashed; sizing is the safe family). The existing _dvp_boost (line ~2220)
-# is gated by trend_w x ER x vlong to DELIBERATELY SPARE sideways (chop ->
-# trend_w~0, ER~0 -> boost~0). This new shrink fires in the COMPLEMENT: chop
-# (low trend_w AND low ER = the sideways regime the boost leaves untouched),
-# shrinking entries whose volume does NOT confirm the entry direction (|dvp_smooth|
-# small = unconfirmed volume = marginal sideways entry that the prior DVP voter
-# filtered for +0.097 raw). Shrink-only (safe family), first-bar-only, bilateral.
-# Distinct from _dvp_boost (boost in trend, shrink in chop; opposite regime +
-# opposite direction). sigma normalized by mid so the signal is scale-free.
-DVP_SMOOTH_SHRINK_MAX = 0.25   # max first-bar shrink at zero volume-confirmation in chop (-> 0.75x)
-DVP_SMOOTH_CHOP_GATE = 0.30    # trend_w+ER below which chop-gate is fully on (sideways); ramped via tanh
-
 
 class Strategy:
     def __init__(self):
@@ -2249,25 +2219,6 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp1 (architectural, indep): NOISE-ROBUST volume-flow signal (replaces
-                # the noise-sensitive np.sign(np.diff) with a volume-weighted net per-bar
-                # return). A near-zero noise bar contributes ~0 (NOT a flipped +/-1), so the
-                # signal does not diverge entry timing under AR(1) close perturbation, while
-                # genuine moves contribute their full magnitude (discrimination preserved).
-                # tanh -> smooth [-1,+1] direction. See DVP_SMOOTH_SHRINK_MAX header for the
-                # prior-session-sanctioned rationale (non-sign(close-diff) DVP implementation).
-                _dvp_smooth_rets = np.diff(_dvp_c) / mid  # per-bar RETURNS (not sign), scale-free
-                _dvp_smooth_sigma = max(float(np.std(_dvp_smooth_rets)), 1e-10)  # realized per-bar vol
-                _dvp_smooth = float(np.sum(_dvp_v * _dvp_smooth_rets) / max(np.sum(_dvp_v) * _dvp_smooth_sigma, 1e-10))
-                # Chop gate: fire ONLY in low-trend + low-ER (sideways) -- the complement of
-                # the existing _dvp_boost's trend_w x ER gates. trend_w and _dvp_er_w are both
-                # ~0 in sideways; their sum ramps the chop gate fully on below the threshold.
-                _dvp_chop_gate = max(0.0, min(1.0, 1.0 - np.tanh((_dvp_trend_w + _dvp_er_w) / DVP_SMOOTH_CHOP_GATE)))
-                # Entry-direction confirmation: |dvp_smooth| small = volume NOT confirming the
-                # entry direction = marginal entry -> shrink. Attenuation 1.0 (full size) when
-                # volume confirms (|dvp_smooth| large), down to (1-SHRINK_MAX) at zero confirm.
-                _dvp_confirm_mag = max(0.0, min(1.0, np.tanh(abs(_dvp_smooth) / 0.10)))
-                _dvp_smooth_shrink = 1.0 - DVP_SMOOTH_SHRINK_MAX * _dvp_chop_gate * (1.0 - _dvp_confirm_mag)
                 # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
                 # bar size boost. The DURATION-fraction _weak_persist (sanctioned
                 # untested separator, results.tsv line 1476) gates a small first-bar
@@ -2417,7 +2368,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _dvp_smooth_shrink
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2430,7 +2381,7 @@ class Strategy:
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _dvp_smooth_shrink
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
