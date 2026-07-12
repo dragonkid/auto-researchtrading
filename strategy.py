@@ -3449,7 +3449,33 @@ class Strategy:
                 _ct_long_dt_gate = max(0.0, np.tanh(-ret_vlong / 0.01)) if current_pos > 0 else 0.0  # ~1 ct-long-in-downtrend (ret_vlong<0), ~0 trend-aligned-long or short
                 _persist_dt_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.55) / 0.15)))  # ~0 below 0.55 (rally/bull), ~1 above 0.85 (crash)
                 CT_LONG_TP_AMP = 0.40  # max time-pressure amplification for ct crash-bounce longs
-                _ct_long_amp = CT_LONG_TP_AMP * _ct_long_dt_gate * _persist_dt_gate
+                # branch step2: REPLACE the _down_persist high-gate (step1 fired for BOTH crash
+                # and mixed -> crash collapsed -0.18, sideways stab crashed 0). Diagnosis: the
+                # amplification HURT crash (deep persistent bear: bounce longs already cut by
+                # _ct_hold_sat+stop; added time-pressure missed occasional extended bounces ->
+                # worse realized loss) but HELPED mixed (down-year with rally phases: shallower
+                # downtrend -> _ct_hold_sat milder -> bounce longs run longer -> amplification
+                # cuts them before the down-leg resumes -> +0.095 mixed). The crash/mixed
+                # separator is DOWNTREND DEPTH: crash DEEP persistent (|ret_vlong|~0.04,
+                # _down_persist~0.9), mixed MODERATE variable (|ret_vlong|~0.01-0.02). Use a
+                # MID-BAND on |ret_vlong| that fires for mixed's moderate downtrend and
+                # EXCLUDES crash's deep (|ret_vlong|>0.025 ceiling) AND sideways's shallow chop
+                # (|ret_vlong|<0.008 floor -- sideways has no sustained direction -> |ret_vlong|
+                # near 0 -> excluded, fixes the sideways stab crash). This is the OPPOSITE band
+                # from the keep's short-side deadzone (|ret_vlong|>0.015 for crash DEEP) -- the
+                # long amplification wants the MODERATE band (mixed), not the deep band (crash).
+                # Continuous tanh mid-band (no hard boundary): ramp up above |ret_vlong|>0.008,
+                # ramp DOWN above 0.025 (ceiling), full in [0.012, 0.022]. Keep the _ct_long_dt_gate
+                # (ct-long) and a SOFTER _persist floor (down_persist>0.40, excludes rally/bull
+                # up_persist but allows mixed's variable down_persist). New cross-component data
+                # dep: time-pressure amplification reads |ret_vlong| in a mid-band (downtrend
+                # depth) jointly with position direction.
+                _rv_abs = abs(ret_vlong)
+                _rv_mid_floor = max(0.0, min(1.0, (_rv_abs - 0.008) / 0.004))  # ~0 below 0.008 (sideways/rally shallow), ~1 above 0.012
+                _rv_mid_ceil = max(0.0, min(1.0, (0.025 - _rv_abs) / 0.004))  # ~1 below 0.021, ~0 above 0.025 (crash deep)
+                _rv_mid_gate = _rv_mid_floor * _rv_mid_ceil  # mid-band [~0.012, ~0.022] full, 0 at both ends
+                _persist_dt_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.40) / 0.15)))  # softer floor (excludes rally/bull up_persist; allows mixed variable)
+                _ct_long_amp = CT_LONG_TP_AMP * _ct_long_dt_gate * _persist_dt_gate * _rv_mid_gate
                 if _ct_long_amp > 0.0:
                     _time_pressure = _time_pressure * (1.0 + _ct_long_amp)
 
