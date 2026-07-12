@@ -99,7 +99,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # for longs (short gate 0), ct shorts (align 0), losers (profit gate 0), outside
 # portfolio DD. Targets crash Sharpe (longer capture of trend-aligned winning
 # shorts raises avg-win -> PF>1.0 -> Sharpe toward 0).
-TA_SHORT_HOLD_EXT = 1.5
+TA_SHORT_HOLD_EXT = 0.5  # branch step2: 1.5->0.5 (test if crash stab crash is from magnitude of max_hold wobble)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
