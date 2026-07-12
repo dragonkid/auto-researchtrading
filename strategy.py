@@ -76,6 +76,36 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
+# Exp1 (architectural, indep): POSITION-CACHED ENTRY-LOCKED short-side hold-
+# extension. The prior session (b636bb1a opener) proved crash Sharpe can cross
+# ZERO via a short-side trend-aligned hold-extension (mirror of the long-only
+# _ta_dd_hold_ext) BUT crash stability crashed to 0.047 (noise-fragile per the
+# prompt stability warning). Root cause diagnosed across 7 branch steps: the
+# per-bar recomputation of the hold-extension MAGNITUDE (even EMA-smoothed)
+# wobbles under AR(1) noise as the profit-gate (tanh(pos_pnl/|stop|)) flips
+# around breakeven and _port_dd_atten drifts -> _max_hold jumps bar-to-bar ->
+# _time_pressure jumps -> the exit BAR shifts across the noise ensemble ->
+# cumulative exit-timing tracking error over crash's LONG CONTINUOUS 13-month DD
+# (the per-bar extension fires for MANY consecutive crash bars -> wobble
+# accumulates). There was NO smooth middle between stab-held-sub-noise (mag<=1.0,
+# comp +0.0013) and stab-crashed-pass (mag 1.5, comp +0.003839 but stab 0.047).
+# THIS experiment is the prior-session-sanctioned fix: cache the hold-extension
+# ONCE at entry (deterministic), never recompute per-bar. Computed at the moment
+# a SHORT opens from entry-bar conditions (short direction + multi-day downtrend
+# alignment + portfolio DD state at entry), stored as a FIXED additive _max_hold
+# offset for the life of the position. Since it is set once and never recomputed,
+# it is deterministic under AR(1) noise: the extension is a CONSTANT offset to
+# _max_hold, so the exit bar does NOT shift across noise realizations (zero
+# per-bar wobble -> stability preserved). The winner/loser selection the per-bar
+# profit-gate provided is replaced by pp_pressure DURING the hold: a bouncing
+# short is still harvested by pp at giveback (the extension delays time-pressure
+# ONLY, not pp), so the bounce-protection is preserved via pp, NOT via excluding
+# shorts from the extension. Byte-identical for longs (cache set to 0 at long
+# entry), shorts not in a downtrend (align gate 0 -> cache 0), outside portfolio
+# DD (dd gate 0 -> cache 0), and the entire non-crash population (no short-in-
+# persistent-downtrend-during-DD entries). New per-position cached state + new
+# control flow (computed at entry, read during hold -- not recomputed per bar).
+SHORT_HOLD_CACHED_EXT = 1.5  # cached additive _max_hold bars for short-in-downtrend-during-DD (mirrors prior opener magnitude that crossed crash Sh to zero)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -503,6 +533,13 @@ class Strategy:
         # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
         # (slow-rise / fast-fall). Reset on full exit; default 0.0.
         self._local_hold_ext_ema = {}
+        # Exp1 (architectural, indep): per-symbol POSITION-CACHED short-side hold-
+        # extension. Unlike _hold_ext_ema/_local_hold_ext_ema (per-bar EMA recomputed
+        # each held bar), this is computed ONCE at short entry from entry-bar state
+        # and held CONSTANT for the life of the position (deterministic under AR(1)
+        # -> zero per-bar wobble -> stability preserved). See SHORT_HOLD_CACHED_EXT.
+        # Reset on full exit; set to 0.0 at long entry; default 0.0 (no effect).
+        self._short_hold_cache = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2442,6 +2479,11 @@ class Strategy:
                     # step14/15 ceiling). The first-bar cap on size still applies to all.
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
+                    # Exp1 (architectural, indep): long entry clears the short-side
+                    # hold cache (a prior short on this symbol would have set it; a
+                    # fresh long must not inherit it). Application is gated on
+                    # current_pos<0 anyway, but clearing keeps the state clean.
+                    self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
@@ -2453,6 +2495,20 @@ class Strategy:
                     # shorts ret_vlong<0 -> no sustain -> no exit-timing disruption).
                     _avgvol_sustain_gate_bear = max(0.0, np.tanh(ret_vlong / 0.01))  # ~1 ct-short, ~0 trend-aligned-short
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bear
+                    # Exp1 (architectural, indep): CACHE the short-side hold-extension
+                    # ONCE at short entry from entry-bar state (deterministic). See
+                    # SHORT_HOLD_CACHED_EXT header. Computed here (not per-bar during
+                    # the hold) so _max_hold reads a CONSTANT offset -> exit bar does
+                    # not shift under AR(1) noise -> zero cumulative tracking error.
+                    # Gates: (1) short-in-downtrend alignment (ret_vlong<0 at entry
+                    # -> short is trend-aligned with the multi-day downtrend = crash
+                    # winning shorts); fast-saturating /0.01 (near-constant noise-free
+                    # per the validated ret_vlong ct-gate lesson). (2) portfolio in DD
+                    # at entry (1 - _port_dd_atten; crash is in DD). Both gates are
+                    # evaluated from entry-bar state and frozen. Byte-identical for
+                    # trend-aligned shorts in no-DD (gate 0) and ct shorts (align 0).
+                    _short_align_entry = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 short-in-downtrend, ~0 ct-short-in-uptrend
+                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * (1.0 - _port_dd_atten)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -3219,7 +3275,19 @@ class Strategy:
                     _lhe_alpha = 0.15  # fast fall (release on winner->loser)
                 _local_hold_ext = (1.0 - _lhe_alpha) * _local_hold_ext_raw + _lhe_alpha * _prev_lhe
                 self._local_hold_ext_ema[symbol] = _local_hold_ext
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext
+                # Exp1 (architectural, indep): apply the POSITION-CACHED short-side
+                # hold-extension (deterministic constant set once at short entry, see
+                # SHORT_HOLD_CACHED_EXT). Unlike _ta_dd_hold_ext/_local_hold_ext (per-bar
+                # EMA recomputed each held bar), this is a FIXED additive offset read
+                # from the cache -> _max_hold gets a constant -> exit bar does NOT shift
+                # under AR(1) noise -> zero cumulative tracking error over crash's long
+                # continuous DD. Gated on current_pos<0 (only shorts); default 0.0 for
+                # longs (cleared at long entry) and uncached symbols. Composes ADDITIVELY
+                # with the per-bar extensions (mutually exclusive by direction: a position
+                # is long OR short -> _ta_dd_hold_ext fires for longs, _short_hold_cache
+                # for shorts -> at most one fires per position -> no double-extension).
+                _short_hold_cached = self._short_hold_cache.get(symbol, 0.0) if current_pos < 0 else 0.0
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _short_hold_cached
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
@@ -4689,7 +4757,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
