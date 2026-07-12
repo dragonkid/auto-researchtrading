@@ -2535,8 +2535,23 @@ class Strategy:
                     # boundary). Evaluated at entry and frozen. Crash (|rv|~0.04) ->
                     # tanh(0.025/0.01)=~1 full; rally pullback (|rv|~0.005) -> 0.
                     _short_align_entry = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 short-in-downtrend, ~0 ct-short-in-uptrend
-                    _short_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.025) / 0.008)))  # branch step6: 0.015->0.025 (exclude rally deeper pullbacks |rv|~0.02; crash |rv|~0.04 still passes)
-                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * _short_mag_gate * (1.0 - _port_dd_atten)
+                    _short_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))  # branch step5 deadzone 0.015 (step6 0.025 excluded too many crash shorts, reverted)
+                    # Branch step7: CONVICTION-MARGIN gate at entry (deterministic proxy
+                    # for the prior opener's profit gate, which can't be cached since a
+                    # fresh entry has pos_pnl=0). The prior per-bar opener (b636bb1a) kept
+                    # rally BYTE-IDENTICAL via a per-bar PROFIT gate (only extend in-profit
+                    # shorts; rally pullback shorts aren't in profit -> excluded; crash
+                    # winning shorts are -> included) BUT that per-bar gate wobbled
+                    # (pos_pnl crosses breakeven -> stab 0.047). My cached approach removed
+                    # the wobble but lost the profit gate's rally protection (rally
+                    # -0.0158 in step5/6). A conviction-margin gate at ENTRY is a single
+                    # deterministic number (no per-bar wobble) that separates crash
+                    # (HIGH-conviction trend-aligned shorts, strong bear_margin) from
+                    # rally pullback (MARGINAL shorts, weak bear_margin). Gate the cache
+                    # on bear_margin>0.3 (high conviction -> likely winner -> extend;
+                    # marginal -> no extend -> rally spared). Evaluated at entry, frozen.
+                    _short_conv_gate = max(0.0, min(1.0, (_bear_margin - 0.30) / 0.30))  # 0 margin<=0.3, ramps to 1 at margin>=0.6
+                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * _short_mag_gate * _short_conv_gate * (1.0 - _port_dd_atten)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
