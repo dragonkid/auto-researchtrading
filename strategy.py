@@ -2759,7 +2759,7 @@ class Strategy:
                     # _adv_freeze's hard freeze on the same population). Sideways byte-
                     # identical (mae~0 -> extra 0 -> base 0.70; but sideways gate ~0 in deep
                     # chop -> slowdown 0 -> AMP inert for sideways regardless).
-                    _acc_fade_amp = 0.70 + 0.30 * _mae_depth_si
+                    _acc_fade_amp = 0.80 + 0.30 * _mae_depth_si
                     _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
