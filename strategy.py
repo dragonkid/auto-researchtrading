@@ -3287,7 +3287,22 @@ class Strategy:
                 # is long OR short -> _ta_dd_hold_ext fires for longs, _short_hold_cache
                 # for shorts -> at most one fires per position -> no double-extension).
                 _short_hold_cached = self._short_hold_cache.get(symbol, 0.0) if current_pos < 0 else 0.0
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _short_hold_cached
+                # Branch step2: when the cached short extension is active, ZERO the
+                # per-bar _hold_adj (slope) term so _max_hold becomes a DETERMINISTIC
+                # CONSTANT for these positions (baseline + cached ext; _ct_hold_sat~0
+                # for trend-aligned shorts; _ta_dd_hold_ext/_local_hold_ext are long-only).
+                # Step1 crash stab crashed to 0.047 EVEN with the cached constant: the
+                # residual per-bar _hold_adj wobble (slope) shifted _max_hold bar-to-bar,
+                # and the +1.5-bar later exit landed in a noisier time-pressure ramp region
+                # where the wobble straddled the threshold -> exit bar flipped across noise.
+                # Freezing _hold_adj for cached-extension shorts makes the WHOLE _max_hold
+                # constant -> exit bar deterministic -> zero tracking error. The cost:
+                # crash trend-aligned shorts lose the slope-agrees hold extension (which
+                # the cached ext replaces, so net hold is similar). Byte-identical when
+                # _short_hold_cached=0 (longs, ct shorts, no-DD shorts -- the whole non-
+                # crash-short population keeps _hold_adj).
+                _hold_adj_eff = 0.0 if _short_hold_cached > 0.0 else _hold_adj
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj_eff - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _short_hold_cached
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
