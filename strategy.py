@@ -105,7 +105,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # DD (dd gate 0 -> cache 0), and the entire non-crash population (no short-in-
 # persistent-downtrend-during-DD entries). New per-position cached state + new
 # control flow (computed at entry, read during hold -- not recomputed per bar).
-SHORT_HOLD_CACHED_EXT = 3.5  # branch step12: 4.5 crashed stab (0.045), 3.0 held (step9 +0.000815); probe 3.5 midpoint for more crash gain while holding stab
+SHORT_HOLD_CACHED_EXT = 3.25  # branch step13: probe between 3.0 (held, +0.000815) and 3.5 (crashed stab 0.046) -- find the stab cliff edge
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
