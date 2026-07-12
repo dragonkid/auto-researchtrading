@@ -1390,12 +1390,32 @@ class Strategy:
             # given the accumulator state). Composes with existing entry-size shrinks.
             _FADE_SHRINK_AMP = 0.20
             _FADE_SHRINK_SCALE = 0.10
+            # branch step5: DEADZONE on the fade-shrink to fix sideways stability.
+            # Step4 crossed +0.004 composite BUT sideways stability crashed to 0.342
+            # (factor 0 -> sideways score 0, propped up the mean only because 0 >
+            # -0.0117). The fade (_prev_acc - margin) for sideways (chop) hovers near
+            # the admission boundary where both prev_acc and margin are small -> the
+            # fade is SMALL but wobbles in magnitude under AR(1) (close noise -> voter
+            # confidence wobble -> margin wobble -> fade amount wobble -> shrink
+            # amount wobble -> emitted target wobble -> stability crash). The shrink
+            # must NOT activate on noise-scale fades; only on MEANINGFUL fades
+            # (bull's marginal pullback entries, where conviction peaked then
+            # dropped well below the EMA). Add a deadzone: the shrink only activates
+            # when fade > FADE_DEADZONE. Sideways noise-fades (< deadzone) -> no
+            # shrink -> byte-identical -> stability holds. Bull meaningful fades
+            # (> deadzone) -> shrink fires -> bull gain kept. The deadzone is a
+            # continuous ramp (tanh on (fade-deadzone)/scale), NOT a hard switch ->
+            # no flip boundary. 0.05 deadzone: absorbs the ~0.02-0.05 sideways
+            # noise-fade wobble; bull's ~0.1-0.3 fades pass. This is the noise-robust
+            # pattern the codebase uses (the _RISE_DEADZONE attempt step2 was on the
+            # HARD co-gate; here it's on the continuous shrink -> no flip).
+            _FADE_DEADZONE = 0.05
             _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
             _bull_ready = _acc_b >= _entry_thresh_dd
             _bear_ready = _acc_s >= _entry_thresh_dd
-            _fade_shrink_b = 1.0 - _FADE_SHRINK_AMP * max(0.0, min(1.0, np.tanh(_fade_b / _FADE_SHRINK_SCALE)))
-            _fade_shrink_s = 1.0 - _FADE_SHRINK_AMP * max(0.0, min(1.0, np.tanh(_fade_s / _FADE_SHRINK_SCALE)))
+            _fade_shrink_b = 1.0 - _FADE_SHRINK_AMP * max(0.0, min(1.0, np.tanh(max(0.0, _fade_b - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
+            _fade_shrink_s = 1.0 - _FADE_SHRINK_AMP * max(0.0, min(1.0, np.tanh(max(0.0, _fade_s - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
