@@ -1371,8 +1371,28 @@ class Strategy:
             # in chop/crash bounces where the EMA carries stale post-spike
             # conviction). Continuous, direction-symmetric (both bull and bear
             # sides), no regime label.
-            _rising_b = _bull_margin >= _prev_acc_b
-            _rising_s = _bear_margin >= _prev_acc_s
+            # branch step2: NOISE-ROBUST deadzone on the rising-edge. Step1's exact
+            # rising-edge (_margin >= _prev_acc) gave sideways raw Sharpe +1.39 BUT
+            # stability crashed 1.0->0.0 (min_stab 0.463): the raw margin-vs-EMA
+            # comparison flips sign under sub-5bps AR(1) perturbation (the margin
+            # hovers near _prev_acc at the admission boundary -> tiny close noise
+            # crosses the comparison both ways across the ensemble -> the entry
+            # bar shifts -> stability collapses). Add a DEADZONE band so only
+            # MEANINGFUL fades (margin below prev_acc by more than the band) block
+            # admission; noise-scale fades (within the band) still admit -> the
+            # comparison no longer flips on noise -> stability preserved. The band
+            # is a fixed fraction of the margin's normalized-ratio scale (margin is
+            # (strong-min)/min, typically ~0..2). A 0.10 band absorbs the AR(1)
+            # margin wobble (validated calibration: close std 4.5bps -> quintic
+            # confidence wobble ~0.05 -> margin wobble ~0.08-0.10 near the boundary)
+            # while still blocking genuine conviction deceleration (a fade from
+            # prev_acc 0.5 to margin 0.3 = 0.2 fade >> band -> blocked). Preserves the
+            # bull filter (marginal pullback entries fade by >0.10) while keeping
+            # sideways noise-stable. Continuous (the deadzone is a soft band, not a
+            # hard switch). Direction-symmetric.
+            _RISE_DEADZONE = 0.10
+            _rising_b = _bull_margin >= _prev_acc_b - _RISE_DEADZONE
+            _rising_s = _bear_margin >= _prev_acc_s - _RISE_DEADZONE
             _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
             _bull_ready = _acc_b >= _entry_thresh_dd and _rising_b
