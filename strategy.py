@@ -266,6 +266,7 @@ DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold thr
 # untested axis on the de-risk graduation is the position's life-cycle adverse history.
 DERISK_MAE_ATTEN = 0.60   # max fraction of the convex cushion removed at deep MAE
 DERISK_MAE_SCALE = 0.50   # MAE depth (in |stop| units) at which cushion removal saturates
+DERISK_MAE_DEADZONE = 0.25 # branch step1: MAE depth (in |stop| units) below which NO cushion removal (shallow-MAE robust winners byte-identical); only genuinely-deep-MAE (mae<=-0.25*stop) gets removal
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -4170,7 +4171,7 @@ class Strategy:
                         # -DERISK_MAE_SCALE*stop). The cushion term (above 1.0) is multiplied
                         # by (1 - DERISK_MAE_ATTEN*_dr_mae_depth) -> deep-MAE keeps 40pct of
                         # the cushion (k 1.6 -> 1.24), shallow-MAE keeps 100pct (k 1.6).
-                        _dr_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * DERISK_MAE_SCALE))))
+                        _dr_mae_depth = max(0.0, min(1.0, np.tanh((-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) - DERISK_MAE_DEADZONE) / (DERISK_MAE_SCALE - DERISK_MAE_DEADZONE))))
                         _dr_mae_atten = 1.0 - DERISK_MAE_ATTEN * _dr_mae_depth
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_mae_atten  # 1.0 loss/ct/slope-weak/deep-MAE-fragile, up to ~1.6 trend-aligned+profit+smoother-slope-conf+shallow-MAE-robust
                         _de_risk = 1.0 - _dr_x ** _dr_k
