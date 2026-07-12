@@ -2703,70 +2703,7 @@ class Strategy:
                     # inert there; the stability risk is sideways directional-leg bars where
                     # the 0.02-deadzone gate fires -- more slowdown = more exit-timing
                     # wobble on those bars).
-                    # Exp (architectural, indep): MAE-CONDITIONED slowdown AMPLITUDE. The keep's
-                    # slowdown AMP is a FIXED 0.60 -- it slows scale-in at the same rate for
-                    # every gated position regardless of how that position is ACTUALLY
-                    # evolving. The keep's signal (accumulator-fade = prev_acc - margin) is a
-                    # PRE-entry conviction-decay measure; it does NOT read the position's
-                    # REALIZED trajectory. Two positions with identical pre-entry fade can
-                    # have OPPOSITE realized outcomes: one goes immediately underwater (a
-                    # crash loser that drives crash PF to 1.0), the other stays flat/favorable.
-                    # The fixed AMP throttles both identically. NEW cross-component data dep:
-                    # the slowdown AMPLITUDE now reads the position's MAE (self._mae, the
-                    # minimum pos_pnl over the hold so far, already tracked at line ~2905 and
-                    # available here since the scale-in block runs after pos_pnl is computed
-                    # but before the MAE update -- so self._mae reflects bars 0..bars_held-1,
-                    # the position's adverse excursion through the prior bar). A position
-                    # that has gone deeply underwater during scale-in (mae <= -0.5*stop) is
-                    # exactly the loser that drives crash/sideways Sharpe negative -> apply a
-                    # STRONGER slowdown (cut its scale-in exposure harder -> smaller realized
-                    # loss when it eventually exits -> raises the negative-Sharpe regime
-                    # scores directly, since for sharpe<=0 the score == bare sharpe). A
-                    # flat/favorable position (mae ~ 0) keeps the baseline 0.60 AMP (byte-
-                    # identical there -> no cost to bull/rally trend-aligned winners which
-                    # rarely go underwater during scale-in). Continuous tanh on (-mae)/stop
-                    # (no boundary; fast-saturating so a position underwater by ~0.5*stop gets
-                    # full extra AMP, shallow-MAE gets ~0 extra). The extra AMP is bounded
-                    # (max +0.20 -> total AMP 0.80) so the slowdown never exceeds 0.80 (the
-                    # validated safe-family ceiling; the keep's 0.60 already held stability).
-                    # Shrink-only (factor <= 1.0), direction-symmetric (MAE is sign-agnostic;
-                    # long and short losers both go underwater). Byte-identical when mae ~ 0
-                    # (no adverse excursion -> extra AMP 0 -> baseline 0.60). Distinct from
-                    # _adv_freeze (adverse pos_pnl freeze, keys on INSTANTANEOUS adverse move
-                    # and FREEZES scale-in at current size; this keys on CUMULATIVE worst
-                    # excursion and modulates the SLOWDOWN AMPLITUDE -- a softer, continuous
-                    # action on the same losing population the freeze catches at the cliff).
-                    # Distinct from _be_pressure's MAE gate (exit-side, fires post-scale-in on
-                    # deep-MAE stalls at breakeven; this is scale-in-side, fires DURING
-                    # scale-in on deep-MAE fading-conviction positions). New control flow: the
-                    # scale-in slowdown AMPLITUDE depends on the position's realized adverse
-                    # trajectory (was: fixed AMP dependent on pre-entry fade only).
-                    # branch step5: revert base AMP 0.80->0.70 (step4 0.80 crashed sideways
-                    # stability 1.0->0.0 on the directional-leg population; 0.70 held it).
-                    # WIDEN the MAE activation band 0.25*stop->0.15*stop so SHALLOWER-MAE
-                    # crash losers (mae -0.15*stop..-0.25*stop, not just the deep -0.5*stop
-                    # population) trigger the extra AMP -- step2 found the ceiling raise
-                    # (0.20->0.30) was inert because the deep-MAE population hits the stop
-                    # before the extra slowdown matters, so the lever lives in the MID-BAND
-                    # which the 0.25*stop scale under-samples. 0.15*stop saturates by mae
-                    # -0.3*stop (shallower). Raise the MAE ceiling 0.30->0.40 (max total AMP
-                    # 1.10, but the slowdown factor is floored at 0 by the max(0,...) in
-                    # scale_frac so >1.0 AMP just fully-freezes scale-in pace for the
-                    # underwater bars = same as _adv_freeze, safe). Sideways byte-identical
-                    # (mae~0 during sideways scale-in -> extra 0 -> base 0.70, AND the
-                    # sideways gate ~0 in deep chop -> slowdown 0 -> AMP inert regardless).
-                    # branch step8: reverted step7's Exp5 MAE-conditioning (crashed sideways
-                    # stab -- Exp5 is ungated, fires on sideways margin-negative chop bars).
-                    # Back to step5 best stable state: MAE-conditioning ONLY on the GATED
-                    # acc-fade slowdown (sideways-safe via the rsi_trend_str/multi-day gate).
-                    # Compute _mae_depth_si here (band 0.15*stop, ceiling 0.40).
-                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
-                    # branch step10: base AMP 0.70->0.75 (sweet spot between 0.70 stable and
-                    # 0.80 which crashed sideways stab). Test if 0.75 gives more crash gain than
-                    # 0.70 while holding sideways stability (0.80 crashed, 0.70 held; 0.75
-                    # probes the midpoint). MAE ceiling back to 0.40 (step9 0.50 inert).
-                    _acc_fade_amp = 0.75 + 0.40 * _mae_depth_si
-                    _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
+                    _eff_progress = _eff_progress * (1.0 - 0.60 * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
