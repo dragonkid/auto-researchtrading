@@ -3414,37 +3414,8 @@ class Strategy:
                 # de-risk more gradually (run longer via reduced pressure, NOT a later
                 # exit bar -> no stab cliff). Byte-identical when not latched.
                 SHORT_HOLD_TP_ATTEN = 0.50  # branch step16 reverted: 0.60 gave +0.003668 (less than 0.50's +0.004013); 0.50 is the sweet spot (over-attenuating lets shorts run too long -> give back gains)
-                # Exp2 (architectural indep, this session): MAE-CONDITIONED short-side
-                # TP-attenuation. The keep's attenuation is FLAT 0.50 for ALL latched
-                # winning shorts. NEW cross-component data dep: the attenuation AMOUNT
-                # reads the position's MAE (self._mae, the cumulative worst adverse
-                # excursion, already tracked; updated this bar at line ~3015 BEFORE
-                # this point so it reflects the current hold). Among LATCHED WINNING
-                # shorts (pos_pnl>0.5*stop, cache>0), two structural sub-populations: (a)
-                # SHALLOW-MAE winners (mae ~0 = never went significantly underwater during
-                # the hold = a CLEAN downtrend continuation -- the short profited
-                # monotonically as the downtrend persisted) -- these are the cleanest
-                # trend-continuation winners and benefit from running LONGER (more
-                # downtrend capture -> higher crash Sharpe, score==bare Sharpe); (b)
-                # DEEP-MAE winners (mae very negative = went underwater then recovered
-                # to profit = a CHOPPY bounce-then-continue path) -- these are noisier
-                # and the keep's 0.50 is already the validated sweet spot for them (over-
-                # attenuating deep-MAE choppers lets them give back the recovered gains,
-                # the keep's step16 0.60 lesson). So INCREASE attenuation for shallow-
-                # MAE (let clean winners run longer) and KEEP 0.50 for deep-MAE (the
-                # validated floor). _short_mae_depth = tanh(-mae/(|stop|*0.25)) is 0 for
-                # shallow-MAE (mae~0), ~1 for deep-MAE (mae<=-0.25*stop). Attenuation =
-                # 0.50 + SHORT_TP_MAE_EXTRA*(1 - _short_mae_depth) -- ranges 0.50 (deep-
-                # MAE, byte-identical to keep) up to 0.50+EXTRA (shallow-MAE, longer run).
-                # Byte-identical for longs, non-latched shorts, and ALL deep-MAE latched
-                # shorts (the keep population). Continuous tanh on mae (no boundary).
-                # self._mae is updated this bar before this point so the read is current.
-                SHORT_TP_MAE_EXTRA = 0.15  # extra attenuation for shallow-MAE clean winners (attenuation ranges 0.50->0.65; deep-MAE stays 0.50 byte-identical)
                 if _short_hold_cached > 0.0:
-                    _short_mae = self._mae.get(symbol, 0.0)
-                    _short_mae_depth = max(0.0, min(1.0, np.tanh(-_short_mae / (abs(STOP_LOSS_PCT) * 0.25))))
-                    _short_tp_atten_eff = SHORT_HOLD_TP_ATTEN + SHORT_TP_MAE_EXTRA * (1.0 - _short_mae_depth)
-                    _time_pressure = _time_pressure * (1.0 - _short_tp_atten_eff)
+                    _time_pressure = _time_pressure * (1.0 - SHORT_HOLD_TP_ATTEN)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
