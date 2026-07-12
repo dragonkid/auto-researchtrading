@@ -99,7 +99,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # for longs (short gate 0), ct shorts (align 0), losers (profit gate 0), outside
 # portfolio DD. Targets crash Sharpe (longer capture of trend-aligned winning
 # shorts raises avg-win -> PF>1.0 -> Sharpe toward 0).
-TA_SHORT_HOLD_EXT = 1.0  # branch step4: 0.8 (stab held, crash -0.0128) -> 1.0 (probe the stab cliff between 1.0 and 1.5)
+TA_SHORT_HOLD_EXT = 1.5
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -3270,20 +3270,7 @@ class Strategy:
                 # the bounce-protection the prior session's long-only gate ensured is
                 # preserved via pp_pressure, NOT via excluding shorts from hold-extension.
                 _ta_short_gate = 1.0 if current_pos < 0 else 0.0
-                # Branch step1: PROFIT DEADZONE on the short-side hold-extension. The
-                # opener used _ta_profit_gate = tanh(pos_pnl/|stop|) which is already
-                # 0.46 at pos_pnl=+0.5*stop -- active in the near-breakeven region where
-                # pos_pnl wobbles across the 0.5*stop level under AR(1) close noise ->
-                # gate wobbles 0.4-0.5 -> max_hold wobbles -> exit-timing wobbles ->
-                # crash stability crashed to 0.047. Add a deadzone: only fire when the
-                # short is CLEARLY past breakeven (pos_pnl > ~0.5*stop), so the near-
-                # breakeven noise band is byte-identical. max(0, tanh((pos_pnl -
-                # 0.5*|stop|)/0.3*|stop|)) -> ~0 below 0.5*stop, saturating by ~0.8*stop.
-                # This reduces the noise-active population to confirmed-deep-winners
-                # (the population the extension is meant to help) while excluding the
-                # noise-sensitive near-breakeven shorts. Continuous (no hard boundary).
-                _ta_short_profit_gate = max(0.0, np.tanh(max(0.0, pos_pnl - 0.5 * abs(STOP_LOSS_PCT)) / (0.3 * abs(STOP_LOSS_PCT))))
-                _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_short_profit_gate * (1.0 - _port_dd_atten)
+                _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
                 _prev_she = self._short_hold_ext_ema.get(symbol, _ta_short_hold_ext_raw)
                 if _ta_short_hold_ext_raw >= _prev_she:
                     _she_alpha = 0.55  # slow rise: low-pass the wobble (stability)
