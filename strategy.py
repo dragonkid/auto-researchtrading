@@ -3229,8 +3229,25 @@ class Strategy:
                 # more deep-pullback rally longs rescued -> scale the opener's rally +0.0006.
                 _mfe_dom = (self.peak_pnl[symbol] + _mae_val) / max(abs(STOP_LOSS_PCT) * 0.3, 1e-6)  # peak_pnl - |mae|, scaled
                 _winner_quality_gate = max(0.0, min(1.0, np.tanh(_mfe_dom)))
-                _persist_or_quality = max(_up_persist_gate, _winner_quality_gate)
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _persist_or_quality
+                # branch step3: EXTEND the winner-quality path to SHORTS (drop the _long_only
+                # restriction for the winner-quality path ONLY; the up_persist path keeps
+                # long_only). The opener (long-only) showed rally +0.000616 but mixed byte-
+                # identical and the gain capped by the long-only population. Crash trend
+                # SHORTS (deep downtrend continuation) have HIGH MFE-dominance (deep peaks,
+                # small MAE) and are confirmed downtrend winners -- a priori let-run
+                # candidates, SAME structural property as the long-side clean advancers the
+                # gate was built for. The keep's _long_only_gate (step4) exists because crash
+                # trend-aligned shorts ride dead-cat bounces -- but those bounces have LOW
+                # MFE-dominance (the short's peak was small / it has given back into the
+                # bounce -> |mae| growing -> MFE-dominance collapsing -> winner_quality gate
+                # 0 -> NO attenuation). The MFE-dominance signal is the position-level
+                # separator the keep's regime-level down_persist could not provide for
+                # shorts. Safety inherited: _gb_mag_gate (sharp giveback -> gate 0) AND
+                # _slope_against_gate (sharp reversal -> gate 0) still apply to BOTH paths.
+                # branch step3 structural split: up_persist path keeps long_only; winner_quality path is direction-agnostic
+                _gate_up_persist = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
+                _gate_winner_quality = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _winner_quality_gate
+                _ta_winner_gate = max(_gate_up_persist, _gate_winner_quality)
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
