@@ -2596,6 +2596,37 @@ class Strategy:
                     _own_margin = _bull_margin if current_pos > 0 else _bear_margin
                     _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
                     _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
+                    # Exp2 (architectural, indep): ACCUMULATOR-FADE scale-in slowdown.
+                    # NEW control-flow data dep at scale-in: the scale-in rate reads the
+                    # KEPT accumulator-fade signal (_fade_b/_fade_s = prev_acc - margin,
+                    # the rising-edge conviction-decay signal that drives the keep's
+                    # first-bar fade-shrink). Exp5 above (line 2596) keys on the
+                    # INSTANTANEOUS own-side margin going NEGATIVE -- a LATE, deep fade
+                    # (voters fully flipped). The accumulator-fade fires EARLIER and on a
+                    # DIFFERENT population: conviction PEAKED then is DECAYING while the
+                    # margin is STILL POSITIVE (the EMA lags the raw margin by ~1-2 bars
+                    # per ENTRY_ACCUM_RHO=0.5, so prev_acc can exceed margin while margin>0).
+                    # This is exactly the population the keep's first-bar shrink targets --
+                    # a position admitted on a decaying spike. The first-bar shrink makes
+                    # that entry SMALLER; this extends the same discipline THROUGH the
+                    # scale-in window: do NOT ramp a fading-spike position back to full
+                    # size -- hold it smaller until conviction re-confirms. Distinct from
+                    # Exp5 (different signal: accumulator-decay vs instantaneous-negation;
+                    # fires earlier and on still-positive-margin positions). Reuses the
+                    # KEPT trend-gate (rsi_trend_str/0.20, the validated chop/trend
+                    # separator that made the fade-shrink sideways-safe): full effect in
+                    # TRENDS (bull/rally/crash trending phases), fading to 0 in CHOP
+                    # (sideways) -> sideways byte-identical (sideways mean-reverters
+                    # SUPPOSED to enter on the spike; a fade filter is structurally wrong
+                    # there, same lesson as the keep's step6). Continuous tanh, no
+                    # boundary, shrink-only (factor <= 1.0). Active-side fade (bull for
+                    # long, bear for short), computed fresh each bar from the accumulator
+                    # state updated this bar. Max 0.25 slowdown (below Exp5's 0.30 to
+                    # avoid over-aggressive compounding with the instantaneous slowdown).
+                    _acc_fade = _fade_b if current_pos > 0 else _fade_s
+                    _acc_fade_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))  # ~0 chop, ~1 trend (KEPT gate)
+                    _acc_fade_slowdown = _acc_fade_gate * max(0.0, min(1.0, np.tanh(max(0.0, _acc_fade - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
+                    _eff_progress = _eff_progress * (1.0 - 0.25 * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
