@@ -3568,14 +3568,6 @@ class Strategy:
                 _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
-                # branch step13: widen the MAE band 0.25*stop->0.15*stop so SHALLOWER-MAE crash
-                # stalls (recovered to breakeven after a milder underwater excursion) also
-                # trigger the break-even pressure. Sideways-safe (sideways mae~0 during the
-                # quick MV entries -> _be_mae_depth ~0 regardless of band; the MAE path is
-                # the sideways-safe gate, distinct from the trend path). Catches more crash
-                # deep-MAE stalls that bleed to the stop -> smaller realized losses -> crash
-                # Sharpe up. Same band as the scale-in MAE-conditioning (step5 best).
-                _be_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
