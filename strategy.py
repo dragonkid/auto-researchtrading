@@ -2741,25 +2741,22 @@ class Strategy:
                     # scale-in on deep-MAE fading-conviction positions). New control flow: the
                     # scale-in slowdown AMPLITUDE depends on the position's realized adverse
                     # trajectory (was: fixed AMP dependent on pre-entry fade only).
-                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
-                    # branch step2: raise the MAE extra-AMP ceiling 0.20->0.30 to amplify
-                    # the crash gain where it already fires (crash's underwater-during-
-                    # scale-in losers). Saturation kept at 0.25*stop so sideways (mae~0
-                    # during scale-in) stays byte-identical -- the extra AMP only amplifies
-                    # where _mae_depth_si is already nonzero (crash). Max total AMP 0.90
-                    # (0.60 base + 0.30 extra), still under 1.0 (slowdown factor floored at
-                    # ~0.10 of full pace, not a hard freeze).
-                    # branch step3: raise the BASE AMP 0.60->0.70 (the prior-session sanctioned
-                    # crash lever -- keep: AMP 0.35->0.60 moved crash Sh -0.027->-0.017
-                    # monotonically; 0.60->0.70 should continue the linear scaling). The MAE
-                    # extra-AMP (0.30*_mae_depth_si) amplifies on top of the higher base for
-                    # underwater-during-scale-in losers. Max total AMP 1.00 (0.70+0.30),
-                    # floored by the slowdown factor (1-1.0*slowdown = 0 at full activation =
-                    # full freeze of scale-in pace for the deepest-MAE bars, consistent with
-                    # _adv_freeze's hard freeze on the same population). Sideways byte-
-                    # identical (mae~0 -> extra 0 -> base 0.70; but sideways gate ~0 in deep
-                    # chop -> slowdown 0 -> AMP inert for sideways regardless).
-                    _acc_fade_amp = 0.80 + 0.30 * _mae_depth_si
+                    # branch step5: revert base AMP 0.80->0.70 (step4 0.80 crashed sideways
+                    # stability 1.0->0.0 on the directional-leg population; 0.70 held it).
+                    # WIDEN the MAE activation band 0.25*stop->0.15*stop so SHALLOWER-MAE
+                    # crash losers (mae -0.15*stop..-0.25*stop, not just the deep -0.5*stop
+                    # population) trigger the extra AMP -- step2 found the ceiling raise
+                    # (0.20->0.30) was inert because the deep-MAE population hits the stop
+                    # before the extra slowdown matters, so the lever lives in the MID-BAND
+                    # which the 0.25*stop scale under-samples. 0.15*stop saturates by mae
+                    # -0.3*stop (shallower). Raise the MAE ceiling 0.30->0.40 (max total AMP
+                    # 1.10, but the slowdown factor is floored at 0 by the max(0,...) in
+                    # scale_frac so >1.0 AMP just fully-freezes scale-in pace for the
+                    # underwater bars = same as _adv_freeze, safe). Sideways byte-identical
+                    # (mae~0 during sideways scale-in -> extra 0 -> base 0.70, AND the
+                    # sideways gate ~0 in deep chop -> slowdown 0 -> AMP inert regardless).
+                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
+                    _acc_fade_amp = 0.70 + 0.40 * _mae_depth_si
                     _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
