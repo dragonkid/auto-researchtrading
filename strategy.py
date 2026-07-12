@@ -432,25 +432,6 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
 
-# Exp4 (architectural, indep): NOISE-ROBUST volume-flow TREND ADMISSION RELAX.
-# Exp1 (sizing) inert; Exp2 (chop admission tighten) catastrophic (sideways/mixed);
-# Exp3 (chop admission relax) catastrophic (mixed -0.234 -- the chop+DVP axis cannot
-# separate sideways from mixed). CROSS-EXPERIMENT INSIGHT: the noise-robust dvp_smooth
-# VALIDATED for stability (no crash in 3 experiments) AND it helps bull (+0.0006 to
-# +0.0029 Sharpe) / rally (+0.011) when it fires in TRENDS -- the problem in Exp2/Exp3
-# was the CHOP gate (rsi_trend_str LOW) which fires in BOTH sideways and mixed (both
-# choppy), causing mixed collateral. This INVERTS the gate: apply the admission relax
-# in TRENDS (rsi_trend_str HIGH), so it fires in bull/rally (where Exp2/Exp3 showed
-# DVP helps) and is byte-identical in chop (sideways/mixed/crash-chop-phases). Distinct
-# from the existing _dvp_boost (a SIZE boost in trends gated by trend_w x ER x vlong):
-# this is an ADMISSION relax in trends (different axis -- lower the admission bar for
-# volume-confirmed trend entries, admitting more good trend entries -> higher Sharpe
-# in the DD-crushed bull regime where signal_quality is the lever). One-directional
-# relax (only lowers _strong_min, never raises) + smooth dvp_smooth (no sign-flip) ->
-# no entry-timing divergence -> stability preserved. Byte-identical in chop.
-DVP_SMOOTH_ADMIT_MAX_RELAX = 0.20  # max fractional LOWER of _strong_min at full volume-confirm in trends
-DVP_SMOOTH_TREND_GATE = 0.30      # rsi_trend_str below which trend-gate is fully off (chop); ramped via tanh
-
 
 class Strategy:
     def __init__(self):
@@ -1157,19 +1138,6 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
-            # Exp4 (architectural, indep): NOISE-ROBUST volume-flow signal (replaces
-            # the noise-sensitive np.sign(np.diff) with a volume-weighted net per-bar
-            # return). A near-zero noise bar contributes ~0 (NOT a flipped +/-1), so
-            # entry timing does not diverge under AR(1) close perturbation, while
-            # genuine moves contribute full magnitude (discrimination preserved).
-            # Computed here (before _strong_min) so the trend-gated admission relax
-            # below reads it. See DVP_SMOOTH_ADMIT_MAX_RELAX header.
-            _dvps_n = 12
-            _dvps_c = closes[-_dvps_n - 1:]
-            _dvps_v = bd.history["volume"].values[-_dvps_n:]
-            _dvps_rets = np.diff(_dvps_c) / mid  # per-bar RETURNS (not sign), scale-free
-            _dvps_sigma = max(float(np.std(_dvps_rets)), 1e-10)  # realized per-bar vol
-            _dvp_smooth = float(np.sum(_dvps_v * _dvps_rets) / max(np.sum(_dvps_v) * _dvps_sigma, 1e-10))
             # Exp4 (architectural, indep): 8th voter -- RANGE/CLOSE efficiency-continuation.
             # Prior session CROSS-EXPERIMENT CONCLUSION: the ONLY un-disproven axis for
             # moving a regime raw is "a fundamentally new orthogonal DATA-SOURCE voter
@@ -1284,19 +1252,6 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
-            # Exp4: apply TREND-gated noise-robust volume-confirmation admission RELAX.
-            # INVERSE of Exp3's chop gate: fires in TRENDS (rsi_trend_str HIGH) where
-            # Exp2/Exp3 showed the noise-robust DVP helps (bull/rally), byte-identical in
-            # chop (sideways/mixed -- avoiding Exp3's mixed-collateral catastrophe). When
-            # in a trend AND volume CONFIRMS the entry direction (|dvp_smooth| large),
-            # LOWER _strong_min so the volume-confirmed trend entry is admitted more easily
-            # -> more good trend-aligned entries -> higher Sharpe in the DD-crushed bull
-            # regime (signal_quality lever). One-directional relax + smooth dvp_smooth
-            # (no sign-flip) -> stability preserved. Byte-identical when no confirm or chop.
-            _dvp_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / DVP_SMOOTH_TREND_GATE)))
-            _dvp_confirm_mag = max(0.0, min(1.0, np.tanh(abs(_dvp_smooth) / 0.10)))
-            _dvp_smooth_admit_relax = 1.0 - DVP_SMOOTH_ADMIT_MAX_RELAX * _dvp_trend_gate * _dvp_confirm_mag
-            _strong_min = _strong_min * _dvp_smooth_admit_relax
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
