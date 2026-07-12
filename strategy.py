@@ -4832,6 +4832,32 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
+            # Exp2 (architectural, indep): LOW-VOL-CHOP emission threshold RAISE
+            # (sideways fee-consolidation). Sideways (2023) is the only regime that is
+            # BOTH low-vol (vol_ratio ~0.8-1.1, calm) AND low-trend (rsi_trend_str ~0,
+            # chop): bull/crash are high-vol, rally is trend-strong (rsi_trend_str high),
+            # mixed's grind phases are trend-aligned-at-multi-day. The sideways score
+            # -0.000686 (barely negative, Sharpe == score since Sh<=0) has PF 1.3 (GROSS
+            # POSITIVE) but loses net to FEES on 147 trades -- the strategy is profitable
+            # before costs in sideways. The drag is trade FREQUENCY (fee-paying micro-
+            # resizes), not trade quality (the conviction-gated sideways_boost admission
+            # axis was sub-noise walled). This is a DIFFERENT, emission-layer lever: in
+            # the low-vol chop signature, RAISE the emission threshold so only MEANINGFUL
+            # resizes emit (sub-threshold micro-resizes are absorbed -> fewer fee-paying
+            # trades -> lower fee drag -> sideways net Sharpe up). Distinct from the
+            # admission gate (which cuts trade COUNT at entry and was walled) -- this
+            # cuts the RESIZE count DURING a hold (same entries, fewer mid-hold micro-
+            # resizes that each cross the \$1 prepare.py floor and pay fees). Continuous
+            # tanh on BOTH vol_ratio (low=sideways, fades by vol_ratio>=1.2) AND
+            # rsi_trend_str (low=chop, fades by trend strength so bull/rally/crash
+            # trending phases are byte-identical). Multiplicative gate: fires only when
+            # BOTH are low simultaneously (the sideways AND signature). Max raise +0.5
+            # (4.0 -> 4.5 at LEVERAGE_K=4: ~12pct higher bar). Byte-identical for any
+            # trending or high-vol regime. Reduction-only risk (higher bar -> fewer
+            # emits -> no new trades). New control flow at the emission decision.
+            _chop_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))   # ~1 vol_ratio<=0.8, ~0 vol_ratio>=1.2
+            _chop_trend_gate_em = max(0.0, min(1.0, 1.0 - np.tanh(rsi_trend_str / 0.20)))  # ~1 chop, ~0 trend
+            _emit_thresh = _emit_thresh + 0.5 * LEVERAGE_K * _chop_vol_gate * _chop_trend_gate_em
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
