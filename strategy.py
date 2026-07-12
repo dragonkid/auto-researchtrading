@@ -432,6 +432,32 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
 
+# Exp2 (architectural, indep): NOISE-ROBUST volume-flow CHOP ADMISSION TIGHTENER.
+# Prior-session-sanctioned untested lead: the DVP 9th voter on the ADMISSION
+# boundary gave sideways raw Sharpe +0.097 (the largest single-regime raw gain
+# last session -- volume-confirmation genuinely filters marginal sideways
+# entries) BUT stability crashed 1.0->0.248 because np.sign(np.diff(closes))
+# flips on sub-5bps close perturbations -> entry-timing divergence. The prior
+# session sanctioned the fix: a NON-sign(close-diff) implementation.
+# This replaces the per-bar hard sign with a VOLUME-WEIGHTED NET PER-BAR RETURN:
+#   dvp_smooth = sum(vol[i]*(c[i]-c[i-1])) / (sum(vol[i]) * sigma)
+# A near-zero noise bar contributes ~0 (NOT a flipped +/-1), so the signal does
+# not diverge entry timing under AR(1) close perturbation, while genuine moves
+# contribute their full magnitude (discrimination preserved, unlike the prior
+# tanh(close_diff/sigma) step2 which over-blended). tanh -> smooth [-1,+1].
+# APPLICATION axis: ADMISSION (where the +0.097 raw came from -- filtering which
+# entries are taken, not their size; Exp1 on the SIZING axis was inert). A chop-
+# gated (complement of _dvp_boost trend_w x ER gates -> fires in sideways)
+# TIGHTENER that raises _strong_min when volume does NOT confirm the entry
+# direction (|dvp_smooth| small = unconfirmed = marginal sideways entry).
+# SAFE direction: the prior 9th-voter was ADDITIVE (contributed to strong-sum,
+# could flip BOTH ways -- the source of the noise sensitivity). A one-directional
+# TIGHTEN cannot flip to relax under noise. Byte-identical in trends (chop gate
+# ~0). Composes with the existing admission tighteners. New cross-component data
+# dep: admission threshold depends on own volume-confirmation x chop state.
+DVP_SMOOTH_ADMIT_MAX_TIGHTEN = 0.20  # max fractional raise of _strong_min at zero volume-confirm in chop
+DVP_SMOOTH_CHOP_GATE = 0.30    # trend_w+ER below which chop-gate is fully on (sideways); ramped via tanh
+
 
 class Strategy:
     def __init__(self):
@@ -1252,6 +1278,11 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp2: apply chop-gated noise-robust volume-confirmation admission tightener
+            # (computed above alongside _dvp_boost). Raises _strong_min when in chop
+            # (sideways) AND volume does NOT confirm the entry direction. Byte-identical
+            # in trends (chop gate ~0). Composes with the existing admission tighteners.
+            _strong_min = _strong_min * _dvp_smooth_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
@@ -2219,6 +2250,25 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp2 (architectural, indep): NOISE-ROBUST volume-flow signal (replaces
+                # the noise-sensitive np.sign(np.diff) with a volume-weighted net per-bar
+                # return). A near-zero noise bar contributes ~0 (NOT a flipped +/-1), so
+                # entry timing does not diverge under AR(1) close perturbation, while
+                # genuine moves contribute full magnitude (discrimination preserved).
+                # See DVP_SMOOTH_ADMIT_MAX_TIGHTEN header for the prior-session-sanctioned
+                # rationale (non-sign(close-diff) DVP implementation on the admission axis).
+                _dvp_smooth_rets = np.diff(_dvp_c) / mid  # per-bar RETURNS (not sign), scale-free
+                _dvp_smooth_sigma = max(float(np.std(_dvp_smooth_rets)), 1e-10)  # realized per-bar vol
+                _dvp_smooth = float(np.sum(_dvp_v * _dvp_smooth_rets) / max(np.sum(_dvp_v) * _dvp_smooth_sigma, 1e-10))
+                # Chop gate: fire ONLY in low-trend + low-ER (sideways) -- the complement of
+                # the existing _dvp_boost's trend_w x ER gates. Both ~0 in sideways; their
+                # sum ramps the chop gate fully on below the threshold.
+                _dvp_chop_gate = max(0.0, min(1.0, 1.0 - np.tanh((_dvp_trend_w + _dvp_er_w) / DVP_SMOOTH_CHOP_GATE)))
+                # Volume-confirmation magnitude: |dvp_smooth| large = volume confirms some
+                # direction (genuine move) -> do NOT tighten; |dvp_smooth| small = volume
+                # unconfirmed -> tighten (filter the marginal unconfirmed entry).
+                _dvp_confirm_mag = max(0.0, min(1.0, np.tanh(abs(_dvp_smooth) / 0.10)))
+                _dvp_smooth_admit_tighten = 1.0 + DVP_SMOOTH_ADMIT_MAX_TIGHTEN * _dvp_chop_gate * (1.0 - _dvp_confirm_mag)
                 # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
                 # bar size boost. The DURATION-fraction _weak_persist (sanctioned
                 # untested separator, results.tsv line 1476) gates a small first-bar
