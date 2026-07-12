@@ -3514,18 +3514,12 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
-                # Exp3 (architectural simplification indep): REMOVE _vc_pressure (volume-
-                # climax exit harvest) from the MAX fusion. Prior branch summary
-                # (654588e9 branch, 11 steps) found the close-position gate on _vc_pressure
-                # was composite-worthless (+0.000596, MAX-absorbed, narrow population:
-                # volume spikes where _vc_pressure is the dominant MAX term are rare).
-                # This tests whether _vc_pressure ITSELF (not just its gate) is load-bearing
-                # or redundant simplification. Code-structure removal: -1 tuple entry.
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
+                    _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
                 )
                 _soft_max = max(_soft_terms)
