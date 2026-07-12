@@ -311,7 +311,7 @@ PORT_DD_ENTRY_THRESH_MAX = 0.15   # max fractional raise of ENTRY_ACCUM_THRESH a
 # steady-state DD (constant-velocity decline, acceleration ~0). Trend-strength gate
 # (rsi_trend_str) spares sideways (chop oscillations have alternating acceleration ->
 # smoothed out by the 4-bar window + the trend gate). Continuous tanh, no boundary.
-PORT_DD_ACCEL_ADMIT_MAX = 0.16   # branch step7: probe 0.16 (between step5 0.12 stable and step6 0.20 which crashed stab + leaked sideways)
+PORT_DD_ACCEL_ADMIT_MAX = 0.12   # step5 stable peak (0.16 byte-identical, 0.20 unstable)
 PORT_DD_ACCEL_HALF = 4           # half-window for the two momentum estimates (8-bar history / 2)
 
 # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator parameters. The
