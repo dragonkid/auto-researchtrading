@@ -3347,7 +3347,7 @@ class Strategy:
                 # separator) via a one-time latch instead of a wobbly per-bar gate.
                 _short_hold_cached = self._short_hold_cache.get(symbol, 0.0) if current_pos < 0 else 0.0
                 if _short_hold_cached < -0.5:  # eligible, not latched (sentinel -1.0)
-                    if pos_pnl > 0.5 * abs(STOP_LOSS_PCT):  # confirmed winning short (profit latch)
+                    if pos_pnl > 1.0 * abs(STOP_LOSS_PCT):  # branch step11: 0.5->1.0 stop (deeper profit confirmation -> noise-robust latch; a short that reaches 1x stop profit is a confirmed winner, the latch bar is stable under sub-5bps noise vs 0.5x which flips near breakeven)
                         _short_hold_cached = SHORT_HOLD_CACHED_EXT
                         self._short_hold_cache[symbol] = _short_hold_cached  # LATCH (stays >0)
                     else:
