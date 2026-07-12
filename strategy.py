@@ -3413,7 +3413,7 @@ class Strategy:
                 # _time_pressure by SHORT_HOLD_TP_ATTEN for latched shorts so they
                 # de-risk more gradually (run longer via reduced pressure, NOT a later
                 # exit bar -> no stab cliff). Byte-identical when not latched.
-                SHORT_HOLD_TP_ATTEN = 0.50
+                SHORT_HOLD_TP_ATTEN = 0.60  # branch step16: 0.50->0.60 (step15 crossed +0.003 at 0.50 with stab held; push attenuation for more crash Sh gain toward zero)
                 if _short_hold_cached > 0.0:
                     _time_pressure = _time_pressure * (1.0 - SHORT_HOLD_TP_ATTEN)
 
