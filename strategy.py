@@ -3472,23 +3472,10 @@ class Strategy:
                 # depth) jointly with position direction.
                 _rv_abs = abs(ret_vlong)
                 _rv_mid_floor = max(0.0, min(1.0, (_rv_abs - 0.008) / 0.004))  # ~0 below 0.008 (sideways/rally shallow), ~1 above 0.012
-                _rv_mid_ceil = max(0.0, min(1.0, (0.020 - _rv_abs) / 0.004))  # branch step3 TIGHTEN ceiling 0.025->0.020 (~1 below 0.016, ~0 above 0.020 -- exclude more of crash's bouncy |ret_vlong| dips)
-                _rv_mid_gate = _rv_mid_floor * _rv_mid_ceil  # mid-band [~0.012, ~0.016] full, 0 at both ends
+                _rv_mid_ceil = max(0.0, min(1.0, (0.025 - _rv_abs) / 0.004))  # ~1 below 0.021, ~0 above 0.025 (crash deep)
+                _rv_mid_gate = _rv_mid_floor * _rv_mid_ceil  # mid-band [~0.012, ~0.022] full, 0 at both ends
                 _persist_dt_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.40) / 0.15)))  # softer floor (excludes rally/bull up_persist; allows mixed variable)
-                # branch step3: VOL-GATE to exclude sideways (low-vol chop). Step2 still crashed
-                # sideways stability (Sh 1.158 -> stab 0): sideways has brief directional legs
-                # where |ret_vlong|>0.008 -> the mid-band fires -> exit-timing shift -> stab 0.
-                # The clean sideways separator is VOL_RATIO: sideways 2023 is LOW-vol
-                # (vol_ratio~0.8-1.0); mixed 2025's down-legs are MODERATE-vol (vol_ratio>1.05
-                # in the crash phases). Gate the amplification on vol_ratio>1.05 so it fires
-                # ONLY in moderate+ vol (mixed's down-legs) and is byte-identical in low-vol chop
-                # (sideways). Continuous tanh ramp on (vol_ratio-1.00)/0.05, ~0 below 1.0, ~1
-                # above 1.05. This mirrors the validated _fusion_vol_gate (line ~3737 onset 1.15)
-                # but at a LOWER onset (mixed's moderate vol vs the high-vol crash/bull the
-                # fusion gate targets). New cross-component data dep: time-pressure amp reads
-                # vol regime jointly with downtrend depth.
-                _ct_vol_gate = max(0.0, min(1.0, (vol_ratio - 1.00) / 0.05))  # ~0 vol_ratio<=1.0 (sideways), ~1 above 1.05 (mixed down-legs)
-                _ct_long_amp = CT_LONG_TP_AMP * _ct_long_dt_gate * _persist_dt_gate * _rv_mid_gate * _ct_vol_gate
+                _ct_long_amp = CT_LONG_TP_AMP * _ct_long_dt_gate * _persist_dt_gate * _rv_mid_gate
                 if _ct_long_amp > 0.0:
                     _time_pressure = _time_pressure * (1.0 + _ct_long_amp)
 
