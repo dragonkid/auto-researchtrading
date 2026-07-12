@@ -1342,19 +1342,21 @@ class Strategy:
             # derivative). Tightens admission when the drawdown is ACCELERATING (a
             # cascading-regime phase, losses compounding) -- the 2nd derivative fires
             # BEFORE the level (_port_dd_atten) fully develops. Trend-strength gate here
-            # (rsi_trend_str, in scope per-symbol) spares sideways chop (oscillation
-            # alternates, smoothed by the 4-bar window + trend gate). Byte-identical at
-            # peak, during recovery, steady-state DD, and in chop (trend gate 0).
-            # BRANCH step1: SHARPER trend-gate deadzone to spare sideways. The opener's
-            # tanh(rsi_trend_str/0.20) was ~0.5-0.7 ACTIVE in sideways's directional legs
-            # (rsi_trend_str ~0.15-0.25 during the oscillation's strong moves) -> the
-            # tightening fired on sideways marginal entries -> sideways -0.001271
-            # regression. Use a deadzone tanh((rsi_trend_str-0.35)/0.10): ~0 for
-            # rsi_trend_str<0.35 (sideways chop + directional legs both stay below 0.35
-            # -- sideways's strongest oscillation moves peak ~0.25-0.30) -> sideways
-            # byte-identical; saturates ~1 by rsi_trend_str>0.55 (crash/bull persistent
-            # trending) -> keeps the crash/bull tightening. Continuous (smooth deadzone).
-            _accel_trend_gate = max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.35) / 0.10)))
+            # spares sideways chop. Byte-identical at peak, during recovery, steady-state
+            # DD, and when the gate is 0.
+            # BRANCH step2: MULTI-DAY TREND-MAGNITUDE gate (replaces step1's rsi_trend_str
+            # gate). step1's rsi_trend_str deadzone spared sideways BUT also spared crash's
+            # bounce phases and rally's pullback phases (the crash/rally gains) -- sideways
+            # directional legs, crash bounces, and rally pullbacks ALL have rsi_trend_str
+            # in the same 0.15-0.35 band (local-trend inseparability wall). Switch to the
+            # validated MULTI-DAY separator: |ret_vlong| (96-bar OLS trend magnitude).
+            # sideways ret_vlong~0 (flat multi-day oscillation) -> gate ~0 -> byte-identical;
+            # crash ret_vlong<0 (persistent downtrend) AND rally ret_vlong>0 (uptrend) both
+            # have |ret_vlong| deep enough to pass -> keeps crash/rally gains. Gate on the
+            # absolute magnitude (direction-agnostic: both crash and rally are deep multi-day
+            # trends). Deadzone 0.015 (sideways |ret_vlong|<0.015 -> ~0; crash/rally
+            # |ret_vlong|~0.03-0.04 -> saturates). Continuous tanh, no boundary.
+            _accel_trend_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))
             _strong_min = _strong_min * (1.0 + (_port_dd_accel_tighten - 1.0) * _accel_trend_gate)
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
