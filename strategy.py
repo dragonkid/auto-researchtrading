@@ -105,7 +105,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # DD (dd gate 0 -> cache 0), and the entire non-crash population (no short-in-
 # persistent-downtrend-during-DD entries). New per-position cached state + new
 # control flow (computed at entry, read during hold -- not recomputed per bar).
-SHORT_HOLD_CACHED_EXT = 3.0  # branch step3: 1.5->3.0 (recover crash raw lost when _hold_adj frozen; step2 had stability but crash -0.025 lost the slope-agrees extension; 3.0 deterministically substitutes for the ~+2 per-bar _hold_adj that step1 had alongside the 1.5 cache)
+SHORT_HOLD_CACHED_EXT = 4.5  # branch step10: 3.0->4.5 (step9 profit-latch fixed rally byte-identical + crash +0.0032 + stab held; push magnitude to scale crash Sh further toward zero; crash winning shorts that latch get more hold)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
