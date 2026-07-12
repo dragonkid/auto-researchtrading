@@ -1345,7 +1345,16 @@ class Strategy:
             # (rsi_trend_str, in scope per-symbol) spares sideways chop (oscillation
             # alternates, smoothed by the 4-bar window + trend gate). Byte-identical at
             # peak, during recovery, steady-state DD, and in chop (trend gate 0).
-            _accel_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+            # BRANCH step1: SHARPER trend-gate deadzone to spare sideways. The opener's
+            # tanh(rsi_trend_str/0.20) was ~0.5-0.7 ACTIVE in sideways's directional legs
+            # (rsi_trend_str ~0.15-0.25 during the oscillation's strong moves) -> the
+            # tightening fired on sideways marginal entries -> sideways -0.001271
+            # regression. Use a deadzone tanh((rsi_trend_str-0.35)/0.10): ~0 for
+            # rsi_trend_str<0.35 (sideways chop + directional legs both stay below 0.35
+            # -- sideways's strongest oscillation moves peak ~0.25-0.30) -> sideways
+            # byte-identical; saturates ~1 by rsi_trend_str>0.55 (crash/bull persistent
+            # trending) -> keeps the crash/bull tightening. Continuous (smooth deadzone).
+            _accel_trend_gate = max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.35) / 0.10)))
             _strong_min = _strong_min * (1.0 + (_port_dd_accel_tighten - 1.0) * _accel_trend_gate)
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
