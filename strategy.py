@@ -2703,7 +2703,7 @@ class Strategy:
                     # inert there; the stability risk is sideways directional-leg bars where
                     # the 0.02-deadzone gate fires -- more slowdown = more exit-timing
                     # wobble on those bars).
-                    _eff_progress = _eff_progress * (1.0 - 0.50 * _acc_fade_slowdown)
+                    _eff_progress = _eff_progress * (1.0 - 0.60 * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
