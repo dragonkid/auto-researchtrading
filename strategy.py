@@ -292,6 +292,27 @@ ENTRY_ACCUM_THRESH = 0.0
 # on bull's pullback-DD pattern (marginal entries during DD are noise there);
 # sideways/crash byte-identical. Byte-identical at portfolio peak (dd_frac=0).
 PORT_DD_ENTRY_THRESH_MAX = 0.15   # max fractional raise of ENTRY_ACCUM_THRESH at deep DD
+# Exp3 (architectural, indep): PORTFOLIO-DD-ACCELERATION admission tightening. NEW
+# portfolio-STATE derivative signal distinct from _port_dd_atten (DD LEVEL) and the
+# equity-momentum entry shrink (DD 1st-derivative TRAJECTORY): neither reads the DD
+# ACCELERATION (2nd derivative -- is the drawdown DEEPENING FASTER?). A portfolio whose
+# drawdown is ACCELERATING is in a cascading-regime phase (losses compounding across
+# symbols) -- the 1st-derivative momentum is negative AND getting more negative. The
+# LEVEL detector (_port_dd_atten) lags this (dd_frac still small early in the cascade);
+# the 1st-derivative detector (momentum shrink) catches the fall but not whether it is
+# STEEPENING. The 2nd derivative fires in the cascade PHASE before the level fully
+# develops -> tighten admission threshold -> fewer marginal entries during the
+# compounding phase -> fewer losing trades -> higher Sharpe in negative-Sharpe regimes.
+# Tightens the ADMISSION gate (_strong_min), a COUNT lever (cuts trade count, not size),
+# distinct from the momentum SIZE shrink. Computed from the 8-bar _equity_ema_hist:
+# acceleration = (recent 4-bar momentum) - (prior 4-bar momentum); negative-and-
+# steepening = the drawdown is accelerating. Tighten-only (factor >= 1.0 on _strong_min);
+# byte-identical at portfolio peak, during recovery (momentum rising), and during
+# steady-state DD (constant-velocity decline, acceleration ~0). Trend-strength gate
+# (rsi_trend_str) spares sideways (chop oscillations have alternating acceleration ->
+# smoothed out by the 4-bar window + the trend gate). Continuous tanh, no boundary.
+PORT_DD_ACCEL_ADMIT_MAX = 0.12   # max fractional raise of _strong_min at deep negative DD acceleration
+PORT_DD_ACCEL_HALF = 4           # half-window for the two momentum estimates (8-bar history / 2)
 
 # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator parameters. The
 # prior-session headroom-boost branch (7 failed attempts) gated a mixed entry-
@@ -738,6 +759,28 @@ class Strategy:
             # excluded (gate ~0.5-0.8), rally/mixed sharp pullbacks still saturate -> keeps
             # the rally/mixed DD-cut while reducing sideways' gentle-oscillation shrink.
             _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
+        # Exp3 (architectural, indep): PORTFOLIO-DD-ACCELERATION admission tightening
+        # signal. See PORT_DD_ACCEL_ADMIT_MAX header. The 2nd derivative of the smoothed
+        # equity from the 8-bar _equity_ema_hist: acceleration = (recent-half momentum)
+        # - (prior-half momentum). Negative-and-steepening = the drawdown is cascading.
+        # _port_dd_accel_tighten >= 1.0 (tighten-only), applied to _strong_min later.
+        # Byte-identical at peak (no decline), during recovery (momentum rising), and
+        # steady-state DD (constant-velocity decline -> acceleration ~0).
+        _port_dd_accel_tighten = 1.0
+        if len(_eq_hist) >= 2 * PORT_DD_ACCEL_HALF and self._peak_equity > 1e-10:
+            _h = PORT_DD_ACCEL_HALF
+            _mom_recent = (_eq_hist[-1] - _eq_hist[-_h]) / self._peak_equity
+            _mom_prior = (_eq_hist[-_h] - _eq_hist[-2 * _h]) / self._peak_equity
+            _accel = _mom_recent - _mom_prior  # <0 = drawdown steepening (recent fall faster than prior)
+            # Only tighten when BOTH halves are falling (a sustained cascade, not a V-recovery
+            # where prior fell then recent recovers -> accel could be negative but recovery).
+            # Guard: require recent momentum itself negative (still falling) -> the cascade is
+            # ongoing. This spares V-recoveries (recent momentum positive -> no tighten).
+            _still_falling = max(0.0, -np.tanh(_mom_recent / 0.01))  # 0 rising/flat, ~1 falling
+            _accel_gate = max(0.0, min(1.0, np.tanh(-_accel / 0.004)))  # 0 rising/steady, ~1 steepening fall
+            # NOTE: trend-strength gate applied LATER at the _strong_min use site (rsi_trend_str
+            # is per-symbol, computed downstream in the for-symbol loop; not in scope here).
+            _port_dd_accel_tighten = 1.0 + PORT_DD_ACCEL_ADMIT_MAX * _still_falling * _accel_gate
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -1294,6 +1337,16 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp3 (architectural, indep): apply PORTFOLIO-DD-ACCELERATION admission
+            # tightener (computed at top level from the 8-bar _equity_ema_hist 2nd
+            # derivative). Tightens admission when the drawdown is ACCELERATING (a
+            # cascading-regime phase, losses compounding) -- the 2nd derivative fires
+            # BEFORE the level (_port_dd_atten) fully develops. Trend-strength gate here
+            # (rsi_trend_str, in scope per-symbol) spares sideways chop (oscillation
+            # alternates, smoothed by the 4-bar window + trend gate). Byte-identical at
+            # peak, during recovery, steady-state DD, and in chop (trend gate 0).
+            _accel_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+            _strong_min = _strong_min * (1.0 + (_port_dd_accel_tighten - 1.0) * _accel_trend_gate)
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
