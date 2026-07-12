@@ -2742,7 +2742,14 @@ class Strategy:
                     # scale-in slowdown AMPLITUDE depends on the position's realized adverse
                     # trajectory (was: fixed AMP dependent on pre-entry fade only).
                     _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
-                    _acc_fade_amp = 0.60 + 0.20 * _mae_depth_si
+                    # branch step2: raise the MAE extra-AMP ceiling 0.20->0.30 to amplify
+                    # the crash gain where it already fires (crash's underwater-during-
+                    # scale-in losers). Saturation kept at 0.25*stop so sideways (mae~0
+                    # during scale-in) stays byte-identical -- the extra AMP only amplifies
+                    # where _mae_depth_si is already nonzero (crash). Max total AMP 0.90
+                    # (0.60 base + 0.30 extra), still under 1.0 (slowdown factor floored at
+                    # ~0.10 of full pace, not a hard freeze).
+                    _acc_fade_amp = 0.60 + 0.30 * _mae_depth_si
                     _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
