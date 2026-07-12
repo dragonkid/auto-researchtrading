@@ -2624,26 +2624,26 @@ class Strategy:
                     # state updated this bar. Max 0.25 slowdown (below Exp5's 0.30 to
                     # avoid over-aggressive compounding with the instantaneous slowdown).
                     _acc_fade = _fade_b if current_pos > 0 else _fade_s
-                    # BRANCH STEP3: switch the gate from short-term rsi_trend_str to
-                    # MULTI-DAY trend MAGNITUDE tanh(abs(ret_vlong)/0.02). Step2's
-                    # rsi_trend_str deadzone (0.15) made sideways byte-identical (deep
-                    # chop <0.15 -> gate 0) and kept bull (high rsi_trend_str -> gate 1)
-                    # and crash, BUT lost rally (rally's rsi_trend_str is moderate
-                    # 0.2-0.3, in the ramp band -> reduced slowdown -> rally gain lost).
-                    # The slowdown helps in ALL trending regimes (bull uptrend, crash
-                    # downtrend, rally grinding uptrend) and is structurally wrong only
-                    # in CHOP (sideways mean-reversion wants quick scale-in, not
-                    # prolonged). The clean separator is the MULTI-DAY trend MAGNITUDE
-                    # |ret_vlong|: ~0 in sideways (flat, ret_vlong~0) and large in ALL
-                    # trends (bull/rally ret_vlong>0, crash ret_vlong<0). The 96-bar
-                    # ret_vlong is the validated multi-day separator (faster-saturating
-                    # /0.02, near-constant across the regime, noise-free per the
-                    # validated ct-gate lessons). Active in trends regardless of
-                    # direction (abs), inactive in chop -> recovers rally (ret_vlong>0
-                    # grinding uptrend) while keeping sideways byte-identical (ret_vlong
-                    # ~0 -> gate 0) AND crash (|ret_vlong| large -> gate 1) AND bull.
-                    # Continuous tanh on |ret_vlong|, no boundary, no regime label.
-                    _acc_fade_gate = max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.02)))  # ~0 chop (sideways), ~1 trend (bull/rally/crash)
+                    # BRANCH STEP4: gate the slowdown on TREND-ALIGNMENT of the held
+                    # position = tanh(ret_vlong * pos_dir / 0.02). Step3's |ret_vlong|
+                    # magnitude gate crashed sideways stab (0.338): sideways multi-day
+                    # oscillations wobble |ret_vlong| up to ~0.02 -> gate fires on some
+                    # sideways scale-in bars -> per-bar wobble -> stab crash. The
+                    # structural insight: the slowdown helps TREND-ALIGNED fading
+                    # entries (don't ramp a fading trend entry to full size) and is
+                    # structurally wrong for sideways (chop mean-reversion wants quick
+                    # scale-in). The separator is not |ret_vlong| (which wobbles in
+                    # sideways) but trend-ALIGNMENT: ret_vlong * pos_dir > 0 means the
+                    # position is ALIGNED with the multi-day trend (bull longs in
+                    # uptrend, crash shorts in downtrend, rally longs in uptrend).
+                    # Sideways entries are NOT aligned with any multi-day trend (chop,
+                    # ret_vlong~0 -> product ~0 regardless of pos_dir) -> gate ~0 ->
+                    # byte-identical -> stab holds AND raw unchanged. This is the SAME
+                    # trend-alignment signal used by the keep's _dd_thresh_dir_gate
+                    # and the validated multi-day ct-gates. Continuous tanh, fast-
+                    # saturating /0.02 (near-constant, noise-free), no boundary.
+                    _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
+                    _acc_fade_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_acc / 0.02)))  # ~0 chop/ct, ~1 trend-aligned
                     _acc_fade_slowdown = _acc_fade_gate * max(0.0, min(1.0, np.tanh(max(0.0, _acc_fade - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
                     _eff_progress = _eff_progress * (1.0 - 0.25 * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
