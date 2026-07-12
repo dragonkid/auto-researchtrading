@@ -2507,8 +2507,21 @@ class Strategy:
                     # at entry (1 - _port_dd_atten; crash is in DD). Both gates are
                     # evaluated from entry-bar state and frozen. Byte-identical for
                     # trend-aligned shorts in no-DD (gate 0) and ct shorts (align 0).
+                    # Branch step4: PERSISTENT-DOWNTREND gate (_down_persist) to spare
+                    # rally. Step3 (3.0, no persist gate) regressed rally -0.0158: rally
+                    # pullbacks create brief downtrend+DD episodes where ret_vlong dips
+                    # negative -> rally shorts qualify for the cached extension -> held
+                    # longer -> rally loses. The validated crash/rally separator is
+                    # _down_persist (DURATION of ret_vlong<0 over 48 bars): crash ~0.9
+                    # (persistent bear) vs rally ~0.3 (transient pullback dips). Gate
+                    # the cache on persistent downtrend (tanh((_down_persist-0.6)/0.12),
+                    # ~0 below 0.6, ~1 above 0.8) so crash shorts qualify, rally pullback
+                    # shorts (0.3) get cache 0 -> byte-identical -> rally spared. Same
+                    # separator principle as PORT_DOWN_PERSIST_ONSET / the keep's
+                    # _persist_down_gate_dur. Evaluated at entry and frozen.
                     _short_align_entry = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 short-in-downtrend, ~0 ct-short-in-uptrend
-                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * (1.0 - _port_dd_atten)
+                    _short_persist_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.60) / 0.12)))  # ~1 crash (persistent bear), ~0 rally (transient dip)
+                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * _short_persist_gate * (1.0 - _port_dd_atten)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
