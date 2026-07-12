@@ -1342,39 +1342,41 @@ class Strategy:
             # that IS the dominant rally tracking-error source. Sustained-conviction filtering
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
-            _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
-            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
+            _prev_acc_b, _prev_acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
+            _acc_b = ENTRY_ACCUM_RHO * _prev_acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
+            _acc_s = ENTRY_ACCUM_RHO * _prev_acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
-            # Exp1 (architectural, KEEP): PORTFOLIO-DD-adaptive entry readiness
-            # threshold, GATED on persistent strong uptrend direction. Raise the
-            # conviction-margin crossing threshold during portfolio DD so marginal
-            # entries (barely crossing 0.0) are filtered during adverse correlated-
-            # regime-hit periods -> fewer losing trades during DD -> higher Sharpe
-            # in negative-Sharpe regimes (score==bare Sharpe there). Byte-identical
-            # at portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 -> raise 0).
-            #
-            # GATE: the raise fires only when ret_vlong > 0.04 (persistent STRONG
-            # uptrend, bull's regime). This isolates bull's pullback-DD pattern
-            # (bull's DD comes from pullbacks DURING a persistent uptrend, where
-            # marginal entries are noise). sideways (ret_vlong oscillates around 0,
-            # rarely >0.04) is byte-identical -- sideways's marginal-conviction
-            # entries are profitable mean-reverters that must NOT be filtered.
-            # crash (ret_vlong<0) exempt; rally/mixed at portfolio peak (dd_frac=0)
-            # exempt. The gate is a one-sided linear ramp (0 below 0.04, saturating
-            # to 1 at 0.08) -- continuous, no decision boundary. DISTINCT from the
-            # existing _port_dd_atten SIZE shrink (scales position MAGNITUDE on
-            # admitted trades; this cuts TRADE COUNT at the admission gate via the
-            # sample_factor / trade-selection axis). The admission gate previously
-            # had NO portfolio-DD dependency. New cross-component data dep: entry
-            # readiness threshold depends on (portfolio-DD state, multi-day trend
-            # direction). MEASURED vs baseline 0441725e: composite -0.0571->-0.0462
-            # (+0.0108 KEEP), bull -0.0508->+0.0005 (Sh -0.051->+0.050, flipped
-            # positive), all other regimes byte-identical.
+            # Exp1 (architectural, indep): RISING-EDGE conviction confirmation on the
+            # admission gate. The EMA accumulator (ENTRY_ACCUM_RHO=0.5) crosses
+            # _entry_thresh_dd to admit, but the EMA LAGS the raw margin by ~1-2 bars:
+            # a position can be admitted AFTER the conviction margin has peaked and is
+            # FADING (the spike that filled the accumulator has passed) -> the entry
+            # chases a decelerating signal (worse fill, more noise-driven false entries
+            # in chop and crash dead-cat bounces). NEW co-gate on the admission
+            # decision: require the instantaneous raw margin to be >= the accumulator's
+            # PREVIOUS-bar value (_bull_margin >= _prev_acc_b). Since
+            # _acc_b = RHO*_prev + (1-RHO)*_margin, this condition is exactly
+            # `_margin >= _prev_acc` (for RHO>0) = the EMA is non-decreasing this bar =
+            # the conviction is still RISING (or at peak), NOT fading from a prior
+            # spike. This is a new data dep on admission (instantaneous margin vs its
+            # own EMA's previous value -- a rising-edge confirmation), distinct from
+            # the EMA level threshold. Noise-robust: compares the raw margin to an
+            # already-smoothed reference (not two noisy instantaneous values). No new
+            # parameter (the exact rising-edge; conservative: a fade by even 1 unit
+            # of the EMA's last value blocks admission, but the EMA re-crosses next
+            # bar if the fade is noise -> at most 1 bar of admission delay on genuine
+            # re-strengthening). Byte-identical when margin is already rising through
+            # the threshold (the normal strong-entry case: margin >= prev_acc holds).
+            # Filters the decelerating-plateau-fade entries (marginal noise entries
+            # in chop/crash bounces where the EMA carries stale post-spike
+            # conviction). Continuous, direction-symmetric (both bull and bear
+            # sides), no regime label.
+            _rising_b = _bull_margin >= _prev_acc_b
+            _rising_s = _bear_margin >= _prev_acc_s
             _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
-            _bull_ready = _acc_b >= _entry_thresh_dd
-            _bear_ready = _acc_s >= _entry_thresh_dd
+            _bull_ready = _acc_b >= _entry_thresh_dd and _rising_b
+            _bear_ready = _acc_s >= _entry_thresh_dd and _rising_s
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
