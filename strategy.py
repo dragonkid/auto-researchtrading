@@ -2624,7 +2624,23 @@ class Strategy:
                     # state updated this bar. Max 0.25 slowdown (below Exp5's 0.30 to
                     # avoid over-aggressive compounding with the instantaneous slowdown).
                     _acc_fade = _fade_b if current_pos > 0 else _fade_s
-                    _acc_fade_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))  # ~0 chop, ~1 trend (KEPT gate)
+                    # BRANCH STEP2: TIGHTER trend-gate on the slowdown. The opener used
+                    # the KEPT gate tanh(rsi_trend_str/0.20) -- but that is 0.635 at
+                    # rsi_trend_str=0.15 (ACTIVE in sideways chop), so the per-bar
+                    # slowdown fired on sideways fade>deadzone entries -> bar-to-bar
+                    # wobble -> sideways stability crash (0.341). The keep's SHRINK
+                    # composes right with that gate + deadzone (shrink=smaller target=
+                    # faster MV exit=good in sideways); but the SLOWDOWN is structurally
+                    # wrong for sideways mean-reversion (slower pace=prolonged scale-in
+                    # when sideways wants quick MV), so it must be BYTE-IDENTICAL in
+                    # deep chop, not merely stable. Use a DEADZONE on rsi_trend_str:
+                    # tanh((rsi_trend_str-0.15)/0.10) is ~0 for rsi_trend_str<0.15 (deep
+                    # chop = sideways) and saturates ~1 by rsi_trend_str>0.35 (trends).
+                    # This keeps the per-bar evolution (crash/rally/bull gains from the
+                    # opener) AND makes the slowdown byte-identical in deep chop (no
+                    # wobble there -> sideways stability holds). Continuous, no hard
+                    # boundary (the 0.15 onset is a smooth deadzone, not a switch).
+                    _acc_fade_gate = max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.15) / 0.10)))  # ~0 deep chop (<0.15), ~1 trend (>0.35)
                     _acc_fade_slowdown = _acc_fade_gate * max(0.0, min(1.0, np.tanh(max(0.0, _acc_fade - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
                     _eff_progress = _eff_progress * (1.0 - 0.25 * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
