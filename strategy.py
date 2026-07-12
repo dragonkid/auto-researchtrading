@@ -788,7 +788,9 @@ class Strategy:
             # Guard: require recent momentum itself negative (still falling) -> the cascade is
             # ongoing. This spares V-recoveries (recent momentum positive -> no tighten).
             _still_falling = max(0.0, -np.tanh(_mom_recent / 0.01))  # 0 rising/flat, ~1 falling
-            _accel_gate = max(0.0, min(1.0, np.tanh(-_accel_ema / 0.004)))  # 0 rising/steady, ~1 steepening fall
+            # BRANCH step8: shallower acceleration sensitivity /0.004 -> /0.003 (fire on
+            # milder cascades too, capturing more cascade bars -> larger crash/rally gain).
+            _accel_gate = max(0.0, min(1.0, np.tanh(-_accel_ema / 0.003)))  # 0 rising/steady, ~1 steepening fall
             # NOTE: trend-strength gate applied LATER at the _strong_min use site (rsi_trend_str
             # is per-symbol, computed downstream in the for-symbol loop; not in scope here).
             _port_dd_accel_tighten = 1.0 + PORT_DD_ACCEL_ADMIT_MAX * _still_falling * _accel_gate
