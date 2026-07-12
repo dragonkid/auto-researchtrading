@@ -2761,7 +2761,10 @@ class Strategy:
                     # acc-fade slowdown (sideways-safe via the rsi_trend_str/multi-day gate).
                     # Compute _mae_depth_si here (band 0.15*stop, ceiling 0.40).
                     _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
-                    _acc_fade_amp = 0.70 + 0.40 * _mae_depth_si
+                    # branch step9: raise MAE ceiling 0.40->0.50 keeping band 0.15*stop
+                    # (step6 used band 0.10 which was inert; test 0.15+0.50 combo). If inert,
+                    # the MAE lever is saturated -> branch concludes.
+                    _acc_fade_amp = 0.70 + 0.50 * _mae_depth_si
                     _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
