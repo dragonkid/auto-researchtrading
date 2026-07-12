@@ -2640,7 +2640,43 @@ class Strategy:
                     # opener) AND makes the slowdown byte-identical in deep chop (no
                     # wobble there -> sideways stability holds). Continuous, no hard
                     # boundary (the 0.15 onset is a smooth deadzone, not a switch).
-                    _acc_fade_gate = max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.15) / 0.10)))  # ~0 deep chop (<0.15), ~1 trend (>0.35)
+                    _acc_fade_gate_local = max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.15) / 0.10)))  # ~0 deep chop (<0.15), ~1 trend (>0.35)
+                    # Exp1 (architectural, indep): MULTI-DAY TREND-ALIGN gate on the
+                    # accumulator-fade slowdown. The keep's rsi_trend_str gate (LOCAL
+                    # trend strength, the validated chop/trend separator) makes the
+                    # slowdown byte-identical in deep chop (sideways rsi_trend_str<0.15)
+                    # AND active in trending regimes (bull/crash/rally trending phases
+                    # rsi_trend_str>0.35). But it turns OFF during rally/mixed PULLBACK
+                    # entries: a rally pullback long has LOW local trend strength (rsi_trend_str
+                    # dips below 0.15 as price pulls back) so the keep's gate excludes it,
+                    # yet ret_vlong (96-bar OLS) stays POSITIVE through pullbacks (the
+                    # uptrend is intact at the multi-day scale) and the position is TREND-
+                    # ALIGNED (ret_vlong*pos_dir>0). These pullback-admitted entries are
+                    # EXACTLY the fading-conviction population the slowdown targets (a
+                    # pullback bounce spike that fades) but the keep spares them via the
+                    # LOCAL gate. The prior session-summary explicitly flagged this as
+                    # the untested lever: "a SEPARATE mechanism targeting low-rsi_trend_str-
+                    # but-trend-aligned-at-multi-day entries is the untested lever for
+                    # rally/mixed." Add a SECOND gate on a DIFFERENT timescale: multi-day
+                    # trend-alignment (ret_vlong*pos_dir>0, fast-saturating /0.01 -- the
+                    # same near-constant noise-free scale used by _ct_hold_sat / _ta_align /
+                    # _ct_si_gate multi-day term). OR-compose with the local gate: the
+                    # slowdown fires when EITHER the local trend is strong (keep's path,
+                    # byte-identical for bull/crash/rally-trending) OR the position is
+                    # trend-aligned at multi-day (new path, covers rally/mixed pullback
+                    # entries with low local rsi_trend_str but intact multi-day trend).
+                    # Sideways is byte-identical: ret_vlong~0 in chop -> multi-day gate ~0
+                    # AND rsi_trend_str<0.15 -> local gate ~0 -> both gates 0 -> slowdown 0.
+                    # Crash is byte-identical: crash rsi_trend_str is high (persistent
+                    # downtrend) -> local gate already saturates to ~1 -> max() unchanged.
+                    # The new gate fires ONLY for the untested rally/mixed pullback long
+                    # population (low rsi_trend_str, ret_vlong*pos_dir>0) and trend-aligned
+                    # crash shorts already covered. New cross-component data dep: the
+                    # scale-in slowdown gate reads (local-trend-strength, multi-day-trend-
+                    # alignment, position-direction) jointly, was (local-trend-strength) only.
+                    _pos_dir_af = 1.0 if current_pos > 0 else -1.0
+                    _acc_fade_gate_md = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_af / 0.01)))
+                    _acc_fade_gate = max(_acc_fade_gate_local, _acc_fade_gate_md)
                     _acc_fade_slowdown = _acc_fade_gate * max(0.0, min(1.0, np.tanh(max(0.0, _acc_fade - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
                     # BRANCH STEP5: push slowdown AMPLITUDE 0.25->0.35 to scale
                     # bull/crash gains past +0.003 (step2 was +0.002994, 0.000006 shy).
