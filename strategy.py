@@ -3475,7 +3475,25 @@ class Strategy:
                 _rv_mid_ceil = max(0.0, min(1.0, (0.025 - _rv_abs) / 0.004))  # ~1 below 0.021, ~0 above 0.025 (crash deep)
                 _rv_mid_gate = _rv_mid_floor * _rv_mid_ceil  # mid-band [~0.012, ~0.022] full, 0 at both ends
                 _persist_dt_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.40) / 0.15)))  # softer floor (excludes rally/bull up_persist; allows mixed variable)
-                _ct_long_amp = CT_LONG_TP_AMP * _ct_long_dt_gate * _persist_dt_gate * _rv_mid_gate
+                # branch step6: LOSS gate -- the keep's profit-latch principle INVERTED. Steps
+                # 3/4/5 (down_persist/port_down_persist mid-bands, vol-gate) all went byte-
+                # identical: mixed's +0.095 comes from its CRASH-PHASE ct longs (high down_persist
+                # + high port_down_persist, SAME state as crash) -> the trend/persistence signals
+                # CANNOT separate mixed (benefit) from crash (hurt). The separator must be the
+                # POSITION'S OWN state, not the regime. The keep latches on PROFIT (only attenuate
+                # WINNING shorts -- the ones continuing the downtrend). The inversion: only
+                # AMPLIFY time-pressure for LOSING ct-long-in-downtrend positions (pos_pnl<0) --
+                # a confirmed loser (the bounce failed, the downtrend resumed against it) should
+                # be cut FASTER; a winning ct-long-in-downtrend (the bounce IS working) should
+                # NOT be cut (it may continue -> the mixed benefit). Crash's ct longs that HURT
+                # are the ones that would have bounced but got cut (winning at cut time -> realized
+                # loss before the bounce) -> the LOSS gate SPARES them (no amplify when winning).
+                # Continuous tanh on -pos_pnl/|stop| (0 in profit, ~1 at -1*stop loss). The keep
+                # uses tanh(pos_pnl/|stop|) for winners; here tanh(-pos_pnl/|stop|) for losers.
+                # Byte-identical for winning ct longs (loss_gate 0 -> no amplify) -- the
+                # population that gave mixed +0.095 in step1/2 (winning bounce longs) is SPARED.
+                _ct_long_loss_gate = max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT)))  # ~0 in profit, ~1 losing
+                _ct_long_amp = CT_LONG_TP_AMP * _ct_long_dt_gate * _persist_dt_gate * _rv_mid_gate * _ct_long_loss_gate
                 if _ct_long_amp > 0.0:
                     _time_pressure = _time_pressure * (1.0 + _ct_long_amp)
 
