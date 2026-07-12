@@ -3663,6 +3663,39 @@ class Strategy:
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
+                # Exp2 (architectural, indep): ACCUMULATOR-FADE exit pressure (7th soft
+                # source). NEW data dep at the exit fusion: the conviction-fade signal
+                # (_fade_b/_fade_s = prev_acc - margin, the KEPT accumulator-fade already
+                # used at ENTRY shrink + scale-in slowdown) is currently NOT used at the
+                # EXIT decision. A held LOSING position whose entry-side conviction is
+                # FADING (the EMA conviction prev_acc exceeds the current margin = the
+                # signal that justified the entry is weakening) has lost its thesis ->
+                # exit faster. This is the EXIT-side use of the same fade signal, on a
+                # DIFFERENT decision (cut losers vs shrink entry/slow scale-in). Loss-
+                # side ONLY (_w_af = max(0,-_pnl_scale), mirrors _w_ve/_w_vc profit-side):
+                # winners keep running (the fade of a winner's entry signal is fine -- the
+                # position is profitable on its own merit); only losers whose thesis is
+                # fading get the boost. Same _FADE_DEADZONE/_FADE_SHRINK_SCALE as the entry
+                # fade (proven noise-robust: absorbs the ~0.02-0.05 sideways noise-fade
+                # wobble so sideways byte-identical; only MEANINGFUL fades >0.05 fire).
+                # Mechanism vs MAX-fusion absorption wall: a NEW soft source is usually
+                # absorbed by MAX (a 2nd term slightly below the dominant contributes
+                # nothing). But the confirmation-amplified MAX fusion (line ~3694) ADDS a
+                # bounded fraction of the 2nd-highest term when agreement is high -- a
+                # losing position with fading conviction typically has slope-against
+                # ALREADY firing (the dominant), and _af_pressure CONFIRMS it (2nd term)
+                # -> the confirmation amplification ADDS the _af fraction -> faster exit
+                # -> smaller realized loss -> higher Sharpe in the low-Sharpe regimes
+                # (crash/sideways/bull, the losers this targets). When _af is the DOMINANT
+                # term alone (no slope-against yet -- conviction fades before price), it
+                # still enters the MAX and can trigger exit earlier than slope-against
+                # would. Direction-agnostic (own-side fade); no regime label. Continuous
+                # tanh on (fade-deadzone)/scale (no new flip boundary -- same form as the
+                # entry fade, which held stability). Byte-identical for winners (_w_af=0)
+                # and for small fades below deadzone (sideways noise).
+                _af = _fade_b if current_pos > 0 else _fade_s
+                _af_pressure = 0.40 * max(0.0, min(1.0, np.tanh(max(0.0, _af - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
+                _w_af = max(0.0, -_pnl_scale)  # loss-side only (0 profit -> 0, ~1 deep loss)
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -3677,6 +3710,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
+                    _w_af * _af_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
