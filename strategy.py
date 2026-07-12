@@ -2755,8 +2755,8 @@ class Strategy:
                     # underwater bars = same as _adv_freeze, safe). Sideways byte-identical
                     # (mae~0 during sideways scale-in -> extra 0 -> base 0.70, AND the
                     # sideways gate ~0 in deep chop -> slowdown 0 -> AMP inert regardless).
-                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
-                    _acc_fade_amp = 0.70 + 0.40 * _mae_depth_si
+                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.10))))
+                    _acc_fade_amp = 0.70 + 0.50 * _mae_depth_si
                     _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
