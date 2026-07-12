@@ -3347,25 +3347,27 @@ class Strategy:
                 # separator) via a one-time latch instead of a wobbly per-bar gate.
                 _short_hold_cached = self._short_hold_cache.get(symbol, 0.0) if current_pos < 0 else 0.0
                 if _short_hold_cached < -0.5:  # eligible, not latched (sentinel -1.0)
-                    if pos_pnl > 2.0 * abs(STOP_LOSS_PCT):  # branch step14: 0.5->2.0 stop (only DEEPLY-confirmed winners latch; at mag 4.5 only the safest shorts -- far in profit, exit-bar shift away from time-pressure noise region -- get the extension -> stab may hold)
+                    if pos_pnl > 0.5 * abs(STOP_LOSS_PCT):  # confirmed winning short (profit latch; step11/14 showed latch threshold 0.5/1.0/2.0 all byte-identical, keep 0.5x = earlier latch)
                         _short_hold_cached = SHORT_HOLD_CACHED_EXT
                         self._short_hold_cache[symbol] = _short_hold_cached  # LATCH (stays >0)
                     else:
-                        _short_hold_cached = 0.0  # not yet latched: no extension, no freeze
-                # Branch step2: when the cached short extension is active (latched >0),
-                # ZERO the per-bar _hold_adj (slope) term so _max_hold becomes a
-                # DETERMINISTIC CONSTANT for these positions (baseline + cached ext;
-                # _ct_hold_sat~0 for trend-aligned shorts; _ta_dd_hold_ext/_local_hold_ext
-                # are long-only). Step1 crash stab crashed to 0.047 EVEN with the cached
-                # constant: the residual per-bar _hold_adj wobble (slope) shifted _max_hold
-                # bar-to-bar, and the later exit landed in a noisier time-pressure ramp
-                # region where the wobble straddled the threshold -> exit bar flipped.
-                # Freezing _hold_adj for latched shorts makes the WHOLE _max_hold constant
-                # -> exit bar deterministic -> zero tracking error. Byte-identical when
-                # _short_hold_cached=0 (longs, ct shorts, no-DD shorts, AND eligible-not-
-                # yet-latched shorts [pre-latch they keep baseline _hold_adj]).
-                _hold_adj_eff = 0.0 if _short_hold_cached > 0.0 else _hold_adj
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj_eff - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _short_hold_cached
+                        _short_hold_cached = 0.0  # not yet latched
+                # Branch step15: TIME-PRESSURE OUTPUT ATTENUATION (replaces the _max_hold
+                # extension that hit the stab cliff at mag 3.5). Steps 2-14 extended
+                # _max_hold (shifted the exit bar LATER) -> at mag>=3.5 the later exit
+                # landed in a noisier time-pressure ramp region -> stab crashed to 0.045
+                # (the cliff is a function of exit-bar SHIFT, not latch selectivity).
+                # This step does NOT extend _max_hold (exit bar stays at baseline -> no
+                # shift -> no stab cliff). Instead it ATTENUATES the _time_pressure VALUE
+                # for latched winning shorts: multiply _time_pressure by (1 - SHORT_HOLD_TP_ATTEN)
+                # so the latched short de-risks more GRADUALLY (lower pressure per bar)
+                # -> stays in the position longer via reduced pressure, NOT a later
+                # threshold. The exit bar distribution is unchanged under noise (the
+                # ramp onset _max_hold is baseline) -> stab preserved. The reduced
+                # pressure lets confirmed winning shorts run a bit longer before full
+                # de-risk -> more downtrend capture -> crash Sharpe up. Byte-identical
+                # when _short_hold_cached=0 (not eligible / not latched / longs).
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
@@ -3406,6 +3408,14 @@ class Strategy:
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
+                # Branch step15: TIME-PRESSURE OUTPUT ATTENUATION for latched winning
+                # shorts. See step15 header above (near _short_hold_cached). Reduce
+                # _time_pressure by SHORT_HOLD_TP_ATTEN for latched shorts so they
+                # de-risk more gradually (run longer via reduced pressure, NOT a later
+                # exit bar -> no stab cliff). Byte-identical when not latched.
+                SHORT_HOLD_TP_ATTEN = 0.50
+                if _short_hold_cached > 0.0:
+                    _time_pressure = _time_pressure * (1.0 - SHORT_HOLD_TP_ATTEN)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
