@@ -2859,7 +2859,7 @@ class Strategy:
                     # which scales ALL acc-fade bars including sideways directional-legs;
                     # the MAE extra only fires on underwater positions [sideways mae~0 ->
                     # extra 0] so the sideways directional-leg bars keep base 0.60).
-                    ACC_FADE_MAE_EXTRA = 0.40  # prior session step5 validated ceiling (step6/step9 widening inert)
+                    ACC_FADE_MAE_EXTRA = 0.15  # branch step2: cap so total AMP max 0.75 (0.60+0.15) -- the prior session's validated acc-fade stability ceiling (0.78 crashed; the opener's 0.40 extra -> max 1.00 crashed stab here because it STACKS with the keep TP-attenuation on the same crash shorts)
                     # BRANCH step1: LATCHED MAE-depth (replaces the opener's continuous
                     # per-bar _mae_depth_si that crashed crash stab 1.0->0.081). The
                     # opener recomputed tanh(-mae/(|stop|*0.15)) EACH bar -> the noisy
