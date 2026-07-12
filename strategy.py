@@ -3270,16 +3270,7 @@ class Strategy:
                 # the bounce-protection the prior session's long-only gate ensured is
                 # preserved via pp_pressure, NOT via excluding shorts from hold-extension.
                 _ta_short_gate = 1.0 if current_pos < 0 else 0.0
-                # Branch step6: DEEPER-TREND-ALIGN gate. The opener fires for any trend-
-                # aligned short (|ret_vlong*pos_dir|>0.02 saturates _ta_align). Crash's
-                # LONG continuous DD means the extension fires for MANY bars -> cumulative
-                # tracking error -> stab crash. Restrict to DEEPER trend alignment
-                # (|ret_vlong*pos_dir|>0.03 magnitude floor) so only the deepest-downtrend
-                # shorts (the strongest trend winners) get the extension -> fewer bars fire
-                # -> less cumulative wobble -> stab may hold at mag 1.5 while keeping the
-                # Sharpe gain on the deepest-trend shorts. Continuous tanh magnitude floor.
-                _ta_short_align_mag = max(0.0, min(1.0, np.tanh((abs(ret_vlong * (1.0 if current_pos < 0 else -1.0)) - 0.03) / 0.015)))
-                _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_short_align_mag * _ta_profit_gate * (1.0 - _port_dd_atten)
+                _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
                 _prev_she = self._short_hold_ext_ema.get(symbol, _ta_short_hold_ext_raw)
                 if _ta_short_hold_ext_raw >= _prev_she:
                     _she_alpha = 0.55  # slow rise: low-pass the wobble (stability)
