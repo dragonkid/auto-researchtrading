@@ -2675,33 +2675,20 @@ class Strategy:
                     # scale-in slowdown gate reads (local-trend-strength, multi-day-trend-
                     # alignment, position-direction) jointly, was (local-trend-strength) only.
                     _pos_dir_af = 1.0 if current_pos > 0 else -1.0
-                    # BRANCH STEP3: PERSISTENCE gate on the multi-day trend-align (replaces
-                    # step2's magnitude deadzone which fixed sideways BUT lost the rally
-                    # gain -- rally pullback longs have |ret_vlong*pos_dir| in (0.005,0.02),
-                    # the SAME band as sideways oscillations, inseparable on the magnitude
-                    # axis; the 0.02 deadzone that restores sideways necessarily kills rally).
-                    # The separator that DOES distinguish rally pullback longs from sideways
-                    # directional legs is the PERSISTENCE of the multi-day trend direction
-                    # (the validated _down_persist duration-count, the fe6acd4d keep principle).
-                    # Rally = persistent uptrend (ret_vlong solidly positive for many bars ->
-                    # down_persist ~0.2); sideways = oscillating (ret_vlong flips sign over
-                    # multi-day legs -> down_persist ~0.5); crash = persistent downtrend
-                    # (down_persist ~0.9). Compute align_persist = down_persist for shorts
-                    # (trend-align = persistent down), 1-down_persist for longs (trend-align =
-                    # persistent up). Gate on align_persist > 0.55 (persistent trend-align):
-                    # sideways (~0.5) -> gate ~0 -> byte-identical; rally longs (~0.8) and
-                    # crash shorts (~0.9) -> gate ~1 -> fires. Composes with the /0.01
-                    # magnitude gate (step1's, restored -- fires on the trend-aligned
-                    # direction); the PRODUCT requires BOTH trend-align-magnitude AND
-                    # trend-align-persistence -> sideways (low magnitude OR low persistence)
-                    # -> product ~0; rally (both high) -> product ~1. down_persist is a
-                    # 48-bar fraction of a 96-bar-derived boolean -> deeply noise-robust
-                    # (flipping it needs a perturbation large enough to move ret_vlong
-                    # across 0 for 24+ of 48 bars). Continuous tanh, no boundary.
-                    _acc_fade_gate_md_mag = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_af / 0.01)))
-                    _align_persist = _down_persist if _pos_dir_af < 0 else (1.0 - _down_persist)
-                    _acc_fade_gate_md_pers = max(0.0, min(1.0, np.tanh((_align_persist - 0.55) / 0.15)))
-                    _acc_fade_gate_md = _acc_fade_gate_md_mag * _acc_fade_gate_md_pers
+                    # BRANCH STEP4: revert to step2's 0.02 magnitude deadzone (the STABLE
+                    # base: composite +0.0019, sideways stab 1.0 held, sideways +0.0019
+                    # real stable gain) -- step3's persistence gate was byte-identical to
+                    # step1 (sideways recovery has upward drift -> down_persist<0.5 ->
+                    # persistence gate fires -> stab crash, same wall). The 0.02 deadzone
+                    # gives a REAL stable sideways gain (the strong directional legs
+                    # |ret_vlong*pos_dir|>0.02 benefit from the slowdown; the short
+                    # oscillations <0.02 are byte-identical) but is byte-identical for rally
+                    # pullbacks (|product|<0.02). To push toward +0.003, probe AMP 0.35->0.42
+                    # (the session-summary's sanctioned crash AMP headroom probe -- crash
+                    # scaled linearly to 0.35 in the keep; sideways/bull stable gains here
+                    # should scale with AMP). Risk: bull stability at 0.8036 knee (little
+                    # headroom) -- watch min_stab.
+                    _acc_fade_gate_md = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_af) - 0.02) / 0.01)))
                     _acc_fade_gate = max(_acc_fade_gate_local, _acc_fade_gate_md)
                     _acc_fade_slowdown = _acc_fade_gate * max(0.0, min(1.0, np.tanh(max(0.0, _acc_fade - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
                     # BRANCH STEP5: push slowdown AMPLITUDE 0.25->0.35 to scale
@@ -2710,7 +2697,8 @@ class Strategy:
                     # -> slowdown 0 there -> AMP inert for sideways). Linear scaling
                     # like the keep's AMP 0.30/0.40/0.50 steps. Watch trend-regime
                     # stability (bull at 0.803 knee has little headroom).
-                    _eff_progress = _eff_progress * (1.0 - 0.35 * _acc_fade_slowdown)
+                    # BRANCH STEP4: AMP 0.35->0.42 (probe crash/sideways stable gain scaling).
+                    _eff_progress = _eff_progress * (1.0 - 0.42 * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
