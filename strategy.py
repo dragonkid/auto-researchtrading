@@ -238,6 +238,34 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# STRUCTURAL_EXPLORATION (Exp4 opener): MAE-DEPTH-CONDITIONED de-risk convexity.
+# The de-risk ramp's CONVEXITY (_dr_k, the cushion that holds near-full size through
+# moderate giveback) currently depends on (trend-alignment, slope-confirmation, profit).
+# It is UNIFORM for all positions with the same (align, slope, profit) regardless of
+# their adverse-excursion history. A position that went DEEP underwater (MAE near -stop)
+# then RECOVERED to profit is structurally FRAGILE (demonstrated it can go underwater ->
+# likely to re-test the MAE) but gets the SAME convex cushion as a never-underwater
+# robust winner -> the cushion holds the fragile recovered position through the giveback
+# -> it re-tests the MAE and bleeds toward the stop -> the weak-regime loser bleed (bull
+# PF 1.7, sideways PF 1.3 -- losers too big). This rewrite adds the position's OWN MAE
+# depth as a co-determinant of _dr_k: for deep-MAE positions, REMOVE part of the convex
+# cushion (k -> toward 1.0, more LINEAR ramp -> de-risk faster on giveback -> lock the
+# recovery before another adverse leg -> smaller realized loss). For shallow-MAE
+# positions (never far underwater, robust winners), the cushion is byte-identical (the
+# strong-regime robust winners -- rally/mixed -- are spared). MAE is a position-level
+# structural property (how far underwater it has been), NOT a market-regime classifier
+# -> generalizes to any fragile-recovery position. DERISK_MAE_ATTEN caps the cushion
+# removal (0.60 = deep-MAE keeps 40pct of the cushion). DERISK_MAE_SCALE sets the MAE
+# depth at which removal saturates (0.5*stop = went half-way to the stop = genuinely
+# fragile; shallower MAE = fresh position finding its level, spared). Reduction-only
+# (cushion removed, never added -> k <= baseline k always). WHY OLD AT CEILING: prior
+# sessions tuned _dr_align/_dr_slope_conf/DERISK_CONVEX_AMP to isolate trend-aligned
+# winners, but the ramp shape cannot distinguish fragile-recovered from robust-never-
+# underwater winners -> it over-protects fragile recovered positions. The MAE-depth
+# axis is computed (line ~3015) but unused at the ramp SHAPE -> the only remaining
+# untested axis on the de-risk graduation is the position's life-cycle adverse history.
+DERISK_MAE_ATTEN = 0.60   # max fraction of the convex cushion removed at deep MAE
+DERISK_MAE_SCALE = 0.50   # MAE depth (in |stop| units) at which cushion removal saturates
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -4131,7 +4159,20 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # STRUCTURAL_EXPLORATION (Exp4 opener): MAE-DEPTH-CONDITIONED
+                        # de-risk convexity. See DERISK_MAE_ATTEN header. The convex
+                        # cushion (the k>1 term) is reduced for positions with DEEP MAE
+                        # (went far underwater then recovered = fragile, likely to re-test
+                        # the MAE) so they de-risk more linearly on giveback (lock recovery
+                        # before another adverse leg). Shallow-MAE robust winners keep the
+                        # full cushion (byte-identical). Reduction-only (cushion removed,
+                        # never added). _dr_mae_depth: 0 shallow MAE, 1 deep MAE (mae <=
+                        # -DERISK_MAE_SCALE*stop). The cushion term (above 1.0) is multiplied
+                        # by (1 - DERISK_MAE_ATTEN*_dr_mae_depth) -> deep-MAE keeps 40pct of
+                        # the cushion (k 1.6 -> 1.24), shallow-MAE keeps 100pct (k 1.6).
+                        _dr_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * DERISK_MAE_SCALE))))
+                        _dr_mae_atten = 1.0 - DERISK_MAE_ATTEN * _dr_mae_depth
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_mae_atten  # 1.0 loss/ct/slope-weak/deep-MAE-fragile, up to ~1.6 trend-aligned+profit+smoother-slope-conf+shallow-MAE-robust
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
