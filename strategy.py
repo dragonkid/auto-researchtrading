@@ -2812,7 +2812,42 @@ class Strategy:
                     # inert there; the stability risk is sideways directional-leg bars where
                     # the 0.02-deadzone gate fires -- more slowdown = more exit-timing
                     # wobble on those bars).
-                    _eff_progress = _eff_progress * (1.0 - 0.60 * _acc_fade_slowdown)
+                    # Exp3 (architectural indep, this session): MAE-CONDITIONED acc-fade
+                    # scale-in slowdown AMP. NEW cross-component data dep: the slowdown
+                    # AMPLITUDE reads the position's MAE (self._mae, cumulative worst
+                    # pos_pnl over the hold, already tracked; updated at line ~3015 AFTER
+                    # this scale-in block so self._mae here reflects bars 0..bars_held-1,
+                    # the cumulative underwater history prior to this bar -- exactly the
+                    # signal we want). The keep's slowdown is FLAT AMP 0.60 for all
+                    # acc-fade-active bars; this makes the AMP MAE-conditioned so a
+                    # position that went UNDERWATER during scale-in (the crash loser
+                    # driving crash PF ~1.0 -- it admitted on a spike that faded, went
+                    # underwater, and the acc-fade slowdown is already firing) gets a
+                    # STRONGER slowdown -> scales in to a SMALLER size -> smaller realized
+                    # loss if it stops -> raises crash Sharpe directly (score==bare Sharpe
+                    # for Sharpe<=0). _mae_depth_si = tanh(-mae/(|stop|*0.15)) (fast-
+                    # saturating: underwater by ~0.3*stop -> full extra AMP). AMP =
+                    # 0.60 + ACC_FADE_MAE_EXTRA*_mae_depth_si (max 0.60+0.40=1.00).
+                    # SIDEWAYS-SAFE (the prior session's measured conclusion, step10): the
+                    # acc-fade slowdown is GATED by rsi_trend_str/multi-day-trend-align
+                    # (both ~0 in deep chop -> _acc_fade_slowdown 0 -> the MAE extra
+                    # multiplies a 0 -> inert regardless of mae); AND sideways mean-
+                    # reverters have mae~0 by nature (quick MV entries, rarely go far
+                    # underwater during the short scale-in) -> _mae_depth_si~0 -> extra
+                    # ~0. Byte-identical for sideways AND for flat/never-underwater
+                    # positions (mae~0 -> extra 0 -> baseline AMP 0.60). ACC_FADE_MAE_EXTRA
+                    # 0.40 + band 0.15*stop is the prior session's step5 validated ceiling
+                    # (step6 band 0.10 and step9 ceiling 0.50 were inert -- the crash
+                    # underwater-during-scale-in population is fully captured at 0.40/
+                    # 0.15). The MAE extra does NOT raise the sideways BASE AMP (the prior
+                    # session's sideways-stability cliff at base 0.80 was on the BASE AMP
+                    # which scales ALL acc-fade bars including sideways directional-legs;
+                    # the MAE extra only fires on underwater positions [sideways mae~0 ->
+                    # extra 0] so the sideways directional-leg bars keep base 0.60).
+                    ACC_FADE_MAE_EXTRA = 0.40  # prior session step5 validated ceiling (step6/step9 widening inert)
+                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
+                    _acc_fade_amp_eff = 0.60 + ACC_FADE_MAE_EXTRA * _mae_depth_si
+                    _eff_progress = _eff_progress * (1.0 - _acc_fade_amp_eff * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
