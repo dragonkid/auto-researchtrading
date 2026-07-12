@@ -2765,7 +2765,7 @@ class Strategy:
                     # 0.80 which crashed sideways stab). Test if 0.75 gives more crash gain than
                     # 0.70 while holding sideways stability (0.80 crashed, 0.70 held; 0.75
                     # probes the midpoint). MAE ceiling back to 0.40 (step9 0.50 inert).
-                    _acc_fade_amp = 0.75 + 0.40 * _mae_depth_si
+                    _acc_fade_amp = 0.78 + 0.40 * _mae_depth_si
                     _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
