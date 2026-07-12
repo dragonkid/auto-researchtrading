@@ -4131,31 +4131,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp2 (architectural, indep): GIVEBACK-DEPTH gate on the de-risk convex
-                        # cushion. The cushion (k>1 -> hold near full size through MODERATE
-                        # giveback noise, the validated stability lever) is gated on trend-align
-                        # + profit + slope-conf but NOT on how far the winner has GIVEN BACK from
-                        # its peak. A trend-aligned winner whose giveback has reached a DEEP
-                        # level (giveback_ratio high) is no longer in a clean transient pullback
-                        # -- it is giving back REAL gains, which is the rally/bull DD source:
-                        # the cushion holds near-full size through that deep giveback -> the
-                        # position rides the reversal down -> DD. Fade the cushion (k -> 1,
-                        # LINEAR fast cut) as giveback_ratio rises past a threshold so deep
-                        # giveback on a trend-aligned winner de-risks faster. NEW cross-component
-                        # data dep: _dr_k reads _giveback_ratio (computed at line ~3069 for
-                        # _pp_pressure, reused -- no new price-derived reads). The _gb_mag_gate
-                        # (line ~3148) fades the _ta_winner_gate pp-ATTENUATION (let-winner-run)
-                        # as giveback deepens -- the OPPOSITE exit path (pp harvest). This fades
-                        # the de-risk CUSHION (gradual shrink) as giveback deepens -- the two are
-                        # complementary: pp harvest kicks in via giveback-ratio ramp AND the
-                        # cushion releases, so deep giveback de-risks via BOTH paths. Continuous
-                        # tanh on (_giveback_ratio - 0.30)/0.20 (0 below 0.30 -> byte-identical
-                        # for small/moderate giveback where the cushion is the validated lever;
-                        # fading to 0 by 0.50 -> cushion fully released on deep giveback).
-                        # Byte-identical when giveback_ratio < 0.30 (fresh winners, shallow
-                        # pullbacks, losers -- losers have giveback~0 since peak_pnl small).
-                        _dr_gb_gate = max(0.0, 1.0 - max(0.0, (_giveback_ratio - 0.30) / 0.20))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_gb_gate  # 1.0 loss/ct/slope-weak/deep-giveback, up to ~1.6 trend-aligned+profit+smoother-slope-conf+shallow-giveback
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
