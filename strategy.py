@@ -238,6 +238,35 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Exp1 (this session, architectural indep): PORTFOLIO-DD-ADAPTIVE STOP-LOSS TIGHTENING
+# for SUSTAINED losers. The stop-loss (_stop_abs, ATR-derived at the held-position
+# exit block) is currently portfolio-BLIND and trade-sequence-BLIND: it reads only
+# ATR/vol, so a losing position during a correlated-regime portfolio drawdown (the
+# DD source for bull/crash) has the SAME stop width as a loser at portfolio peak.
+# This tightens the hard-stop floor (reduces _stop_abs by up to PORT_DD_STOP_TIGHTEN)
+# when (a) the portfolio is in drawdown (1 - _port_dd_atten; the validated asymmetric-
+# EMA DD detector) AND (b) the position is a SUSTAINED loser (fraction of last K
+# pos_pnl-path bars < 0 is high -> a multi-bar bleeder, NOT a fresh dip that may
+# recover). Mechanism: a sustained loser in a portfolio drawdown is at correlated-
+# regime-hit risk -> cut it at a TIGHTER stop -> smaller realized loss -> lower DD
+# -> higher Sharpe in the negative-Sharpe / high-DD regimes. Distinct from Exp4's
+# exit-THRESHOLD lowering (that lowers the de-risk pressure THRESHOLD, the gradual
+# path): this tightens the STOP-LOSS HARD FLOOR itself (the _sl_pressure input to
+# max(_sl_pressure, _soft_max)) -> cuts the loser FASTER via the binary stop path,
+# not via the gradual de-risk ramp. Distinct from _port_dd_atten (ENTRY size shrink;
+# this acts on a HELD position's exit). Reduction-only (tighten = smaller _stop_abs,
+# never widen); byte-identical at portfolio peak (dd_frac=0 -> _port_dd_atten=1.0 ->
+# no tighten) AND for fresh dips (sustained_loss~0 -> no tighten) AND for winners
+# (sustained_loss=0). Continuous tanh on both axes (no boundary); leverage-coupled
+# scale on the DD fraction (same decision-invariance discipline as _port_dd_atten:
+# 2x leverage -> 2x DD fraction -> scale the tanh threshold by LEVERAGE_K so the
+# tightening activates at the same DD fraction as baseline). Trend-strength gate
+# (rsi_trend_str, the validated chop separator) spares sideways mean-reverters
+# (sustained-loss bars but RECOVER in chop) -> sideways byte-identical, fires only
+# in trending regimes (bull/crash/mixed) where sustained losers extend.
+PORT_DD_STOP_TIGHTEN = 0.15   # max fractional reduction of _stop_abs at deep DD + sustained loser
+PORT_DD_STOP_TIGHTEN_SCALE = 0.008 * 1.0  # placeholder, replaced by LEVERAGE_K coupling at use
+PORT_DD_STOP_SUSTAINED_K = 4  # bars of pos_pnl history for the sustained-loss fraction
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -3028,6 +3057,24 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp1 (architectural, this session): PORTFOLIO-DD-ADAPTIVE STOP-LOSS
+                # TIGHTENING for sustained losers. See PORT_DD_STOP_TIGHTEN header.
+                # Tighten the hard-stop floor (_stop_abs) when the portfolio is in DD
+                # AND the position is a sustained multi-bar loser in a trending regime.
+                # _pnl_path is appended upstream (line ~2577) -> available here. Uses
+                # the last PORT_DD_STOP_SUSTAINED_K bars for the sustained-loss fraction
+                # (matches the Exp4 exit-threshold lowering's K=4 sustained-loss signal,
+                # reusing the validated window). Reduction-only: byte-identical at
+                # portfolio peak, for fresh dips, for winners, and in chop (gate 0).
+                _pp_stop = self._pnl_path.get(symbol, [])
+                _sustained_loss_stop = 0.0
+                if len(_pp_stop) >= PORT_DD_STOP_SUSTAINED_K:
+                    _recent_stop = _pp_stop[-PORT_DD_STOP_SUSTAINED_K:]
+                    _sustained_loss_stop = sum(1.0 for _p in _recent_stop if _p < 0.0) / float(PORT_DD_STOP_SUSTAINED_K)
+                _sl_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                _sl_dd_gate = max(0.0, 1.0 - _port_dd_atten)  # 0 at peak, ~1 deep DD (leverage-coupled via _port_dd_atten's 0.008*LEVERAGE_K scale)
+                _sl_tighten = PORT_DD_STOP_TIGHTEN * _sl_dd_gate * _sustained_loss_stop * _sl_trend_gate
+                _stop_abs = _stop_abs * (1.0 - _sl_tighten)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
