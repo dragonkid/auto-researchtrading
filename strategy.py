@@ -106,26 +106,6 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # persistent-downtrend-during-DD entries). New per-position cached state + new
 # control flow (computed at entry, read during hold -- not recomputed per bar).
 SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) with a HIGHER latch threshold so only deep winners latch (safer exit-bar shift)
-# Exp1 (architectural, indep, this session): LONG-SIDE profit-latched time-pressure
-# OUTPUT ATTENUATION -- the SYMMETRIC mirror of the keep's short-side TP-attenuation
-# (249d8241), gated on the validated multi-day trend-align MAGNITUDE DEADZONE so it
-# is byte-identical on shallow pullbacks. The prior session's Exp1 naive long-side
-# mirror (long-side TP-attenuation via the _ta_dd_hold_ext path, an EMA recomputed
-# per-bar) regressed bull (Sh 0.667->0.403, DD 10.79->11.90): bull's uptrend is
-# CHOPPIER with deeper pullbacks than crash's downtrend, so letting ALL trend-aligned
-# long winners run rides into giveback. The structural fix (the keep's lesson): (a)
-# use a MULTI-DAY trend-align MAGNITUDE DEADZONE (|ret_vlong*pos_dir|>0.02, the SAME
-# validated noise-robust separator the acc-fade keep uses at line ~2800) so SHALLOW
-# pullbacks (|product|<0.02, the bull pullback / sideways oscillation population) are
-# BYTE-IDENTICAL -- only DEEP trend-aligned longs (|product|~0.04, the clean bull/
-# rally trend legs) get the attenuation; (b) use the position-cached + profit-latched
-# + time-pressure-OUTPUT-attenuation mechanism (NOT a per-bar EMA, NOT a _max_hold
-# extension) -> exit bar does NOT shift under AR(1) noise -> stability preserved (the
-# keep's step15 validated stability-safe mechanism). Lets confirmed DEEP-trend-
-# aligned winning longs run a bit longer via reduced pressure (more uptrend capture
-# -> bull/rally Sharpe up), the same way the keep lets crash winning shorts run.
-LONG_HOLD_TP_ATTEN = 0.50      # mirror of SHORT_HOLD_TP_ATTEN sweet spot (0.50; 0.60 over-attenuated shorts, same risk for longs)
-LONG_HOLD_ALIGN_DEADZONE = 0.02  # multi-day trend-align magnitude deadzone (same as acc-fade keep _acc_fade_gate_md)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -560,14 +540,6 @@ class Strategy:
         # -> zero per-bar wobble -> stability preserved). See SHORT_HOLD_CACHED_EXT.
         # Reset on full exit; set to 0.0 at long entry; default 0.0 (no effect).
         self._short_hold_cache = {}
-        # Exp1 (architectural, indep, this session): per-symbol POSITION-CACHED
-        # long-side hold-extension eligibility (the symmetric mirror of
-        # _short_hold_cache for the long-side TP-attenuation). Cache semantics
-        # identical to _short_hold_cache: 0.0 = not eligible / not a long, -1.0 =
-        # eligible-but-not-latched, >0 = latched. Set at LONG entry from entry-bar
-        # multi-day-trend-align state; cleared at short entry + full exit. See
-        # LONG_HOLD_TP_ATTEN header.
-        self._long_hold_cache = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2512,27 +2484,6 @@ class Strategy:
                     # fresh long must not inherit it). Application is gated on
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
-                    # Exp1 (architectural, indep, this session): CACHE the long-side
-                    # hold-extension ELIGIBILITY ONCE at long entry from entry-bar
-                    # multi-day-trend-align state (symmetric mirror of the keep's
-                    # _short_hold_cache). The keep's short-side path gates on
-                    # short-in-downtrend (ret_vlong<0) + magnitude deadzone
-                    # (|ret_vlong|>0.015); this long-side mirror gates on long-in-
-                    # uptrend (ret_vlong>0) + the SAME magnitude deadzone
-                    # (|ret_vlong|>LONG_HOLD_ALIGN_DEADZONE). The deadzone is the
-                    # structural fix for the prior Exp1's bull regression: shallow
-                    # pullbacks (|ret_vlong|<0.02) get cache 0 -> byte-identical ->
-                    # the choppy-pullback bull population that gave back gains in the
-                    # prior Exp1 is EXCLUDED; only DEEP-trend-aligned longs (|rv|~0.04
-                    # = clean bull/rally trend legs) qualify. Computed here (not
-                    # per-bar during hold) so the read is a CONSTANT -> exit bar does
-                    # NOT shift under AR(1) noise (the keep's stability-safe pattern).
-                    # Eligibility stored as sentinel: 0.0 = not eligible, -1.0 =
-                    # eligible-but-not-latched (latched on profit confirm during hold).
-                    _long_align_entry = max(0.0, np.tanh(ret_vlong / 0.01))  # ~1 long-in-uptrend, ~0 ct-long-in-downtrend
-                    _long_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - LONG_HOLD_ALIGN_DEADZONE) / 0.01)))  # 0 shallow pullback (|rv|<0.02), ~1 deep trend (|rv|>0.04)
-                    _long_eligible = _long_align_entry * _long_mag_gate  # ~1 deep-uptrend trend-aligned long, ~0 otherwise
-                    self._long_hold_cache[symbol] = -1.0 if _long_eligible > 0.50 else 0.0
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
@@ -2611,9 +2562,6 @@ class Strategy:
                     # for eligible shorts (set at entry), 0.0 for non-eligible.
                     _short_eligible = _short_align_entry * _short_mag_gate  # ~1 crash trend-aligned deep-downtrend short, ~0 otherwise
                     self._short_hold_cache[symbol] = -1.0 if _short_eligible > 0.50 else 0.0
-                    # Exp1 (this session): short entry clears the long-side hold cache
-                    # (symmetric to the long-entry short-cache clear above).
-                    self._long_hold_cache[symbol] = 0.0
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -3404,29 +3352,6 @@ class Strategy:
                         self._short_hold_cache[symbol] = _short_hold_cached  # LATCH (stays >0)
                     else:
                         _short_hold_cached = 0.0  # not yet latched
-                # Exp1 (architectural, indep, this session): SYMMETRIC long-side
-                # profit-latch. Mirror of the short-side latch above. The
-                # _long_hold_cache was set at long entry (eligibility sentinel -1.0
-                # for deep-uptrend trend-aligned longs, 0.0 otherwise). Latch the
-                # cache to a positive sentinel (1.0) on the bar pos_pnl FIRST
-                # confirms positive (a confirmed winning long). The latch is a
-                # one-time 0->FULL flip (minimal wobble, the keep's validated
-                # stability-safe pattern). Before the latch: cache 0 -> no
-                # attenuation -> byte-identical to baseline. After the latch: the
-                # TP-attenuation below fires for the rest of the hold. The magnitude
-                # deadzone at entry already excluded shallow pullbacks, so the
-                # latched population is DEEP-trend-aligned winning longs (clean
-                # bull/rally trend legs), NOT the choppy-pullback longs that
-                # regressed bull in the prior Exp1. Byte-identical for shorts
-                # (cache 0, gated current_pos>0), non-eligible longs (cache 0),
-                # and not-yet-latched eligible longs (cache treated as 0 here).
-                _long_hold_cached = self._long_hold_cache.get(symbol, 0.0) if current_pos > 0 else 0.0
-                if _long_hold_cached < -0.5:  # eligible, not latched (sentinel -1.0)
-                    if pos_pnl > 0.5 * abs(STOP_LOSS_PCT):  # confirmed winning long (profit latch, same threshold as short side)
-                        _long_hold_cached = 1.0
-                        self._long_hold_cache[symbol] = _long_hold_cached  # LATCH (stays >0)
-                    else:
-                        _long_hold_cached = 0.0  # not yet latched
                 # Branch step15: TIME-PRESSURE OUTPUT ATTENUATION (replaces the _max_hold
                 # extension that hit the stab cliff at mag 3.5). Steps 2-14 extended
                 # _max_hold (shifted the exit bar LATER) -> at mag>=3.5 the later exit
@@ -3491,20 +3416,6 @@ class Strategy:
                 SHORT_HOLD_TP_ATTEN = 0.50  # branch step16 reverted: 0.60 gave +0.003668 (less than 0.50's +0.004013); 0.50 is the sweet spot (over-attenuating lets shorts run too long -> give back gains)
                 if _short_hold_cached > 0.0:
                     _time_pressure = _time_pressure * (1.0 - SHORT_HOLD_TP_ATTEN)
-                # Exp1 (architectural, indep, this session): SYMMETRIC long-side
-                # time-pressure OUTPUT ATTENUATION for latched winning longs. Mirror
-                # of the short-side attenuation above. Reduce _time_pressure by
-                # LONG_HOLD_TP_ATTEN for latched DEEP-trend-aligned winning longs so
-                # they de-risk more gradually (run longer via reduced pressure, NOT a
-                # later exit bar -> no stab cliff, same stability-safe mechanism as
-                # the keep). The deeper-uptrend trend legs (bull/rally) are more
-                # persistent than choppy pullbacks, so confirmed DEEP-trend-aligned
-                # winners benefit from a longer gradual de-risk (more uptrend
-                # capture -> Sharpe up). Byte-identical when not latched (the
-                # magnitude deadzone at entry excluded shallow pullbacks; non-eligible
-                # and not-yet-latched longs have _long_hold_cached=0 -> no attenuation).
-                if _long_hold_cached > 0.0:
-                    _time_pressure = _time_pressure * (1.0 - LONG_HOLD_TP_ATTEN)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
@@ -4934,7 +4845,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._long_hold_cache):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
