@@ -3182,49 +3182,7 @@ class Strategy:
                 # attenuation gate. Crash (down_persist~0.9) byte-identical (gate 0); bull
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-                # Exp1 (architectural, indep): WINNER-QUALITY pp-attenuation path for trend-
-                # aligned long winners. The keep's _ta_winner_gate attenuates pp_pressure for
-                # trend-aligned LONG winners (let them ride pullbacks), gated by _up_persist
-                # (down_persist<0.40 = persistent uptrend). That gate EXCLUDES mixed's up-phase
-                # long winners: mixed alternates decline/rally/chop so its 48-bar down_persist
-                # sits ~0.40-0.65 (higher than rally/bull's ~0.2-0.3) -> _up_persist_gate ~0 ->
-                # mixed's up-phase longs get NO let-run relief -> pp_pressure harvests them on
-                # shallow pullbacks -> mixed Sharpe capped. The up_persist gate is NOT tunable
-                # to include mixed without ALSO including crash bounces (crash's dead-cat
-                # bounces make ret_vlong briefly positive -> trend-aligned-long -> attenuation
-                # fires -> rides bounce top -> crash DD explodes, the step5 wall).
-                # NEW architectural second path on a DIFFERENT, position-level, portfolio-
-                # equity-INVARIANT data source: the position's MFE-dominance = how much more
-                # the position has advanced (peak_pnl = MFE) than it has gone underwater
-                # (|self._mae| = MAE). A clean trend-continuation long (mixed's up-phase
-                # rally leg, rally's grind) builds a LARGE peak with SMALL adverse excursion
-                # -> high MFE-dominance. A crash bounce long is short-lived and choppy: small
-                # MFE, and as the bounce ends |MAE| grows -> LOW MFE-dominance. So MFE-
-                # dominance separates genuine trend-continuation winners (let-run safe) from
-                # transient bounce tops (let-run dangerous) at the POSITION level, WITHOUT the
-                # regime-level down_persist label that conflates mixed with crash bounces.
-                # OR-compose with _up_persist_gate: a trend-aligned long winner gets
-                # attenuation if EITHER it is in a persistent uptrend (keep path, byte-
-                # identical for bull/rally) OR it has high MFE-dominance (new path, captures
-                # mixed's up-phase longs). Crash bounces: down_persist~0.9 (keep path 0) AND
-                # low MFE-dominance (new path 0) -> still excluded. The new path inherits the
-                # keep's safety gates (gb_mag, slope_against, long_only, hold-dur, trend-align,
-                # profit) via the shared _ta_winner_gate base -- only the up_persist factor is
-                # relaxed for high-MFE-dominance winners. New cross-component data dep:
-                # pp_pressure attenuation reads (peak_pnl, self._mae) jointly -- the
-                # position's life-cycle shape, absent from the keep's gate set. Continuous
-                # tanh on (peak_pnl - |mae|)/(|stop|*0.5): saturates by ~0.5*stop of MFE
-                # dominance (a winner 0.5*stop in peak with ~0 MAE -> full new-path gate;
-                # a winner with peak~|mae| -> gate 0). Byte-identical when not trend-aligned-
-                # long-in-profit-past-scale-in (the _ta_winner_gate base is 0 there) AND when
-                # _up_persist_gate already saturates to 1.0 (bull/rally persistent uptrend:
-                # max(1, qgate)=1 -> unchanged). Direction-agnostic general principle (no
-                # regime label): a position-level clean-advancer is a let-run candidate.
-                _mae_val = self._mae.get(symbol, 0.0)
-                _mfe_dom = (self.peak_pnl[symbol] + _mae_val) / max(abs(STOP_LOSS_PCT) * 0.5, 1e-6)  # peak_pnl - |mae|, scaled
-                _winner_quality_gate = max(0.0, min(1.0, np.tanh(_mfe_dom)))
-                _persist_or_quality = max(_up_persist_gate, _winner_quality_gate)
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _persist_or_quality
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
