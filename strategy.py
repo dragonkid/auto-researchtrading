@@ -1344,19 +1344,22 @@ class Strategy:
             # BEFORE the level (_port_dd_atten) fully develops. Trend-strength gate here
             # spares sideways chop. Byte-identical at peak, during recovery, steady-state
             # DD, and when the gate is 0.
-            # BRANCH step2: MULTI-DAY TREND-MAGNITUDE gate (replaces step1's rsi_trend_str
-            # gate). step1's rsi_trend_str deadzone spared sideways BUT also spared crash's
-            # bounce phases and rally's pullback phases (the crash/rally gains) -- sideways
-            # directional legs, crash bounces, and rally pullbacks ALL have rsi_trend_str
-            # in the same 0.15-0.35 band (local-trend inseparability wall). Switch to the
-            # validated MULTI-DAY separator: |ret_vlong| (96-bar OLS trend magnitude).
-            # sideways ret_vlong~0 (flat multi-day oscillation) -> gate ~0 -> byte-identical;
-            # crash ret_vlong<0 (persistent downtrend) AND rally ret_vlong>0 (uptrend) both
-            # have |ret_vlong| deep enough to pass -> keeps crash/rally gains. Gate on the
-            # absolute magnitude (direction-agnostic: both crash and rally are deep multi-day
-            # trends). Deadzone 0.015 (sideways |ret_vlong|<0.015 -> ~0; crash/rally
-            # |ret_vlong|~0.03-0.04 -> saturates). Continuous tanh, no boundary.
-            _accel_trend_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))
+            # BRANCH step3: PORTFOLIO DD-LEVEL gate (replaces step2's |ret_vlong| gate).
+            # step2's |ret_vlong| gate did NOT spare sideways (sideways down-legs have
+            # |ret_vlong|>0.015 during their drawdown phases, same multi-day inseparability
+            # wall). Switch to a PORTFOLIO-LEVEL separator: the DD-LEVEL itself
+            # (_port_dd_frac). sideways DD 4.18pct (shallow oscillation drawdowns, dd_frac
+            # low) vs crash 17.73pct (deep, dd_frac high) vs rally 5.36pct (moderate). Gate
+            # on HIGH dd_frac (fire only when the portfolio is in a DEEP drawdown, dd_frac
+            # > 0.02) -> spares sideways's shallow oscillation drawdowns (dd_frac < 0.02) while
+            # keeping crash's deep cascading DD AND rally's pullback DD (rally pullbacks
+            # reach dd_frac ~3-5pct). This is the SAME validated high-dd_frac regime that
+            # _port_dd_atten's SIZE shrink fires in (the deep-DD family); here applied to
+            # the ADMISSION count lever during ACCELERATION. Continuous tanh ramp: ~0 below
+            # dd_frac 0.02, saturating by 0.06. Byte-identical at peak (dd_frac=0) and for
+            # shallow drawdowns (sideways). Leverage-coupled via _port_dd_frac's
+            # 0.008*LEVERAGE_K scale (already in _port_dd_atten).
+            _accel_trend_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - 0.02) / 0.04)))
             _strong_min = _strong_min * (1.0 + (_port_dd_accel_tighten - 1.0) * _accel_trend_gate)
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
