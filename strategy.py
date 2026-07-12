@@ -2595,7 +2595,19 @@ class Strategy:
                     # population: trend-aligned entries whose voters stay positive).
                     _own_margin = _bull_margin if current_pos > 0 else _bear_margin
                     _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
-                    _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
+                    # branch step7: MAE-CONDITION the Exp5 instantaneous-margin slowdown AMP
+                    # too (compound the MAE lever on this SEPARATE slowdown). Exp5 fires when
+                    # own-side margin goes NEGATIVE (voters fade) -- crash losers have BOTH
+                    # margin-negative AND underwater-MAE. The accumulator-fade slowdown
+                    # (line ~2707) already has MAE-conditioning; Exp5 (this block) does NOT.
+                    # Compute _mae_depth_si ONCE here (before both slowdowns) and reuse it
+                    # below so both slowdowns compound the MAE amplification on the same
+                    # crash underwater population. Sideways byte-identical (sideways margin
+                    # rarely deeply negative -> _fade_slowdown ~0 there; AND mae~0 -> MAE
+                    # extra 0; both slowdowns inert for sideways). Base AMP 0.30 + MAE extra
+                    # 0.20 (max 0.50 for Exp5). Shrink-only, direction-symmetric.
+                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.15))))
+                    _eff_progress = _eff_progress * (1.0 - (0.30 + 0.20 * _mae_depth_si) * _fade_slowdown)
                     # Exp2 (architectural, indep): ACCUMULATOR-FADE scale-in slowdown.
                     # NEW control-flow data dep at scale-in: the scale-in rate reads the
                     # KEPT accumulator-fade signal (_fade_b/_fade_s = prev_acc - margin,
@@ -2755,8 +2767,11 @@ class Strategy:
                     # underwater bars = same as _adv_freeze, safe). Sideways byte-identical
                     # (mae~0 during sideways scale-in -> extra 0 -> base 0.70, AND the
                     # sideways gate ~0 in deep chop -> slowdown 0 -> AMP inert regardless).
-                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.10))))
-                    _acc_fade_amp = 0.70 + 0.50 * _mae_depth_si
+                    # branch step7: _mae_depth_si now computed ONCE above (before Exp5
+                    # slowdown, line ~2609) so both slowdowns compound the MAE lever on
+                    # the same crash underwater population. Reuse it here; band 0.15*stop
+                    # (the step5-best), ceiling 0.40.
+                    _acc_fade_amp = 0.70 + 0.40 * _mae_depth_si
                     _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
