@@ -3282,25 +3282,7 @@ class Strategy:
                 # This reduces the noise-active population to confirmed-deep-winners
                 # (the population the extension is meant to help) while excluding the
                 # noise-sensitive near-breakeven shorts. Continuous (no hard boundary).
-                # Branch step2: SUSTAINED-PROFIT gate (noise-robustness). Step1's deadzone
-                # fixed mixed (excluded mixed's near-BE shorts) BUT crash stability STILL
-                # crashed to 0.047 -- the deadzone fires on crash's deeply-winning shorts
-                # (pos_pnl > 0.5*stop for many consecutive bars through the long bear) but
-                # the CURRENT pos_pnl still wobbles under AR(1) -> the per-bar gate wobbles
-                # -> max_hold wobbles -> exit-timing wobbles cumulatively across crash's
-                # long DD -> tracking error. Replace the instantaneous profit gate with a
-                # SUSTAINED-profit gate: require the MINIMUM pos_pnl over the last 3 bars
-                # to exceed the deadzone. The min over 3 bars is noise-robust (a single
-                # AR(1) dip doesn't kill it; requires ALL 3 bars in profit past the deadzone
-                # -> the gate is stable across the noise ensemble -> max_hold stable ->
-                # crash stability recovers). Uses the _pnl_path (12-bar pos_pnl history,
-                # already maintained line ~2492). Byte-identical for shorts with <3 bars
-                # held (len(_pnl_path)<3 -> falls back to instantaneous, but those are early-
-                # bar shorts where the extension shouldn't fire anyway via the profit
-                # condition). Continuous via tanh on the 3-bar-min pos_pnl.
-                _pp_s = self._pnl_path.get(symbol, [])
-                _sustained_pnl = min(_pp_s[-3:]) if len(_pp_s) >= 3 else pos_pnl
-                _ta_short_profit_gate = max(0.0, np.tanh(max(0.0, _sustained_pnl - 0.5 * abs(STOP_LOSS_PCT)) / (0.3 * abs(STOP_LOSS_PCT))))
+                _ta_short_profit_gate = max(0.0, np.tanh(max(0.0, pos_pnl - 0.5 * abs(STOP_LOSS_PCT)) / (0.3 * abs(STOP_LOSS_PCT))))
                 _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_short_profit_gate * (1.0 - _port_dd_atten)
                 _prev_she = self._short_hold_ext_ema.get(symbol, _ta_short_hold_ext_raw)
                 if _ta_short_hold_ext_raw >= _prev_she:
