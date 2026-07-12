@@ -522,6 +522,11 @@ class Strategy:
         # entry (deterministic); keeps a broad-vol entry smaller for the whole hold
         # instead of ramping back to un-shrunk `size` after bar 1. Default 1.0.
         self._avgvol_shrink_held = {}
+        # branch step4: sustain the fade-gated entry shrink through scale-in (mirrors
+        # _conc_shrink_held / _vol_shrink_held / _cv_shrink_held / _avgvol_shrink_held).
+        # Cached at entry (deterministic); keeps a fading-conviction entry smaller for
+        # the whole hold. Default 1.0 (no effect) if uncached.
+        self._fade_shrink_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1347,59 +1352,50 @@ class Strategy:
             _acc_s = ENTRY_ACCUM_RHO * _prev_acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             # Exp1 (architectural, indep -> BRANCH): RISING-EDGE conviction
-            # confirmation on the admission gate. The EMA accumulator
-            # (ENTRY_ACCUM_RHO=0.5) crosses _entry_thresh_dd to admit, but the EMA
-            # LAGS the raw margin by ~1-2 bars: a position can be admitted AFTER the
-            # conviction margin has peaked and is FADING (the spike that filled the
-            # accumulator has passed) -> the entry chases a decelerating signal (worse
-            # fill, more noise-driven false entries in chop/crash dead-cat bounces).
-            # The admission decision should depend on whether conviction is still
-            # RISING vs FADING, not just on the EMA level. NEW data dep on admission:
-            # the margin's bar-to-bar direction (margin vs the accumulator's previous
-            # value = rising-edge). Since _acc_b = RHO*_prev + (1-RHO)*_margin, the
-            # fade is (prev_acc - margin); a positive fade = conviction fading.
-            # branch step3: CONTINUOUS threshold-raise (replaces step1/2 boolean
-            # co-gate). Step1's hard boolean `_margin >= _prev_acc` AND step2's
-            # deadzone variant BOTH crashed sideways stability to 0.0 (min_stab
-            # 0.38-0.46): ANY hard admission co-gate that compares the raw margin to a
-            # reference near the admission boundary creates a FLIP BOUNDARY (the
-            # boolean output flips under sub-5bps AR(1) noise -> the entry bar shifts
-            # across the ensemble -> stability collapses), exactly the lesson the
-            # codebase's validated noise-robust patterns established (hard gates on
-            # noise-perturbed comparisons are forbidden; use continuous tanh ramps or
-            # fast-saturating gates that sit in flat tails). Replace the boolean
-            # co-gate with a CONTINUOUS admission-threshold RAISE proportional to the
-            # fade magnitude: when conviction is fading (margin < prev_acc), raise the
-            # threshold so the accumulator must cross HIGHER to admit (harder to
-            # admit a decelerating signal); when rising (margin >= prev_acc), no
-            # raise. This is SHRINK-ONLY on the fade side (harder admission, never
-            # easier) and CONTINUOUS (tanh on the fade -> no flip boundary: a
-            # noise-wobble that puts margin slightly below prev_acc only slightly
-            # raises the threshold, not a hard block -> the accumulator can still
-            # cross if genuinely above -> admission bar stable under AR(1)). Filters
-            # the decelerating-plateau-fade entries (bull's marginal pullback entries
-            # where conviction peaked and is fading meaningfully) while keeping
-            # sideways noise-stable (no hard flip). The fade is clamped to >= 0
-            # (rising conviction never raises the threshold -> byte-identical on the
-            # rising side). Direction-symmetric. New control flow: admission
-            # threshold depends on the conviction fade (margin vs its EMA prev).
+            # confirmation. The EMA accumulator (ENTRY_ACCUM_RHO=0.5) crosses
+            # _entry_thresh_dd to admit, but the EMA LAGS the raw margin by ~1-2 bars:
+            # a position can be admitted AFTER the conviction margin has peaked and is
+            # FADING (the spike that filled the accumulator has passed) -> the entry
+            # chases a decelerating signal. The margin's bar-to-bar direction (the
+            # FADE = prev_acc - margin, positive when conviction fading) is a new data
+            # dep on the entry decision. NEW per-symbol state: track the fade for a
+            # SIZE SHRINK at entry (the validated noise-robust action path).
             _fade_b = max(0.0, _prev_acc_b - _bull_margin)
             _fade_s = max(0.0, _prev_acc_s - _bear_margin)
-            # Fast-saturating /0.10 scale: a 0.10 fade saturates the raise. bull's
-            # marginal pullback fades are ~0.1-0.3 (conviction peaked then dropped
-            # well below the EMA) -> saturates -> full raise; sideways noise-wobble
-            # fades are ~0.02-0.05 (within the ramp) -> small raise -> stable. Max
-            # raise 0.15 (conservative; the accumulator must cross thresh+0.15 to
-            # admit a fading-conviction entry; strong genuine entries cross well
-            # above this so are unaffected).
-            _RISE_FADE_AMP = 0.15
-            _RISE_FADE_SCALE = 0.10
-            _rise_raise_b = _RISE_FADE_AMP * max(0.0, min(1.0, np.tanh(_fade_b / _RISE_FADE_SCALE)))
-            _rise_raise_s = _RISE_FADE_AMP * max(0.0, min(1.0, np.tanh(_fade_s / _RISE_FADE_SCALE)))
+            # branch step4: SIZE-SHRINK action (replaces step1/2 hard admission
+            # co-gate AND step3 continuous threshold-raise). Step1's hard boolean
+            # admission co-gate crashed sideways stability to 0.0 (min_stab 0.38-0.46):
+            # any hard admission co-gate near the boundary creates a flip boundary
+            # (boolean flips under sub-5bps AR(1) -> entry bar shifts -> stab 0).
+            # Step3's continuous threshold-raise was BYTE-IDENTICAL INERT (the fade
+            # is small exactly at the admission boundary where the accumulator is
+            # near 0 and both prev_acc+margin are small -> the 0.15 raise on a ~0
+            # threshold isn't enough to block, and when the fade IS large the
+            # accumulator is far above threshold via RHO*prev -> admits anyway). The
+            # fundamental coupling: a fading-conviction filter must act STRONGLY at
+            # the admission boundary, but the fade signal is small there. Pivot to
+            # the validated noise-robust action family: a continuous SIZE SHRINK on
+            # the first-bar entry proportional to the fade. Size shrinks pass
+            # stability (the existing portfolio caps _port_bear_cap/_port_weak_cap/
+            # _port_eq_mom_shrink are all continuous size shrinks with stab 1.0).
+            # A fading-conviction entry gets a SMALLER first-bar position (less risk
+            # on a decelerating signal) rather than being blocked -> no admission-bar
+            # flip (the entry still admits at the same bar, just smaller) -> stable;
+            # AND a strong fade still meaningfully cuts risk -> the bull marginal-
+            # pullback entries that fade get smaller -> smaller losers -> the bull
+            # +0.0146 / sideways raw +1.39 mechanism re-expressed on the safe size
+            # path. Continuous tanh, no boundary, shrink-only (factor <= 1.0),
+            # direction-symmetric. The active-side fade (bull for long entries, bear
+            # for short) is used; the fade is computed fresh each bar (deterministic
+            # given the accumulator state). Composes with existing entry-size shrinks.
+            _FADE_SHRINK_AMP = 0.20
+            _FADE_SHRINK_SCALE = 0.10
             _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
-            _bull_ready = _acc_b >= _entry_thresh_dd + _rise_raise_b
-            _bear_ready = _acc_s >= _entry_thresh_dd + _rise_raise_s
+            _bull_ready = _acc_b >= _entry_thresh_dd
+            _bear_ready = _acc_s >= _entry_thresh_dd
+            _fade_shrink_b = 1.0 - _FADE_SHRINK_AMP * max(0.0, min(1.0, np.tanh(_fade_b / _FADE_SHRINK_SCALE)))
+            _fade_shrink_s = 1.0 - _FADE_SHRINK_AMP * max(0.0, min(1.0, np.tanh(_fade_s / _FADE_SHRINK_SCALE)))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -2393,10 +2389,11 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
+                    self._fade_shrink_held[symbol] = _fade_shrink_b  # branch step4: cache for scale-in sustain
                     # branch step16: gate the avg-vol SUSTAIN on counter-trend-at-multi-day.
                     # bull entry ct-at-multi-day = ret_vlong<0 (long in downtrend = crash bounce
                     # long). Sustain the shrink ONLY for ct entries (crash bounce longs); bull
@@ -2406,10 +2403,11 @@ class Strategy:
                     _avgvol_sustain_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 ct-long, ~0 trend-aligned-long
                     self._avgvol_shrink_held[symbol] = 1.0 + (_port_vol_avg_cap - 1.0) * _avgvol_sustain_gate_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
+                    self._fade_shrink_held[symbol] = _fade_shrink_s  # branch step4: cache for scale-in sustain
                     # branch step16: gate avg-vol sustain on ct-at-multi-day (bear entry ct =
                     # ret_vlong>0 = short in uptrend = rally pullback short; crash trend-aligned
                     # shorts ret_vlong<0 -> no sustain -> no exit-timing disruption).
@@ -2669,6 +2667,12 @@ class Strategy:
                     # the broad-vol-climax entries -> higher Sharpe. Mirrors the validated
                     # _conc_held / _vol_held / _cv_held pattern. Default 1.0 (no effect).
                     _avgvol_held = self._avgvol_shrink_held.get(symbol, 1.0)
+                    # branch step4: sustain the fade-gated entry shrink through scale-in
+                    # (cached at entry, deterministic). Mirrors _conc_held/_vol_held/
+                    # _cv_held/_avgvol_held. Keeps a fading-conviction entry smaller for
+                    # the whole hold instead of ramping back to un-shrunk `size` after
+                    # bar 1. Default 1.0 (no effect) if uncached.
+                    _fade_held = self._fade_shrink_held.get(symbol, 1.0)
                     # Exp5 (architectural, indep, BRANCH CANDIDATE): DIRECTIONAL
                     # multi-day-downtrend-gated sustained persist_boost. Exp2 (this
                     # session, discarded) showed sustaining _persist_boost through scale-in
@@ -2726,7 +2730,7 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _persist_sustain
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _fade_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -4537,7 +4541,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
