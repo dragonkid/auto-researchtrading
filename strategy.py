@@ -3414,32 +3414,8 @@ class Strategy:
                 # de-risk more gradually (run longer via reduced pressure, NOT a later
                 # exit bar -> no stab cliff). Byte-identical when not latched.
                 SHORT_HOLD_TP_ATTEN = 0.50  # branch step16 reverted: 0.60 gave +0.003668 (less than 0.50's +0.004013); 0.50 is the sweet spot (over-attenuating lets shorts run too long -> give back gains)
-                # Exp3 (architectural, indep): PROFIT-GRADUATED time-pressure attenuation
-                # for latched winning shorts. The keep uses a FIXED 0.50 attenuation; the
-                # prior session found a uniform 0.60 is worse (over-attenuates barely-
-                # latched shorts -> they run too long -> give back gains). A FIXED
-                # attenuation treats a just-latched short (pos_pnl=0.5*stop, a thin
-                # confirmed winner) the SAME as a deep-profit confirmed winner
-                # (pos_pnl=2*stop, a strongly-confirmed downtrend capture). Graduating the
-                # attenuation UP with profit isolates the two: a just-latched short keeps
-                # the conservative 0.50 (proven safe); a deep-profit short -- whose
-                # downtrend capture is strongly confirmed -- gets up to 0.65 (rides the
-                # remaining downtrend more). The mechanism is STILL output attenuation
-                # (pressure VALUE, not size, not exit-bar shift) -> preserves the keep's
-                # stab-safety (the prior session proved the stab cliff is a function of
-                # exit-bar SHIFT, which output attenuation avoids). Graduation is a
-                # smooth clamped ramp on pos_pnl/|stop| (the profit ratio): 0.50 at latch
-                # (0.5*stop) ramping to SHORT_HOLD_TP_ATTEN_DEEP 0.65 by 2.0*stop. The ramp
-                # is a pressure-VALUE modulation; under AR(1) noise pos_pnl shifts the
-                # attenuation slightly but the exit BAR distribution is unchanged (no
-                # _max_hold shift) -> stab preserved (same reason the fixed 0.50 holds).
-                # Byte-identical for longs, unlatched shorts (cache 0), and shorts at the
-                # latch threshold (ramp 0 -> 0.50 == keep).
                 if _short_hold_cached > 0.0:
-                    SHORT_HOLD_TP_ATTEN_DEEP = 0.65  # max attenuation at deep profit (pos_pnl>=2*stop)
-                    _tp_atten_grad = max(0.0, min(1.0, (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.5))  # 0 at latch(0.5*stop), 1 at 2*stop
-                    _tp_atten_eff = SHORT_HOLD_TP_ATTEN + (SHORT_HOLD_TP_ATTEN_DEEP - SHORT_HOLD_TP_ATTEN) * _tp_atten_grad
-                    _time_pressure = _time_pressure * (1.0 - _tp_atten_eff)
+                    _time_pressure = _time_pressure * (1.0 - SHORT_HOLD_TP_ATTEN)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
