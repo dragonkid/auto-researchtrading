@@ -772,12 +772,23 @@ class Strategy:
             _mom_recent = (_eq_hist[-1] - _eq_hist[-_h]) / self._peak_equity
             _mom_prior = (_eq_hist[-_h] - _eq_hist[-2 * _h]) / self._peak_equity
             _accel = _mom_recent - _mom_prior  # <0 = drawdown steepening (recent fall faster than prior)
+            # BRANCH step5: EMA-SMOOTH the raw 2nd-derivative for NOISE-ROBUSTNESS. Step4's raw
+            # 4-bar _accel wobbled under AR(1) close noise on crash's early-cascade bars ->
+            # admission tightening amount wobbled bar-to-bar -> entry timing shifted across the
+            # noise ensemble -> crash stability crashed to 0.48 (factor 0). Smooth the _accel
+            # with a persistent EMA (alpha 0.4, ~3-bar memory) so the ACCELERATION AMOUNT is
+            # bar-to-bar stable under AR(1) perturbation while preserving the cascade-steepening
+            # signal (a multi-bar cascade produces a sustained negative smoothed accel, not a
+            # 1-bar spike). New persistent state _accel_ema (initialized to 0 = no acceleration).
+            _prev_accel_ema = getattr(self, "_accel_ema", 0.0)
+            _accel_ema = 0.4 * _accel + 0.6 * _prev_accel_ema
+            self._accel_ema = _accel_ema
             # Only tighten when BOTH halves are falling (a sustained cascade, not a V-recovery
             # where prior fell then recent recovers -> accel could be negative but recovery).
             # Guard: require recent momentum itself negative (still falling) -> the cascade is
             # ongoing. This spares V-recoveries (recent momentum positive -> no tighten).
             _still_falling = max(0.0, -np.tanh(_mom_recent / 0.01))  # 0 rising/flat, ~1 falling
-            _accel_gate = max(0.0, min(1.0, np.tanh(-_accel / 0.004)))  # 0 rising/steady, ~1 steepening fall
+            _accel_gate = max(0.0, min(1.0, np.tanh(-_accel_ema / 0.004)))  # 0 rising/steady, ~1 steepening fall
             # NOTE: trend-strength gate applied LATER at the _strong_min use site (rsi_trend_str
             # is per-symbol, computed downstream in the for-symbol loop; not in scope here).
             _port_dd_accel_tighten = 1.0 + PORT_DD_ACCEL_ADMIT_MAX * _still_falling * _accel_gate
