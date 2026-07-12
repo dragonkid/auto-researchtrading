@@ -2593,18 +2593,9 @@ class Strategy:
                     # Max 30pct slowdown at deep negative margin. Smooth tanh, no boundary.
                     # Byte-identical when own-side margin >= 0 (the winning-conviction
                     # population: trend-aligned entries whose voters stay positive).
-                    # Exp3 (architectural simplification, indep): REMOVED the Exp5
-                    # instantaneous-margin scale-in slowdown (was _fade_slowdown on
-                    # _own_margin<0, max 0.30, line ~2596). The NEW BASELINE keep c87d05cb
-                    # added an ACCUMULATOR-FADE scale-in slowdown (trend-gated, AMP 0.35)
-                    # that fires EARLIER (conviction peaked then decaying, margin still
-                    # positive) -- a superset of the fading-conviction population. Exp5
-                    # fired LATE (margin fully negative = voters flipped). Test whether
-                    # the keep's accumulator-fade slowdown subsumes Exp5: if the score
-                    # holds/improves, Exp5 is redundant dead code (simpler is better);
-                    # if it regresses, Exp5's deep-fade (margin-negative) population is
-                    # still load-bearing. Byte-identical for positions whose margin
-                    # never goes negative during scale-in (the winning-conviction pop).
+                    _own_margin = _bull_margin if current_pos > 0 else _bear_margin
+                    _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
+                    _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
                     # Exp2 (architectural, indep): ACCUMULATOR-FADE scale-in slowdown.
                     # NEW control-flow data dep at scale-in: the scale-in rate reads the
                     # KEPT accumulator-fade signal (_fade_b/_fade_s = prev_acc - margin,
