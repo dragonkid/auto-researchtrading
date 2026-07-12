@@ -1410,12 +1410,32 @@ class Strategy:
             # pattern the codebase uses (the _RISE_DEADZONE attempt step2 was on the
             # HARD co-gate; here it's on the continuous shrink -> no flip).
             _FADE_DEADZONE = 0.05
+            # branch step6: TREND-STRENGTH gate on the fade-shrink to spare sideways.
+            # Steps 4-5: the fade-shrink crosses +0.004 composite BUT sideways stability
+            # crashes to 0.342 (factor 0) regardless of deadzone -- the fade changes
+            # sideways trade SELECTION under AR(1) (which entries have fade>deadzone
+            # wobbles -> trade set wobbles -> stability 0). Sideways is a chop / mean-
+            # reversion regime; the "fading-conviction" mechanism (filtering entries
+            # after a conviction peak) is NOT the right filter there -- sideways
+            # mean-reverters are SUPPOSED to enter on the spike (the reversion IS the
+            # edge), so shrinking them is wrong both for raw AND it's noise-sensitive.
+            # Gate the fade-shrink on rsi_trend_str (the validated continuous chop/
+            # trend separator used by _w_time, _chop_amp, _sustained_loss_trend_gate):
+            # full effect in TRENDS (bull/rally/crash trending phases), fading to 0 in
+            # CHOP (sideways). Sideways -> gate ~0 -> shrink ~1.0 -> byte-identical ->
+            # stability holds; bull (trending) -> gate ~1 -> shrink fires -> bull gain
+            # kept. Continuous tanh on rsi_trend_str/0.20 (same scale as the existing
+            # trend gates), no boundary, NOT a regime label (a structural trend-
+            # strength property). The deadzone (step5) is retained underneath.
+            _fade_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+            _fade_gate_b = _fade_trend_gate
+            _fade_gate_s = _fade_trend_gate
             _dd_thresh_dir_gate = max(0.0, min(1.0, (ret_vlong - 0.04) / 0.04))
             _entry_thresh_dd = ENTRY_ACCUM_THRESH + PORT_DD_ENTRY_THRESH_MAX * (1.0 - _port_dd_atten) * _dd_thresh_dir_gate
             _bull_ready = _acc_b >= _entry_thresh_dd
             _bear_ready = _acc_s >= _entry_thresh_dd
-            _fade_shrink_b = 1.0 - _FADE_SHRINK_AMP * max(0.0, min(1.0, np.tanh(max(0.0, _fade_b - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
-            _fade_shrink_s = 1.0 - _FADE_SHRINK_AMP * max(0.0, min(1.0, np.tanh(max(0.0, _fade_s - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
+            _fade_shrink_b = 1.0 - _FADE_SHRINK_AMP * _fade_gate_b * max(0.0, min(1.0, np.tanh(max(0.0, _fade_b - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
+            _fade_shrink_s = 1.0 - _FADE_SHRINK_AMP * _fade_gate_s * max(0.0, min(1.0, np.tanh(max(0.0, _fade_s - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
