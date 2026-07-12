@@ -1388,7 +1388,7 @@ class Strategy:
             # direction-symmetric. The active-side fade (bull for long entries, bear
             # for short) is used; the fade is computed fresh each bar (deterministic
             # given the accumulator state). Composes with existing entry-size shrinks.
-            _FADE_SHRINK_AMP = 0.20
+            _FADE_SHRINK_AMP = 0.30  # branch step7: 0.20->0.30 (probe amplitude; bull DD 12pct has headroom, more shrink on fading-conviction entries -> smaller losers -> higher Sh)
             _FADE_SHRINK_SCALE = 0.10
             # branch step5: DEADZONE on the fade-shrink to fix sideways stability.
             # Step4 crossed +0.004 composite BUT sideways stability crashed to 0.342
