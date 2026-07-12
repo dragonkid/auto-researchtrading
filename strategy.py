@@ -1328,45 +1328,6 @@ class Strategy:
                 _bull_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
             elif _port_trend_mag_dir < 0.0:
                 _bear_strong_min *= 1.0 - 0.06 * _port_trend_admit_relax * _trend_relax_gate
-            # Exp2 (architectural, indep): CROSS-SYMBOL LEADER-DIVERGENCE admission
-            # tightener. NEW cross-symbol data dep at admission: the market leader's
-            # (BTC) 96-bar multi-day trend (`_btc_trend`, computed at top level) feeds
-            # alt SIZING (_xasset_bull/bear shrink, line ~1846) and the cross-symbol
-            # 20-bar SIGN-AGREEMENT admission relaxation (Exp3 keep, broad trend
-            # confirmation) -- but NO admission gate tightens for alt entries that
-            # DIVERGE from the leader's structural multi-day direction. An alt SHORT
-            # admitted while BTC's 96-bar trend is strongly positive (leader structural
-            # uptrend intact) is a COUNTER-LEADER entry: it fights the market leader's
-            # direction, not just its own local pullback -- a lower-quality entry
-            # (rally pullback shorts where BTC grinds up but the alt is shorted on a
-            # local pullback bounce; crash bounce shorts where BTC is recovering off the
-            # crash low). The own-symbol counter-trend tightening (line ~1283) keys on
-            # the alt's OWN 20-bar ret_long -- but a counter-LEADER short can have its
-            # OWN 20-bar ret_long ALSO negative (the alt pulled back) even while BTC's
-            # 96-bar trend is solidly positive -> the own-symbol gate misses it. This
-            # adds a SEPARATE cross-timescale (96-bar leader) x cross-symbol (BTC vs
-            # alt) admission tightener: tighten the side that DIVERGES from the leader.
-            # Symmetric: a BULL (long) entry while BTC trend strongly negative (leader
-            # structural downtrend) is a counter-leader long (crash bounce longs where
-            # BTC is still in the multi-month downtrend) -> tighten bull. Byte-
-            # identical for BTC itself (no leader -> _btc_trend is BTC's own trend, but
-            # BTC entries reading BTC's trend would be self-referential; SKIP when
-            # symbol == BTC so the leader's own admission uses only the own-symbol
-            # gates). Byte-identical when |_btc_trend| < deadzone (weak/absent leader
-            # trend -> no divergence signal). Deep-saturating /0.02 (BTC's solid
-            # multi-day trend ~0.027 sits in the flat saturated tail -> near-constant
-            # noise-free where it fires, the validated safe-family scale). Continuous
-            # tanh ramp above 0.01 deadzone; max 12% tighten (comparable to the
-            # existing cross-symbol relaxation magnitude). Composes multiplicatively
-            # with the existing admission tighteners (own-symbol counter-trend, deep-
-            # bear, weak-persist) -- independent signal axes. Direction-agnostic
-            # general principle (no regime label): an entry opposing the market
-            # leader's structural multi-day direction is lower quality -> filter it.
-            if symbol != "BTC" and abs(_btc_trend) > 0.0:
-                _leader_diverge_bull = max(0.0, np.tanh(-_btc_trend / 0.02))  # ~1 when BTC downtrend (counter-leader long)
-                _leader_diverge_bear = max(0.0, np.tanh(_btc_trend / 0.02))   # ~1 when BTC uptrend (counter-leader short)
-                _bull_strong_min *= 1.0 + 0.12 * _leader_diverge_bull
-                _bear_strong_min *= 1.0 + 0.12 * _leader_diverge_bear
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
