@@ -3416,6 +3416,42 @@ class Strategy:
                 SHORT_HOLD_TP_ATTEN = 0.50  # branch step16 reverted: 0.60 gave +0.003668 (less than 0.50's +0.004013); 0.50 is the sweet spot (over-attenuating lets shorts run too long -> give back gains)
                 if _short_hold_cached > 0.0:
                     _time_pressure = _time_pressure * (1.0 - SHORT_HOLD_TP_ATTEN)
+                # Exp3 (architectural, indep): COUNTER-TREND-LONG time-pressure AMPLIFICATION
+                # in a PERSISTENT DOWNTREND (the structural opposite of the SHORT_HOLD_TP_ATTEN
+                # keep). The keep ATTENUATES time-pressure for latched winning trend-aligned
+                # SHORTS in a downtrend (let crash winners run longer -> more downtrend
+                # capture -> crash Sh up). The mirror-image population is COUNTER-TREND LONGS
+                # in a persistent downtrend = CRASH BOUNCE LONGS (long while ret_vlong<0 in a
+                # persistent bear). These are the crash losers (the down-trend resumes against
+                # them -> stop/realized loss). They get some de-risk via _ct_hold_sat (reduces
+                # _max_hold by 2.0 for ct positions) and the sustained-loss DD exit, but the
+                # time-pressure RAMP itself is not direction/ct-aware -- a crash bounce long
+                # de-risks at the same time-pressure rate as a rally trend-aligned long. The
+                # structural asymmetry: a ct long in a PERSISTENT downtrend is high-risk (the
+                # downtrend resumes), so it should de-risk FASTER via time-pressure (AMPLIFY
+                # time-pressure), the opposite of the keep's attenuation for trend-aligned
+                # winners. Gate the amplification on: (1) LONG position (current_pos>0), (2)
+                # COUNTER-TREND at multi-day (ret_vlong<0 for a long -> _ct_pos_str high, the
+                # existing ct signal at line ~3771), (3) PERSISTENT downtrend (_down_persist
+                # high -- the validated crash/rally separator: crash ~0.9 persistent bear vs
+                # rally ~0.3 transient pullback dips). This isolates crash bounce longs from
+                # rally longs (rally is up_persist, _down_persist low -> gate 0 -> byte-
+                # identical) and bull longs (bull up_persist -> gate 0 -> byte-identical).
+                # AMPLIFY time-pressure by up to 0.40 (faster de-risk -> exit sooner -> smaller
+                # realized loss on the crash-bounce-long losers -> higher crash Sharpe, the
+                # near-zero regime where score == bare Sharpe). Byte-identical for shorts (long
+                # gate 0), trend-aligned longs (ct gate 0), and up_persist regimes (down_persist
+                # gate 0). NEW cross-component data dep: time-pressure amplification reads
+                # (position direction, multi-day trend-align, persistent-downtrend duration)
+                # jointly. Continuous tanh gates (no boundary -> noise-robust). The keep
+                # (attenuate trend-aligned winning shorts) + this (amplify ct losing longs)
+                # are the two opposite levers on crash's two populations.
+                _ct_long_dt_gate = max(0.0, np.tanh(-ret_vlong / 0.01)) if current_pos > 0 else 0.0  # ~1 ct-long-in-downtrend (ret_vlong<0), ~0 trend-aligned-long or short
+                _persist_dt_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.55) / 0.15)))  # ~0 below 0.55 (rally/bull), ~1 above 0.85 (crash)
+                CT_LONG_TP_AMP = 0.40  # max time-pressure amplification for ct crash-bounce longs
+                _ct_long_amp = CT_LONG_TP_AMP * _ct_long_dt_gate * _persist_dt_gate
+                if _ct_long_amp > 0.0:
+                    _time_pressure = _time_pressure * (1.0 + _ct_long_amp)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
