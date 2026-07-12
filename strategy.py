@@ -3474,7 +3474,24 @@ class Strategy:
                 _rv_mid_floor = max(0.0, min(1.0, (_rv_abs - 0.008) / 0.004))  # ~0 below 0.008 (sideways/rally shallow), ~1 above 0.012
                 _rv_mid_ceil = max(0.0, min(1.0, (0.025 - _rv_abs) / 0.004))  # ~1 below 0.021, ~0 above 0.025 (crash deep)
                 _rv_mid_gate = _rv_mid_floor * _rv_mid_ceil  # mid-band [~0.012, ~0.022] full, 0 at both ends
-                _persist_dt_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.40) / 0.15)))  # softer floor (excludes rally/bull up_persist; allows mixed variable)
+                # branch step5: REPLACE the per-symbol _down_persist gate (step1/2/4 all failed
+                # to separate mixed from crash -- mixed's qualifying ct-long bars are in its
+                # CRASH PHASES where per-symbol _down_persist is high ~0.8+, same as crash).
+                # The cross-symbol PORTFOLIO _down_persist is the better separator: crash is a
+                # CROSS-SYMBOL persistent bear (all 3 symbols down together 13 months ->
+                # _port_down_persist ~0.70+, saturates the _port_bear_cap at PORT_DOWN_PERSIST_ONSET
+                # 0.70); mixed's crash phases are briefer/one-symbol -> _port_down_persist moderate
+                # (~0.50-0.65); sideways 2023 is choppy cross-symbol oscillation -> _port_down_persist
+                # ~0.45-0.50. A MID-BAND on _port_down_persist [0.50, 0.68] fires for mixed (moderate
+                # cross-symbol bear) and excludes crash (>0.70, the persistent bear) AND sideways
+                # (~0.45, below floor). This is the SAME cross-symbol portfolio signal the
+                # _port_bear_cap uses (line 844, onset 0.70) -- here a MID-BAND below that onset
+                # to capture the MODERATE-bear regime (mixed) without the deep-bear (crash).
+                # Continuous tanh mid-band (no hard boundary). New cross-component data dep:
+                # time-pressure amp reads the PORTFOLIO _down_persist in a mid-band.
+                _pp_floor = max(0.0, min(1.0, (_port_down_persist - 0.50) / 0.06))  # ~0 below 0.50 (sideways), ~1 above 0.56
+                _pp_ceil = max(0.0, min(1.0, (0.68 - _port_down_persist) / 0.06))  # ~1 below 0.62, ~0 above 0.68 (crash persistent bear)
+                _persist_dt_gate = _pp_floor * _pp_ceil  # mid-band [~0.56, ~0.62] full, 0 at both ends
                 _ct_long_amp = CT_LONG_TP_AMP * _ct_long_dt_gate * _persist_dt_gate * _rv_mid_gate
                 if _ct_long_amp > 0.0:
                     _time_pressure = _time_pressure * (1.0 + _ct_long_amp)
