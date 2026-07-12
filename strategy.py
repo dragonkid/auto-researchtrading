@@ -264,7 +264,7 @@ DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold thr
 # underwater winners -> it over-protects fragile recovered positions. The MAE-depth
 # axis is computed (line ~3015) but unused at the ramp SHAPE -> the only remaining
 # untested axis on the de-risk graduation is the position's life-cycle adverse history.
-DERISK_MAE_ATTEN = 0.60   # max fraction of the convex cushion removed at deep MAE
+DERISK_MAE_ATTEN = 0.40   # branch step2: 0.60->0.40 (reduce cushion removal magnitude to restore bull stability above 0.80 knee; less exit-timing wobble -> bull stab recovers, keep some crash gain)
 DERISK_MAE_SCALE = 0.50   # MAE depth (in |stop| units) at which cushion removal saturates
 DERISK_MAE_DEADZONE = 0.25 # branch step1: MAE depth (in |stop| units) below which NO cushion removal (shallow-MAE robust winners byte-identical); only genuinely-deep-MAE (mae<=-0.25*stop) gets removal
 MIN_VOTES = 2.92  # scaled for 7 voters
