@@ -2703,7 +2703,47 @@ class Strategy:
                     # inert there; the stability risk is sideways directional-leg bars where
                     # the 0.02-deadzone gate fires -- more slowdown = more exit-timing
                     # wobble on those bars).
-                    _eff_progress = _eff_progress * (1.0 - 0.60 * _acc_fade_slowdown)
+                    # Exp (architectural, indep): MAE-CONDITIONED slowdown AMPLITUDE. The keep's
+                    # slowdown AMP is a FIXED 0.60 -- it slows scale-in at the same rate for
+                    # every gated position regardless of how that position is ACTUALLY
+                    # evolving. The keep's signal (accumulator-fade = prev_acc - margin) is a
+                    # PRE-entry conviction-decay measure; it does NOT read the position's
+                    # REALIZED trajectory. Two positions with identical pre-entry fade can
+                    # have OPPOSITE realized outcomes: one goes immediately underwater (a
+                    # crash loser that drives crash PF to 1.0), the other stays flat/favorable.
+                    # The fixed AMP throttles both identically. NEW cross-component data dep:
+                    # the slowdown AMPLITUDE now reads the position's MAE (self._mae, the
+                    # minimum pos_pnl over the hold so far, already tracked at line ~2905 and
+                    # available here since the scale-in block runs after pos_pnl is computed
+                    # but before the MAE update -- so self._mae reflects bars 0..bars_held-1,
+                    # the position's adverse excursion through the prior bar). A position
+                    # that has gone deeply underwater during scale-in (mae <= -0.5*stop) is
+                    # exactly the loser that drives crash/sideways Sharpe negative -> apply a
+                    # STRONGER slowdown (cut its scale-in exposure harder -> smaller realized
+                    # loss when it eventually exits -> raises the negative-Sharpe regime
+                    # scores directly, since for sharpe<=0 the score == bare sharpe). A
+                    # flat/favorable position (mae ~ 0) keeps the baseline 0.60 AMP (byte-
+                    # identical there -> no cost to bull/rally trend-aligned winners which
+                    # rarely go underwater during scale-in). Continuous tanh on (-mae)/stop
+                    # (no boundary; fast-saturating so a position underwater by ~0.5*stop gets
+                    # full extra AMP, shallow-MAE gets ~0 extra). The extra AMP is bounded
+                    # (max +0.20 -> total AMP 0.80) so the slowdown never exceeds 0.80 (the
+                    # validated safe-family ceiling; the keep's 0.60 already held stability).
+                    # Shrink-only (factor <= 1.0), direction-symmetric (MAE is sign-agnostic;
+                    # long and short losers both go underwater). Byte-identical when mae ~ 0
+                    # (no adverse excursion -> extra AMP 0 -> baseline 0.60). Distinct from
+                    # _adv_freeze (adverse pos_pnl freeze, keys on INSTANTANEOUS adverse move
+                    # and FREEZES scale-in at current size; this keys on CUMULATIVE worst
+                    # excursion and modulates the SLOWDOWN AMPLITUDE -- a softer, continuous
+                    # action on the same losing population the freeze catches at the cliff).
+                    # Distinct from _be_pressure's MAE gate (exit-side, fires post-scale-in on
+                    # deep-MAE stalls at breakeven; this is scale-in-side, fires DURING
+                    # scale-in on deep-MAE fading-conviction positions). New control flow: the
+                    # scale-in slowdown AMPLITUDE depends on the position's realized adverse
+                    # trajectory (was: fixed AMP dependent on pre-entry fade only).
+                    _mae_depth_si = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.25))))
+                    _acc_fade_amp = 0.60 + 0.20 * _mae_depth_si
+                    _eff_progress = _eff_progress * (1.0 - _acc_fade_amp * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
