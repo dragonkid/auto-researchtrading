@@ -2624,26 +2624,23 @@ class Strategy:
                     # state updated this bar. Max 0.25 slowdown (below Exp5's 0.30 to
                     # avoid over-aggressive compounding with the instantaneous slowdown).
                     _acc_fade = _fade_b if current_pos > 0 else _fade_s
-                    # BRANCH STEP4: gate the slowdown on TREND-ALIGNMENT of the held
-                    # position = tanh(ret_vlong * pos_dir / 0.02). Step3's |ret_vlong|
-                    # magnitude gate crashed sideways stab (0.338): sideways multi-day
-                    # oscillations wobble |ret_vlong| up to ~0.02 -> gate fires on some
-                    # sideways scale-in bars -> per-bar wobble -> stab crash. The
-                    # structural insight: the slowdown helps TREND-ALIGNED fading
-                    # entries (don't ramp a fading trend entry to full size) and is
-                    # structurally wrong for sideways (chop mean-reversion wants quick
-                    # scale-in). The separator is not |ret_vlong| (which wobbles in
-                    # sideways) but trend-ALIGNMENT: ret_vlong * pos_dir > 0 means the
-                    # position is ALIGNED with the multi-day trend (bull longs in
-                    # uptrend, crash shorts in downtrend, rally longs in uptrend).
-                    # Sideways entries are NOT aligned with any multi-day trend (chop,
-                    # ret_vlong~0 -> product ~0 regardless of pos_dir) -> gate ~0 ->
-                    # byte-identical -> stab holds AND raw unchanged. This is the SAME
-                    # trend-alignment signal used by the keep's _dd_thresh_dir_gate
-                    # and the validated multi-day ct-gates. Continuous tanh, fast-
-                    # saturating /0.02 (near-constant, noise-free), no boundary.
-                    _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
-                    _acc_fade_gate = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_acc / 0.02)))  # ~0 chop/ct, ~1 trend-aligned
+                    # BRANCH STEP2: TIGHTER trend-gate on the slowdown. The opener used
+                    # the KEPT gate tanh(rsi_trend_str/0.20) -- but that is 0.635 at
+                    # rsi_trend_str=0.15 (ACTIVE in sideways chop), so the per-bar
+                    # slowdown fired on sideways fade>deadzone entries -> bar-to-bar
+                    # wobble -> sideways stability crash (0.341). The keep's SHRINK
+                    # composes right with that gate + deadzone (shrink=smaller target=
+                    # faster MV exit=good in sideways); but the SLOWDOWN is structurally
+                    # wrong for sideways mean-reversion (slower pace=prolonged scale-in
+                    # when sideways wants quick MV), so it must be BYTE-IDENTICAL in
+                    # deep chop, not merely stable. Use a DEADZONE on rsi_trend_str:
+                    # tanh((rsi_trend_str-0.15)/0.10) is ~0 for rsi_trend_str<0.15 (deep
+                    # chop = sideways) and saturates ~1 by rsi_trend_str>0.35 (trends).
+                    # This keeps the per-bar evolution (crash/rally/bull gains from the
+                    # opener) AND makes the slowdown byte-identical in deep chop (no
+                    # wobble there -> sideways stability holds). Continuous, no hard
+                    # boundary (the 0.15 onset is a smooth deadzone, not a switch).
+                    _acc_fade_gate = max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.15) / 0.10)))  # ~0 deep chop (<0.15), ~1 trend (>0.35)
                     _acc_fade_slowdown = _acc_fade_gate * max(0.0, min(1.0, np.tanh(max(0.0, _acc_fade - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
                     _eff_progress = _eff_progress * (1.0 - 0.25 * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
