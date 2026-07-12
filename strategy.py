@@ -236,32 +236,6 @@ CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.6
 NET_TILT_FLOOR = 0.10 * LEVERAGE_K   # net |tilt|/equity below which no shrink (scaled by LEVERAGE_K for decision invariance)
 NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ramp (scaled by LEVERAGE_K)
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
-# Exp2 (architectural, indep): CROSS-SYMBOL SAME-DIRECTION REALIZED-PNL entry shrink.
-# NEW portfolio-level data dep distinct from _conc_shrink (GROSS same-dir NOTIONAL) and
-# _net_tilt (SIGNED net notional): both read NOTIONAL only, neither reads whether those
-# open same-direction positions are currently WINNING or LOSING. A new same-direction
-# entry that ADDS to a book of same-direction positions that are COLLECTIVELY LOSING
-# (unrealized pos_pnl < 0 across the other symbols' same-direction holds) piles
-# correlated-losing risk -- the new entry is likely entering the SAME adverse move that
-# is already bleeding the existing same-direction book (a correlated regime hit, the
-# loss-clustering source). Shrink the new same-direction entry proportional to how
-# deeply the other-symbol same-direction book is underwater. Shrink-only; the
-# tilt-hedging/opposite-direction side is unshrunk (floor 1.0, same discipline as
-# _net_tilt). Byte-identical when no other same-direction positions are open (the first
-# leg of any directional pile-up) AND when those positions are profitable (a winning
-# same-direction book is a CONFIRMED correlated regime -> the new entry ADDS to
-# confirmed winners -> no shrink). Distinct from the MAX-absorbed cross-symbol
-# directional LOSING-BOOK EXIT pressure (f162dc32, byte-identical via MAX-fusion wall):
-# this is an ENTRY-SIZE shrink on the entry-sizing path (the path where _conc_shrink /
-# _net_tilt are kept), NOT a soft exit pressure (which the MAX fusion absorbs). Smooth
-# tanh on the aggregate unrealized-PnL fraction (no boundary); shrink-only; symmetric
-# (bull new entry reads the other longs' PnL; bear new entry reads the other shorts').
-# Leverage-coupled scale (2x size -> 2x notional -> 2x aggregate PnL fraction -> scale
-# the tanh threshold by LEVERAGE_K for decision invariance, same discipline as the
-# other entry shrinks).
-DIR_PNL_SHRINK_FLOOR = 0.015 * LEVERAGE_K  # aggregate |same-dir unrealized pnl|/equity below which no shrink (noise floor, scaled by LEVERAGE_K for decision invariance)
-DIR_PNL_SHRINK_SCALE = 0.02 * LEVERAGE_K   # tanh saturation scale (scaled by LEVERAGE_K)
-DIR_PNL_SHRINK_MAX_SHRINK = 0.30            # max first-bar shrink at deep same-dir collective loss (-> 0.70x); below _net_tilt's 0.50 since it rides on top of _conc_shrink + _net_tilt
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
@@ -2042,26 +2016,12 @@ class Strategy:
                 # pile-ups shrink; uncorrelated/single-leg entries unaffected.
                 _long_notional = 0.0
                 _short_notional = 0.0
-                _long_unreal_pnl = 0.0   # Exp2: aggregate unrealized PnL of other symbols' LONG positions (notional units)
-                _short_unreal_pnl = 0.0  # Exp2: aggregate unrealized PnL of other symbols' SHORT positions
                 for _osym, _opos in portfolio.positions.items():
                     if _osym != symbol:
                         if _opos > 0:
                             _long_notional += _opos
                         elif _opos < 0:
                             _short_notional += -_opos
-                        # Exp2: accumulate same-direction unrealized PnL (notional-scaled).
-                        # Only when the other symbol has bar data this bar AND a recorded entry price.
-                        if _opos != 0 and _osym in bar_data:
-                            _oep = self.entry_prices.get(_osym, 0.0)
-                            _oclose = bar_data[_osym].history["close"].values[-1]
-                            if _oep > 1e-10:
-                                _oret = (_oclose - _oep) / _oep
-                                _o_pnl_notional = _oret * abs(_opos) * (1.0 if _opos > 0 else -1.0)
-                                if _opos > 0:
-                                    _long_unreal_pnl += _o_pnl_notional
-                                else:
-                                    _short_unreal_pnl += _o_pnl_notional
                 _conc_frac_bull = _long_notional / max(equity, 1e-10)
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
@@ -2083,24 +2043,6 @@ class Strategy:
                 _net_tilt = (_long_notional - _short_notional) / max(equity, 1e-10)
                 _net_tilt_shrink_bull = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
                 _net_tilt_shrink_bear = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((-_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
-                # Exp2 (architectural, indep): CROSS-SYMBOL SAME-DIRECTION REALIZED-PNL
-                # entry shrink. See DIR_PNL_SHRINK_* header. The other-symbol same-direction
-                # book's aggregate unrealized PnL (notional-scaled) as a fraction of equity:
-                # NEGATIVE = the same-direction book is collectively underwater (a correlated
-                # regime hit, loss clustering). Shrink the new same-direction entry by how
-                # deeply the existing book is bleeding. Shrink-ONLY on the loss side: a
-                # PROFITABLE same-direction book (positive aggregate unrealized PnL) is a
-                # CONFIRMED correlated regime -> new entry ADDS to confirmed winners -> NO
-                # shrink (the max(0, -pnl) below floors the profitable side at 1.0). Byte-
-                # identical when no other same-direction positions are open (first leg of a
-                # pile-up -> PnL=0 -> no shrink) or when they are profitable. Symmetric:
-                # bull new entry reads other longs' PnL; bear reads other shorts'. Composes
-                # multiplicatively with _conc_shrink + _net_tilt (independent signals:
-                # gross-notional, net-tilt, same-dir realized-PnL). Leverage-coupled scale.
-                _long_pnl_frac = _long_unreal_pnl / max(equity, 1e-10)
-                _short_pnl_frac = _short_unreal_pnl / max(equity, 1e-10)
-                _dir_pnl_shrink_bull = 1.0 - DIR_PNL_SHRINK_MAX_SHRINK * max(0.0, np.tanh((-_long_pnl_frac - DIR_PNL_SHRINK_FLOOR) / DIR_PNL_SHRINK_SCALE))
-                _dir_pnl_shrink_bear = 1.0 - DIR_PNL_SHRINK_MAX_SHRINK * max(0.0, np.tanh((-_short_pnl_frac - DIR_PNL_SHRINK_FLOOR) / DIR_PNL_SHRINK_SCALE))
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
                 # validated volume as an exit-side exhaustion signal (bull +0.021). Mirror
                 # it to the ENTRY side: a fresh entry taken DURING a volume spike (z>2) is
@@ -2524,7 +2466,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _dir_pnl_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2543,7 +2485,7 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _dir_pnl_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
