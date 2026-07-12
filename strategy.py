@@ -106,33 +106,6 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # persistent-downtrend-during-DD entries). New per-position cached state + new
 # control flow (computed at entry, read during hold -- not recomputed per bar).
 SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) with a HIGHER latch threshold so only deep winners latch (safer exit-bar shift)
-# Exp1 (architectural, indep): LATCHED-WINNING-SHORT pp_pressure attenuation -- the
-# pp_pressure ANALOG of the keep's SHORT_HOLD_TP_ATTEN (time_pressure attenuation).
-# The keep 249d8241 attenuates _time_pressure by 0.50 for latched winning crash shorts
-# (letting them run longer via reduced de-risk pressure). But _pp_pressure (peak-profit
-# giveback) still fires at FULL strength on crash shorts: the existing _ta_winner_gate
-# pp-attenuation (line ~3196) is gated LONG-ONLY (branch step4 made it long-only because
-# crash bounces are sharper than giveback/slope gates detect). So a latched winning
-# crash short that gives back profit on a dead-cat bounce is still harvested by pp at
-# full giveback -> exits the bounce top -> misses the downtrend resumption. This adds a
-# SEPARATE pp attenuation for the SAME latched-winning-short population the time_pressure
-# attenuation protects: when a short is latched (_short_hold_cached > 0, profit-
-# confirmed) AND the multi-day downtrend remains intact (ret_vlong still negative past a
-# deadzone = bounce is temporary, not a regime reversal), attenuate _pp_pressure by
-# SHORT_HOLD_PP_ATTEN so the confirmed winner rides the giveback longer -> captures more
-# downtrend -> crash Sharpe up. WHY THIS AVOIDS THE PORTFOLIO-EQUITY COUPLING WALL: like
-# the time_pressure attenuation, this changes a pressure VALUE (exit timing), NOT
-# position size -> does not perturb the size trajectory -> no portfolio drawdown change
-# -> no _port_dd_atten shift -> no cross-symbol exit-timing tracking error -> stability
-# preserved (the wall that crashed the MAE-conditioned acc-fade scale-in slowdown, which
-# perturbed SIZE). The deadzone gate (|ret_vlong| > 0.015, the SAME validated crash/rally
-# separator as the latch eligibility) ensures the attenuation turns OFF when the
-# downtrend has genuinely reversed (ret_vlong back near 0 = real regime change, not a
-# bounce) -> pp protection resumes -> exit the now-counter-trend short. Byte-identical
-# for longs (cache 0), unlatched shorts (cache 0), and shorts in reversed regime (gate 0).
-# Magnitude 0.30 < time_pressure's 0.50 (pp is the bounce-protector; crash bounces are
-# sharp, so attenuate less than time pressure which is a gentler de-risk).
-SHORT_HOLD_PP_ATTEN = 0.30
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -3379,28 +3352,6 @@ class Strategy:
                         self._short_hold_cache[symbol] = _short_hold_cached  # LATCH (stays >0)
                     else:
                         _short_hold_cached = 0.0  # not yet latched
-                # Exp1 (architectural, indep): LATCHED-WINNING-SHORT pp_pressure
-                # attenuation. See SHORT_HOLD_PP_ATTEN header. For the SAME latched
-                # winning-short population the keep's time_pressure attenuation protects
-                # (_short_hold_cached > 0 = profit-confirmed winning short), ALSO attenuate
-                # _pp_pressure (peak-profit giveback) so a confirmed winning crash short
-                # rides its dead-cat-bounce giveback longer instead of being harvested at
-                # the bounce top. Gated on the multi-day downtrend remaining intact: a
-                # deadzone on |ret_vlong| > 0.015 (the SAME crash/rally separator used for
-                # latch eligibility) so the attenuation turns OFF when the downtrend has
-                # genuinely reversed (ret_vlong back near 0 = regime change) -> pp
-                # protection resumes -> exit the now-counter-trend short. This is the
-                # pp ANALOG of the time_pressure attenuation below (line ~3445): both
-                # attenuate a pressure VALUE (not position size) for latched winning
-                # shorts -> no size-trajectory perturbation -> avoids the portfolio-equity
-                # coupling wall that crashed the MAE-conditioned acc-fade slowdown's stab.
-                # Byte-identical when _short_hold_cached<=0 (longs, unlatched shorts, not-
-                # yet-eligible) OR when the downtrend reversed (_short_pp_gate 0). Magnitude
-                # 0.30 < time_pressure 0.50 (pp is the bounce-protector; crash bounces are
-                # sharp so attenuate more conservatively).
-                if _short_hold_cached > 0.0:
-                    _short_pp_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))
-                    _pp_pressure = _pp_pressure * (1.0 - SHORT_HOLD_PP_ATTEN * _short_pp_gate)
                 # Branch step15: TIME-PRESSURE OUTPUT ATTENUATION (replaces the _max_hold
                 # extension that hit the stab cliff at mag 3.5). Steps 2-14 extended
                 # _max_hold (shifted the exit bar LATER) -> at mag>=3.5 the later exit
