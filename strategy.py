@@ -527,6 +527,15 @@ class Strategy:
         # Cached at entry (deterministic); keeps a fading-conviction entry smaller for
         # the whole hold. Default 1.0 (no effect) if uncached.
         self._fade_shrink_held = {}
+        # Exp2 branch step1: CACHED accumulator-fade scale-in SLOWDOWN factor. The
+        # opener (Exp2) recomputed the accumulator-fade slowdown fresh each scale-in
+        # bar -> bar-to-bar wobble -> sideways stability crash (0.34). Cache the
+        # entry-time slowdown (deterministic, mirrors _fade_shrink_held) so the
+        # scale-in pace is held at a CONSTANT reduced rate through the scale-in
+        # window -> no wobble -> sideways byte-identical (gate ~0 in chop -> slowdown
+        # ~0 -> byte-identical; and even where the gate is nonzero the cached value is
+        # constant across AR(1) perturbations -> no bar-to-bar wobble). Default 1.0.
+        self._fade_slow_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -2434,6 +2443,12 @@ class Strategy:
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
                     self._fade_shrink_held[symbol] = _fade_shrink_b  # branch step4: cache for scale-in sustain
+                    # Exp2 branch step1: cache the accumulator-fade scale-in SLOWDOWN at
+                    # entry (deterministic, no bar-to-bar wobble -> fixes sideways stab
+                    # crash). Uses the entry-time _fade_b + _fade_trend_gate (both in scope
+                    # here in the admission block). Active side = bull (long entry).
+                    _acc_fade_slow_b = _fade_trend_gate * max(0.0, min(1.0, np.tanh(max(0.0, _fade_b - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
+                    self._fade_slow_held[symbol] = _acc_fade_slow_b
                     # branch step16: gate the avg-vol SUSTAIN on counter-trend-at-multi-day.
                     # bull entry ct-at-multi-day = ret_vlong<0 (long in downtrend = crash bounce
                     # long). Sustain the shrink ONLY for ct entries (crash bounce longs); bull
@@ -2448,6 +2463,10 @@ class Strategy:
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
                     self._fade_shrink_held[symbol] = _fade_shrink_s  # branch step4: cache for scale-in sustain
+                    # Exp2 branch step1: cache the accumulator-fade scale-in SLOWDOWN at
+                    # entry (deterministic, no bar-to-bar wobble). Active side = bear (short).
+                    _acc_fade_slow_s = _fade_trend_gate * max(0.0, min(1.0, np.tanh(max(0.0, _fade_s - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
+                    self._fade_slow_held[symbol] = _acc_fade_slow_s
                     # branch step16: gate avg-vol sustain on ct-at-multi-day (bear entry ct =
                     # ret_vlong>0 = short in uptrend = rally pullback short; crash trend-aligned
                     # shorts ret_vlong<0 -> no sustain -> no exit-timing disruption).
@@ -2596,36 +2615,40 @@ class Strategy:
                     _own_margin = _bull_margin if current_pos > 0 else _bear_margin
                     _fade_slowdown = max(0.0, np.tanh(-_own_margin / 0.30))  # 0 margin>=0, ~1 deeply negative
                     _eff_progress = _eff_progress * (1.0 - 0.30 * _fade_slowdown)
-                    # Exp2 (architectural, indep): ACCUMULATOR-FADE scale-in slowdown.
-                    # NEW control-flow data dep at scale-in: the scale-in rate reads the
-                    # KEPT accumulator-fade signal (_fade_b/_fade_s = prev_acc - margin,
-                    # the rising-edge conviction-decay signal that drives the keep's
-                    # first-bar fade-shrink). Exp5 above (line 2596) keys on the
-                    # INSTANTANEOUS own-side margin going NEGATIVE -- a LATE, deep fade
-                    # (voters fully flipped). The accumulator-fade fires EARLIER and on a
-                    # DIFFERENT population: conviction PEAKED then is DECAYING while the
-                    # margin is STILL POSITIVE (the EMA lags the raw margin by ~1-2 bars
-                    # per ENTRY_ACCUM_RHO=0.5, so prev_acc can exceed margin while margin>0).
-                    # This is exactly the population the keep's first-bar shrink targets --
-                    # a position admitted on a decaying spike. The first-bar shrink makes
-                    # that entry SMALLER; this extends the same discipline THROUGH the
-                    # scale-in window: do NOT ramp a fading-spike position back to full
-                    # size -- hold it smaller until conviction re-confirms. Distinct from
-                    # Exp5 (different signal: accumulator-decay vs instantaneous-negation;
-                    # fires earlier and on still-positive-margin positions). Reuses the
-                    # KEPT trend-gate (rsi_trend_str/0.20, the validated chop/trend
-                    # separator that made the fade-shrink sideways-safe): full effect in
-                    # TRENDS (bull/rally/crash trending phases), fading to 0 in CHOP
-                    # (sideways) -> sideways byte-identical (sideways mean-reverters
-                    # SUPPOSED to enter on the spike; a fade filter is structurally wrong
-                    # there, same lesson as the keep's step6). Continuous tanh, no
-                    # boundary, shrink-only (factor <= 1.0). Active-side fade (bull for
-                    # long, bear for short), computed fresh each bar from the accumulator
-                    # state updated this bar. Max 0.25 slowdown (below Exp5's 0.30 to
-                    # avoid over-aggressive compounding with the instantaneous slowdown).
-                    _acc_fade = _fade_b if current_pos > 0 else _fade_s
-                    _acc_fade_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))  # ~0 chop, ~1 trend (KEPT gate)
-                    _acc_fade_slowdown = _acc_fade_gate * max(0.0, min(1.0, np.tanh(max(0.0, _acc_fade - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
+                    # Exp2 (architectural, indep -> BRANCH step1): ACCUMULATOR-FADE
+                    # scale-in slowdown. NEW control-flow data dep at scale-in: the
+                    # scale-in rate reads the KEPT accumulator-fade signal (_fade_b/_fade_s
+                    # = prev_acc - margin, the rising-edge conviction-decay signal that
+                    # drives the keep's first-bar fade-shrink). Exp5 above (line 2596)
+                    # keys on the INSTANTANEOUS own-side margin going NEGATIVE -- a LATE,
+                    # deep fade (voters fully flipped). The accumulator-fade fires
+                    # EARLIER and on a DIFFERENT population: conviction PEAKED then is
+                    # DECAYING while the margin is STILL POSITIVE (the EMA lags the raw
+                    # margin by ~1-2 bars per ENTRY_ACCUM_RHO=0.5, so prev_acc can exceed
+                    # margin while margin>0). This is exactly the population the keep's
+                    # first-bar shrink targets -- a position admitted on a decaying
+                    # spike. The first-bar shrink makes that entry SMALLER; this extends
+                    # the same discipline THROUGH the scale-in window: do NOT ramp a
+                    # fading-spike position back to full size -- hold it smaller until
+                    # conviction re-confirms. Distinct from Exp5 (different signal:
+                    # accumulator-decay vs instantaneous-negation; fires earlier and on
+                    # still-positive-margin positions). Reuses the KEPT trend-gate
+                    # (rsi_trend_str/0.20, the validated chop/trend separator that made
+                    # the fade-shrink sideways-safe): full effect in TRENDS, fading to 0
+                    # in CHOP (sideways) -> sideways byte-identical. Continuous tanh, no
+                    # boundary, shrink-only (factor <= 1.0). Max 0.25 slowdown.
+                    # BRANCH STEP1 FIX: the opener recomputed _acc_fade_slowdown fresh
+                    # each scale-in bar -> bar-to-bar wobble (the accumulator-fade wobbles
+                    # under AR(1) close noise -> _eff_progress wobbles -> scale-in
+                    # position value wobbles -> stability crash, sideways 0.34). CACHE
+                    # the entry-time slowdown (self._fade_slow_held, set at entry from
+                    # the entry-time _fade_b/_fade_s + _fade_trend_gate) and apply a
+                    # CONSTANT reduction through scale-in -> no bar-to-bar wobble ->
+                    # sideways byte-identical (gate ~0 in chop -> cached 0 -> byte-
+                    # identical; and where nonzero the cached value is constant across
+                    # the AR(1) ensemble -> no wobble). Mirrors the deterministic
+                    # _fade_shrink_held pattern. Default 0.0 (no effect) if uncached.
+                    _acc_fade_slowdown = self._fade_slow_held.get(symbol, 0.0)
                     _eff_progress = _eff_progress * (1.0 - 0.25 * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
@@ -4612,7 +4635,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._fade_slow_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
