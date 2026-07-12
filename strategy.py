@@ -105,7 +105,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # DD (dd gate 0 -> cache 0), and the entire non-crash population (no short-in-
 # persistent-downtrend-during-DD entries). New per-position cached state + new
 # control flow (computed at entry, read during hold -- not recomputed per bar).
-SHORT_HOLD_CACHED_EXT = 3.25  # branch step13: probe between 3.0 (held, +0.000815) and 3.5 (crashed stab 0.046) -- find the stab cliff edge
+SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) with a HIGHER latch threshold so only deep winners latch (safer exit-bar shift)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -3347,7 +3347,7 @@ class Strategy:
                 # separator) via a one-time latch instead of a wobbly per-bar gate.
                 _short_hold_cached = self._short_hold_cache.get(symbol, 0.0) if current_pos < 0 else 0.0
                 if _short_hold_cached < -0.5:  # eligible, not latched (sentinel -1.0)
-                    if pos_pnl > 0.5 * abs(STOP_LOSS_PCT):  # confirmed winning short (profit latch; step11 1.0x was byte-identical to 0.5x, keep 0.5x = earlier latch = more hold)
+                    if pos_pnl > 2.0 * abs(STOP_LOSS_PCT):  # branch step14: 0.5->2.0 stop (only DEEPLY-confirmed winners latch; at mag 4.5 only the safest shorts -- far in profit, exit-bar shift away from time-pressure noise region -- get the extension -> stab may hold)
                         _short_hold_cached = SHORT_HOLD_CACHED_EXT
                         self._short_hold_cache[symbol] = _short_hold_cached  # LATCH (stays >0)
                     else:
