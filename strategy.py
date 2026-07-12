@@ -3407,33 +3407,6 @@ class Strategy:
                 # 8.0 (+100pct) gives more headroom. Sideways/rally (vol_ratio<0.8) stay
                 # byte-identical. Tests whether the crash gain scales with ramp width.
                 _tp_ramp_w = 4.0 + 4.0 * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
-                # Exp1 (architectural, indep): LATCHED-WINNING-SHORT time-pressure RAMP
-                # WIDTH widening. The keep 249d8241 (SHORT_HOLD_TP_ATTEN 0.50) reduces the
-                # _time_pressure VALUE uniformly for latched winning shorts (the crash
-                # winning-short population; rally pullback shorts never latch -> byte-
-                # identical). That value attenuation is at its sweet spot (0.50 > 0.60:
-                # over-attenuating lets shorts run too long -> give back gains). This is a
-                # DIFFERENT, complementary lever on the SAME validated population: widen
-                # the RAMP WIDTH (_tp_ramp_w, the slope of the 0->1 pressure ramp past
-                # _max_hold) for latched shorts, NOT the pressure value. A wider ramp =
-                # the pressure climbs more GRADUALLY per bar post-_max_hold -> the latched
-                # short spends MORE bars in the gradual-pressure region before full
-                # de-risk -> holds near-full size longer into the downtrend -> captures
-                # more of crash's persistent multi-day downtrend -> higher crash Sharpe
-                # (the keep note's "highest-leverage untested axis": crash Sh -0.0014
-                # nearly zero). Distinct from TP-attenuation (scales FINAL pressure value
-                # uniformly) -- this changes the ramp SHAPE (per-bar pressure increment).
-                # Composes multiplicatively with TP-attenuation (both apply to latched
-                # shorts only). STABILITY-SAFE for the SAME reason the keep is: _max_hold
-                # is UNCHANGED (exit-bar onset not shifted -> no stab cliff, the documented
-                # stab/raw cliff is a function of exit-bar SHIFT not ramp slope). Only the
-                # post-_max_hold ramp slope changes, and only for the latched population
-                # (deterministic post-latch constant magnitude). Byte-identical for the
-                # non-latched population (rally pullback shorts, all longs, non-eligible
-                # shorts -> _short_hold_cached<=0 -> widening 0). Continuous tanh-free
-                # additive (a constant +2.0 bars widening, bounded), no boundary.
-                if _short_hold_cached > 0.0:
-                    _tp_ramp_w = _tp_ramp_w + 2.0  # +50pct at calm (4->6), +25pct at max vol (8->10)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / _tp_ramp_w))
                 # Branch step15: TIME-PRESSURE OUTPUT ATTENUATION for latched winning
                 # shorts. See step15 header above (near _short_hold_cached). Reduce
