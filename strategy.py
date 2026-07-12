@@ -3474,23 +3474,7 @@ class Strategy:
                 _rv_mid_floor = max(0.0, min(1.0, (_rv_abs - 0.008) / 0.004))  # ~0 below 0.008 (sideways/rally shallow), ~1 above 0.012
                 _rv_mid_ceil = max(0.0, min(1.0, (0.025 - _rv_abs) / 0.004))  # ~1 below 0.021, ~0 above 0.025 (crash deep)
                 _rv_mid_gate = _rv_mid_floor * _rv_mid_ceil  # mid-band [~0.012, ~0.022] full, 0 at both ends
-                # branch step4: REPLACE the _down_persist FLOOR (step1/2 fired for crash high AND
-                # sideways boundary wobble) with a MID-BAND [0.55, 0.80] that excludes BOTH.
-                # Step1 (_down_persist>0.55 floor no ceiling) fired for crash (~0.9 -> full) AND
-                # mixed (~0.6-0.7 -> full) AND sideways boundary (~0.5 wobbling above 0.55 ->
-                # stab crash). Step2 (_down_persist>0.40 softer floor) still leaked sideways.
-                # The 3-way separator: crash HIGH persistent (~0.9), sideways LOW-MID oscillating
-                # (~0.5), mixed MODERATE (~0.6-0.7 sustained down-year with rally phases). A
-                # MID-BAND on _down_persist fires ONLY for mixed: floor 0.55 excludes sideways
-                # (0.5 below floor), ceiling 0.80 excludes crash (0.9 above ceiling). Continuous
-                # tanh mid-band (no hard boundary): ramp up above 0.55, ramp DOWN above 0.80.
-                # This is the validated duration-count separator principle (fe6acd4d keep used
-                # _down_persist to separate crash ~0.9 from rally ~0.3); here the mid-band
-                # separates the MODERATE-downtrend regime (mixed) from BOTH extremes (crash high,
-                # sideways low). New: time-pressure amp reads _down_persist in a mid-band.
-                _persist_mid_floor = max(0.0, min(1.0, (_down_persist - 0.55) / 0.08))  # ~0 below 0.55 (sideways), ~1 above 0.63
-                _persist_mid_ceil = max(0.0, min(1.0, (0.80 - _down_persist) / 0.08))  # ~1 below 0.72, ~0 above 0.80 (crash)
-                _persist_dt_gate = _persist_mid_floor * _persist_mid_ceil  # mid-band [~0.63, ~0.72] full, 0 at both ends
+                _persist_dt_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.40) / 0.15)))  # softer floor (excludes rally/bull up_persist; allows mixed variable)
                 _ct_long_amp = CT_LONG_TP_AMP * _ct_long_dt_gate * _persist_dt_gate * _rv_mid_gate
                 if _ct_long_amp > 0.0:
                     _time_pressure = _time_pressure * (1.0 + _ct_long_amp)
