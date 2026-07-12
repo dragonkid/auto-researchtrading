@@ -2551,7 +2551,19 @@ class Strategy:
                     # on bear_margin>0.3 (high conviction -> likely winner -> extend;
                     # marginal -> no extend -> rally spared). Evaluated at entry, frozen.
                     _short_conv_gate = max(0.0, min(1.0, (_bear_margin - 0.30) / 0.30))  # 0 margin<=0.3, ramps to 1 at margin>=0.6
-                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * _short_mag_gate * _short_conv_gate * (1.0 - _port_dd_atten)
+                    # Branch step8: DEEP-DD FLOOR to exclude rally pullback shorts. The
+                    # conviction gate (step7) did NOT spare rally (rally pullback shorts
+                    # also have high conviction). The rally regression (-0.0158) is
+                    # CONSTANT across all entry-gate variants -> it comes from the cache
+                    # firing on rally shorts during their shallow-pullback DD episodes
+                    # (1-_port_dd_atten ~0.1). Crash is in DEEP sustained DD (1-_port_dd_atten
+                    # ~0.4); rally pullbacks are SHALLOW DD (~0.1). A hard DD FLOOR (only
+                    # fire when 1-_port_dd_atten > 0.25) excludes rally's shallow-DD shorts
+                    # (cache 0 -> no freeze -> byte-identical) while keeping crash (deep
+                    # DD) and mixed (deep DD in its crash legs). Continuous tanh on the
+                    # DD fraction so it's a smooth floor, not a hard boundary.
+                    _short_dd_floor = max(0.0, min(1.0, np.tanh(((1.0 - _port_dd_atten) - 0.25) / 0.10)))  # ~0 shallow DD (rally), ~1 deep DD (crash/mixed)
+                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * _short_mag_gate * _short_conv_gate * _short_dd_floor
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
