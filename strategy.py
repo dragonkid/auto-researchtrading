@@ -2859,7 +2859,7 @@ class Strategy:
                     # which scales ALL acc-fade bars including sideways directional-legs;
                     # the MAE extra only fires on underwater positions [sideways mae~0 ->
                     # extra 0] so the sideways directional-leg bars keep base 0.60).
-                    ACC_FADE_MAE_EXTRA = 0.15  # branch step2: cap so total AMP max 0.75 (0.60+0.15) -- the prior session's validated acc-fade stability ceiling (0.78 crashed; the opener's 0.40 extra -> max 1.00 crashed stab here because it STACKS with the keep TP-attenuation on the same crash shorts)
+                    ACC_FADE_MAE_EXTRA = 0.40  # branch step3: magnitude is INERT (step2 showed 0.40 vs 0.15 byte-identical -- the latch population hits stop regardless); keep 0.40 (step2 cap reverted)
                     # BRANCH step1: LATCHED MAE-depth (replaces the opener's continuous
                     # per-bar _mae_depth_si that crashed crash stab 1.0->0.081). The
                     # opener recomputed tanh(-mae/(|stop|*0.15)) EACH bar -> the noisy
@@ -2886,7 +2886,7 @@ class Strategy:
                     # regardless, AND sideways mae~0 -> never crosses the deep threshold
                     # -> never latches. Byte-identical for flat/never-deep-underwater
                     # positions (mae stays shallow -> never latches -> baseline AMP).
-                    ACC_FADE_MAE_LATCH_THRESH = 0.15  # latch when mae <= -0.15*stop (same band as opener)
+                    ACC_FADE_MAE_LATCH_THRESH = 0.30  # branch step3: deeper latch threshold (mae <= -0.30*stop) to shrink the latch population -> fewer positions trigger the MAE extra -> less portfolio-equity perturbation -> test if stab holds; opener/step1/step2 used 0.15
                     _mae_depth_si = self._acc_fade_mae_latch.get(symbol, 0.0)
                     if _mae_depth_si < 0.5 and self._mae.get(symbol, 0.0) <= -(ACC_FADE_MAE_LATCH_THRESH * abs(STOP_LOSS_PCT)):
                         _mae_depth_si = 1.0  # one-time LATCH (stays 1.0)
