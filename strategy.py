@@ -1359,7 +1359,7 @@ class Strategy:
             # dd_frac 0.02, saturating by 0.06. Byte-identical at peak (dd_frac=0) and for
             # shallow drawdowns (sideways). Leverage-coupled via _port_dd_frac's
             # 0.008*LEVERAGE_K scale (already in _port_dd_atten).
-            _accel_trend_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - 0.02) / 0.04)))
+            _accel_trend_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - 0.01) / 0.04)))
             _strong_min = _strong_min * (1.0 + (_port_dd_accel_tighten - 1.0) * _accel_trend_gate)
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
