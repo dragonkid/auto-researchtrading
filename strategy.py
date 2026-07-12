@@ -76,30 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exp3 (architectural, indep): SHORT-SIDE hold-extension magnitude for trend-
-# aligned in-profit shorts during portfolio DD -- the mirror of the keep's
-# _ta_dd_hold_ext (which is LONG-ONLY). The keep made hold-extension long-only
-# (row ~3061 _long_only_gate) because "SHORTS in a downtrend riding a bounce face
-# asymmetric upside risk (downtrends choppier, bounces sharper)". That excluded
-# crash's TREND-ALIGNED PERSISTENT-DOWNTREND WINNING shorts (the dominant crash
-# winner population) from ANY hold extension -> crash winning shorts exit via
-# time-pressure at baseline max_hold, capping the downtrend capture -> contributes
-# to crash PF 1.0 / Sharpe -0.02 (score == bare Sharpe; the dominant composite
-# drag). This adds the mirror: extend max_hold for SHORT-ONLY trend-aligned
-# (ret_vlong*pos_dir>0 = short in a downtrend) in-profit positions during portfolio
-# DD. The profit-gate is the SEPARATOR (distinct from pp-attenuation's giveback-
-# magnitude gate): a WINNING, IN-PROFIT, TREND-ALIGNED short that has already
-# survived is a confirmed trend winner -- only extend confirmed winners, not
-# bounce-stopped losers (losers: profit-gate 0 -> byte-identical). The hold-
-# extension delays ONLY time-pressure (the overstay cut); pp_pressure giveback
-# harvest still fires normally on bounces (a bouncing short gets harvested by
-# pp, NOT held by the extension). Asymmetric EMA-smoothed (mirrors the validated
-# _hold_ext_ema: slow-rise dampens AR(1) wobble, fast-fall releases on winner->
-# loser transition so a short that turns loser is NOT held longer). Byte-identical
-# for longs (short gate 0), ct shorts (align 0), losers (profit gate 0), outside
-# portfolio DD. Targets crash Sharpe (longer capture of trend-aligned winning
-# shorts raises avg-win -> PF>1.0 -> Sharpe toward 0).
-TA_SHORT_HOLD_EXT = 1.5
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -527,10 +503,6 @@ class Strategy:
         # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
         # (slow-rise / fast-fall). Reset on full exit; default 0.0.
         self._local_hold_ext_ema = {}
-        # Exp3 (architectural, indep): per-symbol EMA of the SHORT-SIDE trend-aligned
-        # hold-extension magnitude (mirror of _hold_ext_ema for the short-side
-        # _ta_short_hold_ext path). Asymmetric slow-rise/fast-fall. Reset on full exit.
-        self._short_hold_ext_ema = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -3247,38 +3219,7 @@ class Strategy:
                     _lhe_alpha = 0.15  # fast fall (release on winner->loser)
                 _local_hold_ext = (1.0 - _lhe_alpha) * _local_hold_ext_raw + _lhe_alpha * _prev_lhe
                 self._local_hold_ext_ema[symbol] = _local_hold_ext
-                # Exp3 (architectural, indep): SHORT-SIDE trend-aligned hold-extension
-                # (mirror of _ta_dd_hold_ext which is long-only). See TA_SHORT_HOLD_EXT
-                # header. Extends max_hold for SHORT-ONLY trend-aligned (short in a
-                # downtrend, ret_vlong*pos_dir>0) in-profit positions during portfolio
-                # DD. The keep's _ta_dd_hold_ext uses _ta_long_gate (1 if long); this
-                # uses the SHORT gate (1 if current_pos<0). _ta_align = tanh(ret_vlong*
-                # pos_dir/0.01) already saturates for crash shorts (ret_vlong<0, dir=-1
-                # -> product>0) -> reuses the SAME validated trend-align signal. The
-                # profit-gate (_ta_profit_gate = tanh(pos_pnl/|stop|)) selects confirmed
-                # WINNING shorts only (a bounce-stopped loser has pos_pnl<0 -> gate 0 ->
-                # byte-identical). The DD gate (1-_port_dd_atten) restricts to portfolio
-                # DD episodes (crash IS in DD); byte-identical at portfolio peak.
-                # Asymmetric EMA-smoothed (mirrors _hold_ext_ema / _local_hold_ext_ema:
-                # slow-rise dampens AR(1) wobble, fast-fall releases on winner->loser).
-                # Composes ADDITIVELY with _ta_dd_hold_ext + _local_hold_ext on _max_hold
-                # (mutually exclusive by gates: a position is long OR short; a long gets
-                # _ta_dd_hold_ext, a short gets _ta_short_hold_ext -> at most one fires
-                # per position -> no double-extension). pp_pressure giveback harvest is
-                # NOT suppressed (this delays time-pressure only) -> a bouncing short is
-                # still harvested by pp at the giveback, just not cut by time-pressure ->
-                # the bounce-protection the prior session's long-only gate ensured is
-                # preserved via pp_pressure, NOT via excluding shorts from hold-extension.
-                _ta_short_gate = 1.0 if current_pos < 0 else 0.0
-                _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
-                _prev_she = self._short_hold_ext_ema.get(symbol, _ta_short_hold_ext_raw)
-                if _ta_short_hold_ext_raw >= _prev_she:
-                    _she_alpha = 0.55  # slow rise: low-pass the wobble (stability)
-                else:
-                    _she_alpha = 0.15  # fast fall: release immediately on winner->loser (raw)
-                _ta_short_hold_ext = (1.0 - _she_alpha) * _ta_short_hold_ext_raw + _she_alpha * _prev_she
-                self._short_hold_ext_ema[symbol] = _ta_short_hold_ext
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _ta_short_hold_ext
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
@@ -4748,7 +4689,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_ext_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
