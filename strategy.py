@@ -2536,34 +2536,32 @@ class Strategy:
                     # tanh(0.025/0.01)=~1 full; rally pullback (|rv|~0.005) -> 0.
                     _short_align_entry = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 short-in-downtrend, ~0 ct-short-in-uptrend
                     _short_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))  # branch step5 deadzone 0.015 (step6 0.025 excluded too many crash shorts, reverted)
-                    # Branch step7: CONVICTION-MARGIN gate at entry (deterministic proxy
-                    # for the prior opener's profit gate, which can't be cached since a
-                    # fresh entry has pos_pnl=0). The prior per-bar opener (b636bb1a) kept
-                    # rally BYTE-IDENTICAL via a per-bar PROFIT gate (only extend in-profit
-                    # shorts; rally pullback shorts aren't in profit -> excluded; crash
-                    # winning shorts are -> included) BUT that per-bar gate wobbled
-                    # (pos_pnl crosses breakeven -> stab 0.047). My cached approach removed
-                    # the wobble but lost the profit gate's rally protection (rally
-                    # -0.0158 in step5/6). A conviction-margin gate at ENTRY is a single
-                    # deterministic number (no per-bar wobble) that separates crash
-                    # (HIGH-conviction trend-aligned shorts, strong bear_margin) from
-                    # rally pullback (MARGINAL shorts, weak bear_margin). Gate the cache
-                    # on bear_margin>0.3 (high conviction -> likely winner -> extend;
-                    # marginal -> no extend -> rally spared). Evaluated at entry, frozen.
-                    _short_conv_gate = max(0.0, min(1.0, (_bear_margin - 0.30) / 0.30))  # 0 margin<=0.3, ramps to 1 at margin>=0.6
-                    # Branch step8: DEEP-DD FLOOR to exclude rally pullback shorts. The
-                    # conviction gate (step7) did NOT spare rally (rally pullback shorts
-                    # also have high conviction). The rally regression (-0.0158) is
-                    # CONSTANT across all entry-gate variants -> it comes from the cache
-                    # firing on rally shorts during their shallow-pullback DD episodes
-                    # (1-_port_dd_atten ~0.1). Crash is in DEEP sustained DD (1-_port_dd_atten
-                    # ~0.4); rally pullbacks are SHALLOW DD (~0.1). A hard DD FLOOR (only
-                    # fire when 1-_port_dd_atten > 0.25) excludes rally's shallow-DD shorts
-                    # (cache 0 -> no freeze -> byte-identical) while keeping crash (deep
-                    # DD) and mixed (deep DD in its crash legs). Continuous tanh on the
-                    # DD fraction so it's a smooth floor, not a hard boundary.
-                    _short_dd_floor = max(0.0, min(1.0, np.tanh(((1.0 - _port_dd_atten) - 0.25) / 0.10)))  # ~0 shallow DD (rally), ~1 deep DD (crash/mixed)
-                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * _short_mag_gate * _short_conv_gate * _short_dd_floor
+                    # Branch step9: PROFIT-LATCH (replaces the failed entry-gate approach).
+                    # Steps 4-8 ALL kept rally -0.0158 regardless of entry gate (persist,
+                    # magnitude deadzone, conviction, DD floor) -- the rally/crash coupling
+                    # is fundamental on the entry-time signal axes (both have deep DD,
+                    # both can have high conviction, both have deep-ish ret_vlong dips).
+                    # The prior per-bar opener (b636bb1a) kept rally BYTE-IDENTICAL via a
+                    # per-bar PROFIT gate (only extend in-profit shorts; rally pullback
+                    # shorts not yet in profit -> excluded) BUT that wobbled (stab 0.047).
+                    # The profit gate is the ONLY separator that worked for rally -- it
+                    # reads position STATE (pos_pnl>0 = a confirmed winning short), which
+                    # crash winning shorts reach and rally pullback shorts (which stop out
+                    # before confirming) do not. The fix: cache the ELIGIBILITY (0/1) at
+                    # entry from the align+deadzone gates, but LATCH the MAGNITUDE on the
+                    # bar where pos_pnl FIRST confirms positive (a ONE-TIME 0->FULL flip).
+                    # Before the latch: cache 0 -> no extension AND no _hold_adj freeze ->
+                    # byte-identical to baseline (the position has baseline _hold_adj wobble
+                    # which is stable). After the latch: cache FULL -> freeze applies ->
+                    # _max_hold constant for the rest of the hold. The latch fires ONCE
+                    # (one-time transition, not a continuous per-bar recompute) -> minimal
+                    # wobble vs the per-bar EMA (which wobbled every bar). The latch bar
+                    # may shift +-1 under noise, but the post-latch hold is a CONSTANT.
+                    # Store the eligibility as a sentinel: 0.0 = not eligible, -1.0 =
+                    # eligible-but-not-latched, >0 = latched magnitude. Cache starts -1.0
+                    # for eligible shorts (set at entry), 0.0 for non-eligible.
+                    _short_eligible = _short_align_entry * _short_mag_gate  # ~1 crash trend-aligned deep-downtrend short, ~0 otherwise
+                    self._short_hold_cache[symbol] = -1.0 if _short_eligible > 0.50 else 0.0
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -3341,21 +3339,31 @@ class Strategy:
                 # with the per-bar extensions (mutually exclusive by direction: a position
                 # is long OR short -> _ta_dd_hold_ext fires for longs, _short_hold_cache
                 # for shorts -> at most one fires per position -> no double-extension).
+                # Branch step9: PROFIT-LATCH. Cache is -1.0 (eligible, not yet latched),
+                # 0.0 (not eligible), or >0 (latched magnitude). Before reading: if
+                # eligible-and-not-latched AND pos_pnl has confirmed positive (a winning
+                # short), LATCH the cache to the full magnitude (one-time 0->FULL flip).
+                # This gates the extension on PROFIT (the prior opener's rally-safe
+                # separator) via a one-time latch instead of a wobbly per-bar gate.
                 _short_hold_cached = self._short_hold_cache.get(symbol, 0.0) if current_pos < 0 else 0.0
-                # Branch step2: when the cached short extension is active, ZERO the
-                # per-bar _hold_adj (slope) term so _max_hold becomes a DETERMINISTIC
-                # CONSTANT for these positions (baseline + cached ext; _ct_hold_sat~0
-                # for trend-aligned shorts; _ta_dd_hold_ext/_local_hold_ext are long-only).
-                # Step1 crash stab crashed to 0.047 EVEN with the cached constant: the
-                # residual per-bar _hold_adj wobble (slope) shifted _max_hold bar-to-bar,
-                # and the +1.5-bar later exit landed in a noisier time-pressure ramp region
-                # where the wobble straddled the threshold -> exit bar flipped across noise.
-                # Freezing _hold_adj for cached-extension shorts makes the WHOLE _max_hold
-                # constant -> exit bar deterministic -> zero tracking error. The cost:
-                # crash trend-aligned shorts lose the slope-agrees hold extension (which
-                # the cached ext replaces, so net hold is similar). Byte-identical when
-                # _short_hold_cached=0 (longs, ct shorts, no-DD shorts -- the whole non-
-                # crash-short population keeps _hold_adj).
+                if _short_hold_cached < -0.5:  # eligible, not latched (sentinel -1.0)
+                    if pos_pnl > 0.5 * abs(STOP_LOSS_PCT):  # confirmed winning short (profit latch)
+                        _short_hold_cached = SHORT_HOLD_CACHED_EXT
+                        self._short_hold_cache[symbol] = _short_hold_cached  # LATCH (stays >0)
+                    else:
+                        _short_hold_cached = 0.0  # not yet latched: no extension, no freeze
+                # Branch step2: when the cached short extension is active (latched >0),
+                # ZERO the per-bar _hold_adj (slope) term so _max_hold becomes a
+                # DETERMINISTIC CONSTANT for these positions (baseline + cached ext;
+                # _ct_hold_sat~0 for trend-aligned shorts; _ta_dd_hold_ext/_local_hold_ext
+                # are long-only). Step1 crash stab crashed to 0.047 EVEN with the cached
+                # constant: the residual per-bar _hold_adj wobble (slope) shifted _max_hold
+                # bar-to-bar, and the later exit landed in a noisier time-pressure ramp
+                # region where the wobble straddled the threshold -> exit bar flipped.
+                # Freezing _hold_adj for latched shorts makes the WHOLE _max_hold constant
+                # -> exit bar deterministic -> zero tracking error. Byte-identical when
+                # _short_hold_cached=0 (longs, ct shorts, no-DD shorts, AND eligible-not-
+                # yet-latched shorts [pre-latch they keep baseline _hold_adj]).
                 _hold_adj_eff = 0.0 if _short_hold_cached > 0.0 else _hold_adj
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj_eff - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _short_hold_cached
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
