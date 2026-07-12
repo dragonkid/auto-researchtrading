@@ -3270,7 +3270,20 @@ class Strategy:
                 # the bounce-protection the prior session's long-only gate ensured is
                 # preserved via pp_pressure, NOT via excluding shorts from hold-extension.
                 _ta_short_gate = 1.0 if current_pos < 0 else 0.0
-                _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
+                # Branch step1: PROFIT DEADZONE on the short-side hold-extension. The
+                # opener used _ta_profit_gate = tanh(pos_pnl/|stop|) which is already
+                # 0.46 at pos_pnl=+0.5*stop -- active in the near-breakeven region where
+                # pos_pnl wobbles across the 0.5*stop level under AR(1) close noise ->
+                # gate wobbles 0.4-0.5 -> max_hold wobbles -> exit-timing wobbles ->
+                # crash stability crashed to 0.047. Add a deadzone: only fire when the
+                # short is CLEARLY past breakeven (pos_pnl > ~0.5*stop), so the near-
+                # breakeven noise band is byte-identical. max(0, tanh((pos_pnl -
+                # 0.5*|stop|)/0.3*|stop|)) -> ~0 below 0.5*stop, saturating by ~0.8*stop.
+                # This reduces the noise-active population to confirmed-deep-winners
+                # (the population the extension is meant to help) while excluding the
+                # noise-sensitive near-breakeven shorts. Continuous (no hard boundary).
+                _ta_short_profit_gate = max(0.0, np.tanh(max(0.0, pos_pnl - 0.5 * abs(STOP_LOSS_PCT)) / (0.3 * abs(STOP_LOSS_PCT))))
+                _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_short_profit_gate * (1.0 - _port_dd_atten)
                 _prev_she = self._short_hold_ext_ema.get(symbol, _ta_short_hold_ext_raw)
                 if _ta_short_hold_ext_raw >= _prev_she:
                     _she_alpha = 0.55  # slow rise: low-pass the wobble (stability)
