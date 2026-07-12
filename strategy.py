@@ -2519,9 +2519,24 @@ class Strategy:
                     # shorts (0.3) get cache 0 -> byte-identical -> rally spared. Same
                     # separator principle as PORT_DOWN_PERSIST_ONSET / the keep's
                     # _persist_down_gate_dur. Evaluated at entry and frozen.
+                    # Branch step5: REPLACE _down_persist (duration) with a ret_vlong
+                    # MAGNITUDE deadzone. Step4 (persist gate 0.60) made crash BYTE-
+                    # IDENTICAL (cache 0 for crash too): crash shorts are admitted EARLY
+                    # in the downtrend when the 48-bar _down_persist has not yet
+                    # accumulated >0.6 negative bars (ret_vlong oscillates around 0 even
+                    # in a downtrend via bounces -> _down_persist moderate at entry).
+                    # The right separator between crash (deep persistent downtrend,
+                    # ret_vlong ~ -0.04) and rally pullbacks (shallow transient dip,
+                    # ret_vlong ~ -0.005) is the MAGNITUDE of ret_vlong at entry, not the
+                    # duration count. Use a magnitude deadzone: only fire when
+                    # |ret_vlong| > 0.015 (deep downtrend = crash; rally pullbacks
+                    # |ret_vlong|<0.015 -> cache 0 -> byte-identical -> rally spared).
+                    # Continuous tanh on (|ret_vlong|-0.015)/0.01 (smooth ramp, no
+                    # boundary). Evaluated at entry and frozen. Crash (|rv|~0.04) ->
+                    # tanh(0.025/0.01)=~1 full; rally pullback (|rv|~0.005) -> 0.
                     _short_align_entry = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 short-in-downtrend, ~0 ct-short-in-uptrend
-                    _short_persist_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.60) / 0.12)))  # ~1 crash (persistent bear), ~0 rally (transient dip)
-                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * _short_persist_gate * (1.0 - _port_dd_atten)
+                    _short_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))  # ~1 deep downtrend (crash), ~0 shallow dip (rally)
+                    self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * _short_mag_gate * (1.0 - _port_dd_atten)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
