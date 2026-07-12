@@ -76,25 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exp1 (architectural, indep): CHOP-WINNER hold-extension magnitude. Sanctioned
-# untested lead from the prior session-summary: "the highest-leverage untested axis
-# is a SIDEWAYS WINNER-EXTENSION (raise sideways PF via letting small sideways
-# winners run, orthogonal to the walled loss-cut)". The two existing hold-extensions
-# (_ta_dd_hold_ext, _local_hold_ext) BOTH require portfolio DD AND trend-alignment
-# (one 96-bar-aligned, one ct-at-96-bar). NEITHER fires for a plain in-profit position
-# in CHOP at portfolio peak -- exactly sideways's small winners, which currently exit
-# via _time_pressure (anti-overstay, heavier in chop since _w_time = 1+0.2*pnl_scale*
-# (1-trend_strength_w)) and _pp_pressure giveback harvest. This adds a THIRD, disjoint
-# hold-extension: extend max_hold for in-profit positions when LOCAL trend strength is
-# LOW (chop = sideways), GATED on (1) in-profit (developing winner, loser byte-identical
-# via profit-gate 0), (2) NOT at a deep peak (tp_ratio<~2.6 -> only small/modest winners
-# extended; deep peaks keep full pp harvest -- the giveback-cut path is preserved), (3)
-# low trend_strength_w (chop; trends byte-identical via gate ~0). Direction-agnostic
-# (long AND short sideways winners; no regime label -- a low-trend in-profit winner is
-# the structural property). Continuous tanh, no boundary. Byte-identical for trends
-# (gate 0), losers (profit-gate 0), deep peaks (peak-exempt gate 0), and shorts not
-# in profit. Modest magnitude (1.5 bars max, same scale as _ta_dd_hold_ext).
-CHOP_WINNER_HOLD_EXT = 1.5
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -3238,44 +3219,7 @@ class Strategy:
                     _lhe_alpha = 0.15  # fast fall (release on winner->loser)
                 _local_hold_ext = (1.0 - _lhe_alpha) * _local_hold_ext_raw + _lhe_alpha * _prev_lhe
                 self._local_hold_ext_ema[symbol] = _local_hold_ext
-                # Exp1 (architectural, indep): CHOP-WINNER hold-extension. Sanctioned
-                # untested lead (prior session-summary): "SIDEWAYS WINNER-EXTENSION
-                # (raise sideways PF via letting small sideways winners run, orthogonal to
-                # the walled loss-cut)". The two existing hold-extensions (_ta_dd_hold_ext,
-                # trend-aligned + DD; _local_hold_ext, ct-at-multi-day + DD) BOTH require
-                # portfolio DD AND a trend-alignment condition. NEITHER fires for a plain
-                # in-profit position in CHOP at portfolio peak -- exactly sideways's small
-                # winners, which currently exit via _time_pressure (heavier in chop) and
-                # _pp_pressure giveback. This adds a THIRD, structurally disjoint extension:
-                # extend max_hold for in-profit positions when LOCAL trend strength is LOW
-                # (chop = sideways). Three gates (all must be >0 for the extension to fire):
-                # (1) profit-gate tanh(pos_pnl/|stop|): in-profit developing winner; losers
-                #     byte-identical (gate 0 -> extension 0).
-                # (2) NOT-deep-peak gate (1 - tanh((tp_ratio-2.0)/0.6)): only extend SMALL/
-                #     modest winners (tp_ratio<~2.6); deep peaks (where pp_pressure should
-                #     harvest) keep full exit timing -> the giveback-cut path is preserved.
-                #     This is the key sideways/mean-reversion safety: a sideways winner at
-                #     its peak SHOULD mean-revert -> harvest; a small developing sideways
-                #     winner has room to run -> extend.
-                # (3) chop gate (1 - _trend_strength_w): high in chop (sideways rsi_trend_str
-                #     ~0 -> trend_strength_w ~0 -> gate ~1), ~0 in trends (trend regimes byte-
-                #     identical). Direction-agnostic (both long/short sideways winners; no
-                #     regime label -- the structural property is "low-trend in-profit small
-                #     winner"). Continuous tanh product, no boundary. Composes ADDITIVELY
-                #     with _ta_dd_hold_ext + _local_hold_ext (mutually exclusive by gates: a
-                #     position is either trend-aligned-at-96-bar OR ct-at-96-bar OR low-
-                #     trend-chop; the three gates partition the trend-axis -> at most one
-                #     extension fires per position -> no double-extension). Byte-identical
-                #     for trends (chop gate 0), losers (profit gate 0), deep peaks (peak-
-                #     exempt gate 0). Targets sideways Sharpe (longer capture of small
-                #     winners raises PF/Sharpe in the near-zero-Sharpe regime).
-                _cw_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
-                _cw_peak_pnl = max(self.peak_pnl.get(symbol, 0.0), PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)), 1e-6)
-                _cw_tp_ratio = self.peak_pnl.get(symbol, 0.0) / _cw_peak_pnl
-                _cw_not_deep_peak = max(0.0, 1.0 - max(0.0, min(1.0, np.tanh((_cw_tp_ratio - 2.0) / 0.6))))
-                _cw_chop_gate = 1.0 - _trend_strength_w  # ~1 chop (sideways), ~0 strong trend
-                _chop_winner_ext = CHOP_WINNER_HOLD_EXT * _cw_profit_gate * _cw_not_deep_peak * _cw_chop_gate
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _chop_winner_ext
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
