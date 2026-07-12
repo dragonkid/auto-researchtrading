@@ -2642,7 +2642,13 @@ class Strategy:
                     # boundary (the 0.15 onset is a smooth deadzone, not a switch).
                     _acc_fade_gate = max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.15) / 0.10)))  # ~0 deep chop (<0.15), ~1 trend (>0.35)
                     _acc_fade_slowdown = _acc_fade_gate * max(0.0, min(1.0, np.tanh(max(0.0, _acc_fade - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
-                    _eff_progress = _eff_progress * (1.0 - 0.25 * _acc_fade_slowdown)
+                    # BRANCH STEP5: push slowdown AMPLITUDE 0.25->0.35 to scale
+                    # bull/crash gains past +0.003 (step2 was +0.002994, 0.000006 shy).
+                    # Sideways is byte-identical regardless of AMP (gate ~0 in deep chop
+                    # -> slowdown 0 there -> AMP inert for sideways). Linear scaling
+                    # like the keep's AMP 0.30/0.40/0.50 steps. Watch trend-regime
+                    # stability (bull at 0.803 knee has little headroom).
+                    _eff_progress = _eff_progress * (1.0 - 0.35 * _acc_fade_slowdown)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
