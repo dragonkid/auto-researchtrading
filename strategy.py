@@ -3426,36 +3426,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp2 (architectural indep): WICK-REJECTION exit pressure (7th soft source).
-                # NEW data dependency: the intrabar OHLC SHAPE (wick asymmetry) is NOT read by
-                # any existing exit source (slope/pp/time/ve/vc/be all use close/price-derived
-                # series or volume; none reads the position of close within the high-low range
-                # as a REJECTION signal). A long position whose last bar shows a strong UPPER
-                # wick (high - max(open,close) large relative to range) closed back in the
-                # lower half = rejection at the top = the winner is being rejected at a local
-                # peak -> harvest before the rejection extends. Symmetric for shorts (lower
-                # wick = rejection at the bottom). Distinct from _vc_pressure (close-position
-                # x volume-climax, needs a volume spike; this fires on the wick SHAPE alone,
-                # no volume requirement -- catches rejections on normal-volume bars the volume
-                # gate misses). Distinct from _pp_pressure (peak-to-current GIVEBACK magnitude,
-                # a cumulative measure; this is a single-bar REJECTION pattern). Profit-side
-                # only (lock gains at rejection; losers left to slope-against/stop). Continuous
-                # tanh on the wick ratio (no boundary); symmetric (sign-flip for shorts).
-                # Targets rally/crash winner harvesting (rejection bars at local peaks/bottoms).
-                _wr_high = float(bd.history["high"].values[-1])
-                _wr_low = float(bd.history["low"].values[-1])
-                _wr_open = float(bd.history["open"].values[-1])
-                _wr_close = float(closes[-1])
-                _wr_range = max(_wr_high - _wr_low, 1e-10)
-                _wr_body_top = max(_wr_open, _wr_close)  # the body's upper edge
-                _wr_body_bot = min(_wr_open, _wr_close)  # the body's lower edge
-                _wr_upper = (_wr_high - _wr_body_top) / _wr_range  # upper wick fraction [0, ~1]
-                _wr_lower = (_wr_body_bot - _wr_low) / _wr_range  # lower wick fraction [0, ~1]
-                # Long: upper-wick rejection (high wick = rejection at top). Short: lower-wick.
-                _wr_rej = _wr_upper if current_pos > 0 else _wr_lower
-                # Activate above 0.45 wick fraction (a clear rejection bar), saturate by 0.70.
-                _wr_pressure = 0.40 * max(0.0, min(1.0, np.tanh((_wr_rej - 0.45) / 0.15)))
-                _w_wr = max(0.0, _pnl_scale)  # profit-side only (harvest winners at rejection)
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
@@ -3551,7 +3521,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
-                    _w_wr * _wr_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
