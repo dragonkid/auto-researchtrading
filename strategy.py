@@ -3221,7 +3221,13 @@ class Strategy:
                 # max(1, qgate)=1 -> unchanged). Direction-agnostic general principle (no
                 # regime label): a position-level clean-advancer is a let-run candidate.
                 _mae_val = self._mae.get(symbol, 0.0)
-                _mfe_dom = (self.peak_pnl[symbol] + _mae_val) / max(abs(STOP_LOSS_PCT) * 0.5, 1e-6)  # peak_pnl - |mae|, scaled
+                # branch step2: SHALLOWER MFE-dominance onset (/0.5 -> /0.3) so more rally
+                # deep-pullback longs (down_persist ticked >0.40 -> up_persist gate 0 -> the
+                # winner-quality path is the ONLY let-run relief) qualify. /0.5 saturated by
+                # 0.5*stop MFE-dominance (peak_pnl-|mae| >= 0.5*stop); /0.3 saturates by ~0.3*stop
+                # so a rally long 0.3*stop in peak with ~0 MAE gets full winner-quality gate ->
+                # more deep-pullback rally longs rescued -> scale the opener's rally +0.0006.
+                _mfe_dom = (self.peak_pnl[symbol] + _mae_val) / max(abs(STOP_LOSS_PCT) * 0.3, 1e-6)  # peak_pnl - |mae|, scaled
                 _winner_quality_gate = max(0.0, min(1.0, np.tanh(_mfe_dom)))
                 _persist_or_quality = max(_up_persist_gate, _winner_quality_gate)
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _persist_or_quality
