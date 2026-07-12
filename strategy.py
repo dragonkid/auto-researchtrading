@@ -147,6 +147,32 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
+# Exp1 (architectural, indep): DEEP-WINNER x VOL-SPIKE giveback tightening. The
+# existing giveback levers read (a) portfolio-DD (_pp_tighten, line ~3089) and
+# (b) trend-align winner attenuation (_ta_winner_gate LOOSENS giveback for trend
+# winners). NEITHER reads the conjunction of a DEEP confirmed winner (peak_pnl far
+# above the pp_min activation threshold -> a big established winner) AND a
+# realized vol-spike (vol_ratio elevated). That conjunction is the structural
+# signature of a regime top: a deep winner that has run a long way, now in a
+# vol-spike, is at peak reversal risk (the deep winners that give back the most
+# DD are exactly the ones held through vol-spike tops). Harvesting those faster
+# (tighter giveback tolerance) caps the DD that comes from riding deep winners
+# through vol-spike reversals. DISTINCT from _pp_tighten (portfolio-DD, fires on
+# ALL positions during DD regardless of winner depth) and from _ta_winner_gate
+# (LOOSENS giveback for trend winners -- the opposite direction): this TIGHTENS
+# giveback on the (deep-winner, vol-spike) sub-population only. Composes
+# multiplicatively with _pp_tighten (both shrink-only). Byte-identical when the
+# position is not a deep winner (profit_magnitude below DEEP_WINNER_ONSET) OR vol
+# is calm (vol_ratio below VOL_SPIKE_ONSET): calm-grind trend winners (rally
+# uptrend, sideways) and shallow winners are untouched; the tightening fires
+# only on the deep-winner-in-vol-spike conjunction. Continuous tanh on both axes
+# (no boundary). Conservative max ~12% (deep-winner harvest cost is real return
+# given back; the lever is DD-relief not free -- modest magnitude).
+PP_DEEP_VOL_TIGHTEN = 0.12  # max fractional reduction of giveback at (deep-winner, vol-spike) saturation
+PP_DEEP_WINNER_ONSET = 0.7  # profit_magnitude above which the deep-winner gate starts (peak_pnl/pp_min - 1 > 0.7 -> ~1.7x the pp_min activation; saturates by ~1.4)
+PP_DEEP_WINNER_SCALE = 0.5  # ramp width of the deep-winner gate (0.7 -> 1.2 saturates)
+PP_DEEP_VOL_ONSET = 1.30  # vol_ratio above which the vol-spike gate starts (matches the portfolio vol-spike cap onset; saturates by ~1.6)
+PP_DEEP_VOL_SCALE = 0.30  # ramp width of the vol-spike gate (matches PORT_VOL_SPIKE_SCALE)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -3087,6 +3113,18 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                # Exp1 (architectural, indep): DEEP-WINNER x VOL-SPIKE giveback tightening.
+                # See PP_DEEP_VOL_TIGHTEN header. _profit_magnitude (peak_pnl/pp_min - 1,
+                # computed above, a high-water-mark -> smooth under AR(1)) x vol_ratio (already
+                # computed) jointly tighten the effective giveback tolerance on the
+                # deep-winner-in-vol-spike conjunction. Both gates are continuous tanh; the
+                # tightening is their product (fires only when BOTH are high) so shallow
+                # winners and calm-vol deep winners are byte-identical. Composes multiplicatively
+                # with _pp_tighten (both shrink-only on _pp_giveback_eff). Byte-identical when
+                # profit_magnitude <= PP_DEEP_WINNER_ONSET OR vol_ratio <= PP_DEEP_VOL_ONSET.
+                _deep_win_gate = max(0.0, min(1.0, np.tanh((_profit_magnitude - PP_DEEP_WINNER_ONSET) / PP_DEEP_WINNER_SCALE)))
+                _deep_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - PP_DEEP_VOL_ONSET) / PP_DEEP_VOL_SCALE)))
+                _pp_tighten = _pp_tighten * (1.0 - PP_DEEP_VOL_TIGHTEN * _deep_win_gate * _deep_vol_gate)
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
