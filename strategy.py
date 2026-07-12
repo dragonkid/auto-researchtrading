@@ -1162,88 +1162,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp3 (architectural, indep): 9th voter -- VOLUME-FLOW DIRECTION (DVP).
-            # NEW orthogonal data-source voter: the signed volume-weighted close-
-            # direction over 12 bars = sum(vol[i]*sign(close[i]-close[i-1])) / sum(vol[i]).
-            # Distinct from the 7th VWAP voter (close-vs-volume-weighted-avg LEVEL
-            # deviation, a price-level signal) and the 8th range/close voter (bar-shape
-            # efficiency): this measures the DIRECTIONAL VOLUME FLOW (net volume going
-            # up vs down) -- whether trade volume is CONFIRMING the price direction. In
-            # a confirmed uptrend, up-bars carry more volume than down-bars -> DVP > 0
-            # (bull); in chop, up/down volume balances -> DVP ~ 0 (noise, no signal).
-            # Prior-session CROSS-EXPERIMENT CONCLUSION: the ONLY un-disproven axis for
-            # moving a regime raw is "a fundamentally new orthogonal DATA-SOURCE voter
-            # added WITHOUT touching existing voter weights." The 8th voter (range/close
-            # efficiency) validated this; a 9th on volume-FLOW (not level, not shape) is
-            # the next orthogonal data-source. Hypothesis: in sideways chop, voter-driven
-            # entries on UNCONFIRMED volume (DVP~0) are noise -> the DVP voter adds a
-            # volume-confirmation dimension to the strong-sum, filtering marginal
-            # sideways entries -> higher sideways Sharpe (score == bare Sharpe for
-            # negative-Sharpe regimes -> direct 1:1 score gain). In confirmed trends
-            # (bull/rally/crash), DVP confirms -> small boost to already-admitted entries
-            # (byte-identical-ish, the voter is a small-weight append). The 12-bar window
-            # matches the voter timescale (shorter than the 24-bar opp-gate DVP). Signed
-            # by the 12-bar close direction so it contributes bull when net volume flows
-            # up. Added with a SMALL fixed weight (0.55, below the 0.7 base floor) --
-            # appended WITHOUT modifying any of the 8 existing _base_weights (the
-            # trend-strength redistribution only shifts indices 1-3, leaving this 9th
-            # weight untouched), mirroring the 8th-voter append pattern. The bull/bear
-            # confs (tanh on +/- signal) and strong-sum aggregation are list-length-
-            # agnostic; the persistence code is updated to 9.
-            _dvp9_n = 12
-            _dvp9_c = closes[-_dvp9_n - 1:]  # step5: revert to RAW closes + hard sign (step1's discriminating form) but reduce DVP WEIGHT to lessen noise impact
-            _dvp9_v = bd.history["volume"].values[-_dvp9_n:]
-            # BRANCH step5: revert to step1's RAW-close hard sign (the ONLY form that
-            # gave sideways raw +0.097 Sharpe) but reduce the DVP VOTER WEIGHT 0.55 ->
-            # 0.30 to lessen the noise impact on stability. Step1 (weight 0.55, hard
-            # sign) gave sideways raw +0.097 BUT stability crashed 0.248 (the hard
-            # sign's near-zero flips caused entry-timing divergence). Steps 2-4 tried
-            # to fix stability via the SIGN function (smooth tanh / deadzone /
-            # smoothed-closes) -- ALL lost the sideways raw gain (the discrimination
-            # came from the crisp hard sign on raw closes; softening it removed the
-            # signal). NEW approach: keep the discriminating hard sign on raw closes
-            # (preserving sideways raw) but HALVE the voter WEIGHT so the noise-driven
-            # sign-flips contribute LESS to the strong-sum -> the entry-timing
-            # divergence shrinks (a noise-flipped DVP voter shifts _bull_strong by
-            # ~0.30*0.8 instead of ~0.55*0.8) -> stability recovers toward the 0.50
-            # knee (need only >0.50 for a nonzero sideways score; stab 0.60 -> factor
-            # 0.33 -> sideways score ~0.085*0.33 = 0.028 vs baseline -0.012 = +0.040).
-            # The smaller weight trades some raw gain (less volume-confirmation
-            # amplitude) for stability recovery (less noise impact) -- the stab/raw
-            # tension resolution via WEIGHT rather than sign-function. The hard sign
-            # on raw closes remains (the discriminating form); only the weight scales.
-            _dvp9_rets = np.sign(np.diff(_dvp9_c))
-            _dvp9 = float(np.sum(_dvp9_v * _dvp9_rets) / max(np.sum(_dvp9_v), 1e-10))  # in [-1, 1]
-            _dvp9_signal = _dvp9 / 0.20  # sharpness 0.20 (back to step1 -- the conf magnitude-gate below handles noise, not the sharpness)
-            # BRANCH step8: MAGNITUDE GATE on the DVP conf to fix step1's stability
-            # crash WITHOUT losing the raw sideways gain (the weight reduction in
-            # step5 lost the gain; the sign-function softening in steps 2-4 lost it).
-            # The step1 stability crash (sideways 1.0->0.248) was caused by the DVP
-            # conf SWINGING when a near-zero |DVP| sign-flips under AR(1) noise: at
-            # sharpness 0.20, DVP=+0.05 -> conf 0.598, DVP=-0.05 -> conf 0.402, a 0.196
-            # swing per sign-flip -> enough to flip admission near the strong-sum
-            # boundary -> entry-timing divergence. The fix: PIN the DVP conf at 0.5
-            # (neutral, no swing) when |DVP| is small, and let it move to full +/- only
-            # when |DVP| is large. Apply a magnitude gate to the SIGNAL before the conf
-            # computation: _dvp9_signal *= tanh(|DVP|/gate_threshold). When |DVP|~0
-            # (noise), the gate ~0 -> signal ~0 -> conf 0.5 (pinned neutral, NO swing
-            # under sign-flip -- the conf stays 0.5 regardless of which way DVP
-            # sign-flips near zero). When |DVP| large (genuine volume confirmation), the
-            # gate ~1 -> signal full -> conf moves to 0.9/0.1 (full contribution).
-            # This decouples the NOISE bars (conf pinned at 0.5, no entry-timing
-            # divergence) from the SIGNAL bars (full DVP contribution, sideways raw
-            # gain preserved). Gate threshold 0.10 (|DVP|>0.10 = genuine volume
-            # direction; |DVP|<0.10 = balanced/noise -> pinned). The threshold is on
-            # |DVP| which is a volume-weighted AVERAGE (-1,1), smooth under AR(1) (the
-            # volume weights don't change, only the signs; pinning near-zero |DVP|
-            # bars removes the flipping-sign bars from the conf entirely). Continuous
-            # tanh gate, no decision boundary. Byte-identical for strong-|DVP| bars
-            # (gate ~1); pinned for noise bars (gate ~0). The hard sign on raw closes
-            # is retained (step1's discriminating form); the gate zeros the SIGNAL not
-            # the sign, so near-zero bars contribute 0 signal (conf 0.5) not a
-            # sign-flipped signal.
-            _dvp9_mag_gate = max(0.0, np.tanh(abs(_dvp9) / 0.30))  # step11: threshold 0.30 (between 0.20 [stab 0.277, raw +0.085] and 0.40 [stab 1.0, raw -0.010] -- find the stab>0.50 sweet spot)
-            _dvp9_signal = _dvp9_signal * _dvp9_mag_gate
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1253,7 +1171,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _dvp9_signal,  # 9th voter: volume-flow direction (DVP), sharpness 0.20
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1280,7 +1197,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency (0.55); 9th: volume-flow DVP (0.55 step8 -- back to step1 weight for the raw sideways gain; magnitude-gate the CONF to fix stability)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -1302,13 +1219,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 9)
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
