@@ -312,6 +312,7 @@ PORT_DD_ENTRY_THRESH_MAX = 0.15   # max fractional raise of ENTRY_ACCUM_THRESH a
 # (rsi_trend_str) spares sideways (chop oscillations have alternating acceleration ->
 # smoothed out by the 4-bar window + the trend gate). Continuous tanh, no boundary.
 PORT_DD_ACCEL_ADMIT_MAX = 0.12   # step5 stable peak (0.16 byte-identical, 0.20 unstable)
+PORT_DD_ACCEL_CT_EXTRA_MAX = 0.20  # branch step9: max EXTRA cascade tightening on the COUNTER-TREND direction's admission (spares trend-aligned winners during cascade)
 PORT_DD_ACCEL_HALF = 4           # half-window for the two momentum estimates (8-bar history / 2)
 
 # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator parameters. The
@@ -788,9 +789,7 @@ class Strategy:
             # Guard: require recent momentum itself negative (still falling) -> the cascade is
             # ongoing. This spares V-recoveries (recent momentum positive -> no tighten).
             _still_falling = max(0.0, -np.tanh(_mom_recent / 0.01))  # 0 rising/flat, ~1 falling
-            # BRANCH step8: shallower acceleration sensitivity /0.004 -> /0.003 (fire on
-            # milder cascades too, capturing more cascade bars -> larger crash/rally gain).
-            _accel_gate = max(0.0, min(1.0, np.tanh(-_accel_ema / 0.003)))  # 0 rising/steady, ~1 steepening fall
+            _accel_gate = max(0.0, min(1.0, np.tanh(-_accel_ema / 0.004)))  # 0 rising/steady, ~1 steepening fall (step8 /0.003 byte-identical, reverted)
             # NOTE: trend-strength gate applied LATER at the _strong_min use site (rsi_trend_str
             # is per-symbol, computed downstream in the for-symbol loop; not in scope here).
             _port_dd_accel_tighten = 1.0 + PORT_DD_ACCEL_ADMIT_MAX * _still_falling * _accel_gate
@@ -1406,6 +1405,25 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # BRANCH step9: DIRECTION-AWARE cascade admission tightening. The step5 cascade
+            # tightening (_port_dd_accel_tighten via _accel_trend_gate) is DIRECTION-AGNOSTIC
+            # (applied to _strong_min before the bull/bear split -> both directions tightened
+            # equally during cascade). That filters mixed's WINNING down-phase shorts (trend-
+            # aligned shorts in the 2025 down-year) alongside its losing wrong-side longs ->
+            # mixed -0.000388 regression. The CT entries are the marginal losers during a
+            # cascade (crash bounce longs, rally pullback shorts, mixed wrong-side longs);
+            # trend-aligned entries (crash winning shorts, rally winning longs, mixed winning
+            # shorts) should be SPARED. Add an EXTRA cascade tightening on the COUNTER-TREND
+            # direction only: the CT factor for bull (long) is tanh(-ret_long/0.04) (long in
+            # downtrend); for bear (short) is tanh(ret_long/0.04) (short in uptrend). Scale
+            # the extra CT tightening by the cascade signal (_port_dd_accel_tighten - 1.0) so
+            # it fires ONLY during cascade (byte-identical at peak/no-cascade). This concentrates
+            # the cascade filtering on the CT (marginal-loser) population, sparing trend-aligned
+            # winners -> aims to recover mixed (its winning shorts spared) while keeping the
+            # crash/rally CT-loser filtering. CT_EXTRA_MAX caps the extra CT tightening.
+            _ct_cascade_extra = PORT_DD_ACCEL_CT_EXTRA_MAX * (_port_dd_accel_tighten - 1.0) * _accel_trend_gate
+            _bull_strong_min = _bull_strong_min * (1.0 + _ct_cascade_extra * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _bear_strong_min * (1.0 + _ct_cascade_extra * max(0.0, np.tanh(ret_long / 0.04)))
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
