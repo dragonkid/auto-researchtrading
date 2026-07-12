@@ -1167,6 +1167,45 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
+            # Exp1 (architectural, indep): 9th voter -- CLOSE-POSITION-IN-RANGE (CPR)
+            # accumulation/distribution. Prior-session CROSS-EXPERIMENT CONCLUSION
+            # (line ~1147): the ONLY un-disproven axis for moving a regime raw is "a
+            # fundamentally new orthogonal DATA-SOURCE voter added WITHOUT touching
+            # existing voter weights." The 8 existing voters use close/HL2/volume.
+            # The prior DVP (volume-flow) 9th-voter branch came 0.0002 short of keep
+            # then REVERTED: its signal sum(vol[i]*sign(close[i]-close[i-1]))/sum(vol)
+            # used sign(close-diff), which flips under sub-5bps AR(1) close noise ->
+            # stab/raw coupling (sideways stability crashed). This voter uses a
+            # structurally NOISE-ROBUST formulation: the per-bar close position within
+            # its OWN range (close-low)/(high-low) in [0,1], averaged over 12 bars
+            # (Chaikin accumulation/distribution principle). High average = closes
+            # consistently settle near bar HIGHS = net accumulation (bull); low =
+            # closes near lows = distribution (bear). The ratio is a SMOOTH bounded
+            # function of close within [low, high] -- it has NO zero-crossing on
+            # close-to-close diffs (the DVP failure mode): under AR(1) close noise the
+            # ratio shifts continuously within [0,1] rather than flipping sign. The
+            # 12-bar AVERAGE further smooths single-bar noise. Signed bull when the
+            # average CPR exceeds 0.5 (net accumulation), bear below. Orthogonal to
+            # the 8 existing voters: they read close-LEVEL vs MAs (1-6), volume-
+            # weighted level (7 VWAP), and interbar vs intrabar SHAPE (8 range/close
+            # efficiency); CPR reads the close's INTRABAR POSITION -- a distinct data
+            # dependency. Appended as a 9th signal WITHOUT modifying any of the 8
+            # existing _base_weights (small fixed weight 0.55, below the 0.7 base
+            # floor of the core voters, untouched by _wt_shift -- same discipline as
+            # the 8th range/close voter). New orthogonal-ish data-source voter.
+            _cpr_n = 12
+            _cpr_high = bd.history["high"].values[-_cpr_n:]
+            _cpr_low = bd.history["low"].values[-_cpr_n:]
+            _cpr_close = closes[-_cpr_n:]
+            _cpr_range = _cpr_high - _cpr_low
+            # Per-bar close position in [0,1]; guard zero-range bars (open=high=low=close)
+            # with 0.5 (neutral) so flat bars contribute no directional bias.
+            _cpr_pos = np.where(_cpr_range > 1e-10, (_cpr_close - _cpr_low) / np.maximum(_cpr_range, 1e-10), 0.5)
+            _cpr_avg = float(np.mean(_cpr_pos))  # in [0,1], ~0.5 neutral, >0.5 accumulation
+            # Signal: (avg - 0.5)/0.15 -> tanh saturates around +-1 at avg 0.65/0.35
+            # (a meaningful accumulation/distribution skew; the 0.15 scale keeps the
+            # soft-tanh regime for typical 0.45-0.55 chop wobble).
+            _cpr_signal = (_cpr_avg - 0.5) / 0.15
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1176,6 +1215,7 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
+                _cpr_signal / 1.0,  # 9th voter: close-position-in-range accumulation/distribution (sharpness 1.0)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1202,7 +1242,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency voter; 9th: close-position-in-range (CPR) accumulation voter -- both small fixed weight, untouched by _wt_shift
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -1224,13 +1264,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 8)
+                _arr = np.array(_sig_hist)  # (K, 9)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)
+                _persistence_mult = np.ones(9)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
