@@ -2675,19 +2675,33 @@ class Strategy:
                     # scale-in slowdown gate reads (local-trend-strength, multi-day-trend-
                     # alignment, position-direction) jointly, was (local-trend-strength) only.
                     _pos_dir_af = 1.0 if current_pos > 0 else -1.0
-                    # BRANCH STEP2: DEADZONE on the multi-day gate. Step1 (opener) used
-                    # /0.01 fast-saturating which fired on sideways's +-0.005 ret_vlong
-                    # oscillations (tanh(0.005/0.01)=0.46) -> sideways stab crashed 1.0->0.337
-                    # (the documented wall: 96-bar ret_vlong wobbles in sideways multi-day
-                    # directional legs within chop, same lesson as keep step3/4). Add a
-                    # deadzone onset at |ret_vlong*pos_dir|=0.02: sideways +-0.005 -> gate ~0
-                    # -> byte-identical; rally pullback longs ret_vlong~0.04-0.08 -> saturates
-                    # -> full gate; crash shorts ret_vlong~-0.04 -> product +0.04 -> saturates.
-                    # Continuous tanh on (|product|-0.02)/0.01 (smooth deadzone, no switch):
-                    # ~0 below 0.02, saturates ~1 by 0.04. This is the SAME noise-robust
-                    # deadzone pattern the keep used for rsi_trend_str (the 0.15 onset that
-                    # made sideways byte-identical), applied to the multi-day magnitude.
-                    _acc_fade_gate_md = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_af) - 0.02) / 0.01)))
+                    # BRANCH STEP3: PERSISTENCE gate on the multi-day trend-align (replaces
+                    # step2's magnitude deadzone which fixed sideways BUT lost the rally
+                    # gain -- rally pullback longs have |ret_vlong*pos_dir| in (0.005,0.02),
+                    # the SAME band as sideways oscillations, inseparable on the magnitude
+                    # axis; the 0.02 deadzone that restores sideways necessarily kills rally).
+                    # The separator that DOES distinguish rally pullback longs from sideways
+                    # directional legs is the PERSISTENCE of the multi-day trend direction
+                    # (the validated _down_persist duration-count, the fe6acd4d keep principle).
+                    # Rally = persistent uptrend (ret_vlong solidly positive for many bars ->
+                    # down_persist ~0.2); sideways = oscillating (ret_vlong flips sign over
+                    # multi-day legs -> down_persist ~0.5); crash = persistent downtrend
+                    # (down_persist ~0.9). Compute align_persist = down_persist for shorts
+                    # (trend-align = persistent down), 1-down_persist for longs (trend-align =
+                    # persistent up). Gate on align_persist > 0.55 (persistent trend-align):
+                    # sideways (~0.5) -> gate ~0 -> byte-identical; rally longs (~0.8) and
+                    # crash shorts (~0.9) -> gate ~1 -> fires. Composes with the /0.01
+                    # magnitude gate (step1's, restored -- fires on the trend-aligned
+                    # direction); the PRODUCT requires BOTH trend-align-magnitude AND
+                    # trend-align-persistence -> sideways (low magnitude OR low persistence)
+                    # -> product ~0; rally (both high) -> product ~1. down_persist is a
+                    # 48-bar fraction of a 96-bar-derived boolean -> deeply noise-robust
+                    # (flipping it needs a perturbation large enough to move ret_vlong
+                    # across 0 for 24+ of 48 bars). Continuous tanh, no boundary.
+                    _acc_fade_gate_md_mag = max(0.0, min(1.0, np.tanh(ret_vlong * _pos_dir_af / 0.01)))
+                    _align_persist = _down_persist if _pos_dir_af < 0 else (1.0 - _down_persist)
+                    _acc_fade_gate_md_pers = max(0.0, min(1.0, np.tanh((_align_persist - 0.55) / 0.15)))
+                    _acc_fade_gate_md = _acc_fade_gate_md_mag * _acc_fade_gate_md_pers
                     _acc_fade_gate = max(_acc_fade_gate_local, _acc_fade_gate_md)
                     _acc_fade_slowdown = _acc_fade_gate * max(0.0, min(1.0, np.tanh(max(0.0, _acc_fade - _FADE_DEADZONE) / _FADE_SHRINK_SCALE)))
                     # BRANCH STEP5: push slowdown AMPLITUDE 0.25->0.35 to scale
