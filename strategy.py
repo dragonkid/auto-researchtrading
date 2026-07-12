@@ -3270,13 +3270,26 @@ class Strategy:
                 # the bounce-protection the prior session's long-only gate ensured is
                 # preserved via pp_pressure, NOT via excluding shorts from hold-extension.
                 _ta_short_gate = 1.0 if current_pos < 0 else 0.0
-                _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
-                _prev_she = self._short_hold_ext_ema.get(symbol, _ta_short_hold_ext_raw)
-                if _ta_short_hold_ext_raw >= _prev_she:
-                    _she_alpha = 0.55  # slow rise: low-pass the wobble (stability)
-                else:
-                    _she_alpha = 0.15  # fast fall: release immediately on winner->loser (raw)
-                _ta_short_hold_ext = (1.0 - _she_alpha) * _ta_short_hold_ext_raw + _she_alpha * _prev_she
+                # Branch step7: SUSTAINED DEEP-PROFIT gate + DROP the EMA. The opener's
+                # per-bar _ta_profit_gate = tanh(pos_pnl/|stop|) wobbles with pos_pnl under
+                # AR(1) -> max_hold wobbles -> crash stab crash. Steps1-6 confirmed the stab/
+                # raw tension is structural to the per-bar gate wobble. Replace with a
+                # SUSTAINED DEEP-PROFIT gate: require the MINIMUM pos_pnl over the last 3
+                # bars to exceed 1.0*stop (deep, confirmed winner -- a loser has neg pos_pnl
+                # -> min neg -> gate 0; a deep winner has min>stop -> gate 1). The 3-bar min
+                # is noise-robust (a single AR(1) dip doesn't cross 1.0*stop for a deep
+                # winner; a loser's min stays negative). The HIGH threshold (1.0*stop vs
+                # opener's ~0.5*stop effective) restricts firing to deeply-confirmed winners
+                # -> fewer bars fire -> less cumulative wobble. DROP the asymmetric EMA
+                # (the 3-bar-min gate is already noise-robust; the EMA added lag that either
+                # crashed stab (alpha 0.55) or killed raw (alpha 0.85) -- step5). Use the raw
+                # sustained gate directly. Byte-identical for shorts with <3 bars held
+                # (early bars: gate 0, no extension -- consistent with profit-gate intent).
+                _pp_s7 = self._pnl_path.get(symbol, [])
+                _sustained_deep = min(_pp_s7[-3:]) if len(_pp_s7) >= 3 else pos_pnl
+                _ta_short_profit_gate = max(0.0, np.tanh(max(0.0, _sustained_deep - abs(STOP_LOSS_PCT)) / (0.3 * abs(STOP_LOSS_PCT))))
+                _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_short_profit_gate * (1.0 - _port_dd_atten)
+                _ta_short_hold_ext = _ta_short_hold_ext_raw  # no EMA (step7: raw sustained gate is noise-robust)
                 self._short_hold_ext_ema[symbol] = _ta_short_hold_ext
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _ta_short_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
