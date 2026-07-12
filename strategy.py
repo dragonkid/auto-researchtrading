@@ -3273,7 +3273,7 @@ class Strategy:
                 _ta_short_hold_ext_raw = TA_SHORT_HOLD_EXT * _ta_short_gate * _ta_align * _ta_profit_gate * (1.0 - _port_dd_atten)
                 _prev_she = self._short_hold_ext_ema.get(symbol, _ta_short_hold_ext_raw)
                 if _ta_short_hold_ext_raw >= _prev_she:
-                    _she_alpha = 0.55  # slow rise: low-pass the wobble (stability)
+                    _she_alpha = 0.85  # branch step5: 0.55->0.85 slow rise (crash's CONTINUOUS long DD needs stronger low-pass than bull's transient pullbacks; damp the per-bar wobble harder to recover crash stab at mag 1.5)
                 else:
                     _she_alpha = 0.15  # fast fall: release immediately on winner->loser (raw)
                 _ta_short_hold_ext = (1.0 - _she_alpha) * _ta_short_hold_ext_raw + _she_alpha * _prev_she
