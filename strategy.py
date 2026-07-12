@@ -2535,7 +2535,7 @@ class Strategy:
                     # boundary). Evaluated at entry and frozen. Crash (|rv|~0.04) ->
                     # tanh(0.025/0.01)=~1 full; rally pullback (|rv|~0.005) -> 0.
                     _short_align_entry = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 short-in-downtrend, ~0 ct-short-in-uptrend
-                    _short_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))  # ~1 deep downtrend (crash), ~0 shallow dip (rally)
+                    _short_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.025) / 0.008)))  # branch step6: 0.015->0.025 (exclude rally deeper pullbacks |rv|~0.02; crash |rv|~0.04 still passes)
                     self._short_hold_cache[symbol] = SHORT_HOLD_CACHED_EXT * _short_align_entry * _short_mag_gate * (1.0 - _port_dd_atten)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
