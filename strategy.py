@@ -138,33 +138,6 @@ LOSS_LATCH_STILL_LOSS = 0.15  # branch step12: lower still-loss gate 0.30->0.15 
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
 LOSS_LATCH_RAMP_BARS = 4     # branch step10: revert to 4 (step9 2-bar crashed stab 0.081; 4 bars is the stab-safe minimum)
 LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab-safe 4-bar ramp (push composite above +0.003)
-# Exp3 (architectural, indep): LOSS-LATCH applied via the STOP-LOSS LEVEL (the binding exit
-# constraint for latched losers). Prior-session-sanctioned untested axis "loss-latch cap
-# depth on a DIFFERENT application path (not target cap) that might decouple the rally gain
-# from the crash stab crash." Exp1 (exit-threshold/de-risk-ramp path) and Exp2 (binary-exit
-# _exit_pressure>=1.0 gate) BOTH proved BYTE-IDENTICAL INERT for the latched population
-# (cross-experiment conclusion this session: the latched losers' exit BAR is NOT determined
-# by _exit_thresh NOR by the _exit_pressure>=1.0 binary gate -- the voter-bias confirmation
-# is already satisfied when the stop level is reached, so lowering 1.0->0.88 changes
-# nothing; the binding exit constraint is _sl_pressure>=0.95, i.e. the STOP LEVEL). This
-# experiment applies the latch via the STOP LEVEL: tighten _stop_abs for latched losers
-# (smaller stop -> _sl_pressure rises faster -> the binary exit fires at a SHALLOWER
-# realized loss -> smaller loss -> higher Sharpe). This reaches the latched population via
-# the binding exit constraint (the stop level), the ONE path Exp1/Exp2 proved the latched
-# losers actually exit through. Distinct from the target cap (keep 11e75515, applied post-
-# exit-logic to SIZE): this changes the exit TIMING via the stop level, not the size. The
-# target stays at full size until the (sooner) stop-level exit -> NO per-bar target-value
-# ramp -> NO tracking-error stab crash (the prior-session wall at the deeper target cap was
-# a function of the per-bar target SIZE ramp, not the exit-timing shift). For rally's fast
-# latched losers, the sooner stop-level exit captures them before they give back -> rally
-# gain preserved. NEW control flow: _stop_abs (and the derived _sl_pressure) now reads the
-# latch state (a new data dep for the stop-level subsystem). Gradual ramp over the SAME
-# LOSS_LATCH_RAMP_BARS (a +-1 bar latch shift -> +-1 bar ramp shift -> SMALL stop-level
-# diff -> stab preserved; the stop is a SOFT pressure not a hard price level, and the ramp
-# makes the tightening gradual). Reduction-only (tighter stop -> sooner exit, never later);
-# byte-identical for unlatched (default 1.0 -> gate 0 -> _stop_abs unchanged). RETAIN the
-# 0.45 target cap (keep 11e75515); additive 2nd output for the latch.
-LOSS_LATCH_STOP_TIGHTEN = 0.12  # max fractional tightening of _stop_abs for latched losers (stop 0.88x -> fires at shallower loss); moderate magnitude isolating the stop-level path from the existing 0.45 target cap
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -3173,25 +3146,6 @@ class Strategy:
                             self._loss_latch[symbol] = LOSS_LATCH_CAP
                             self._loss_latch_bar[symbol] = self.bar_count
                             _loss_latch_val = LOSS_LATCH_CAP
-                # Exp3 (architectural, indep): LOSS-LATCH via the STOP-LOSS LEVEL (the binding
-                # exit constraint for latched losers). Exp1/Exp2 proved the soft-pressure
-                # THRESHOLDS (_exit_thresh, _exit_pressure>=1.0) are INERT for latched losers
-                # (voter-bias confirmation already satisfied; binding constraint is _sl_pressure
-                # >=0.95 = the stop LEVEL). Tighten _stop_abs for latched losers -> _sl_pressure
-                # rises faster -> the binary stop-level exit fires at a SHALLOWER realized loss
-                # -> smaller loss -> higher Sharpe. NEW data dep: the stop level reads the latch
-                # state. Gradual ramp over LOSS_LATCH_RAMP_BARS (a +-1 bar latch shift -> +-1 bar
-                # ramp shift -> small stop-level diff -> stab preserved; stop is a SOFT pressure
-                # not a hard price level). Byte-identical for unlatched (_stop_abs unchanged).
-                # RETAIN the 0.45 target cap (keep 11e75515); additive 2nd output for the latch.
-                _ll_stop_val = self._loss_latch.get(symbol, 1.0)
-                if _ll_stop_val < 1.0:
-                    _ll_stop_bar = self._loss_latch_bar.get(symbol, -1)
-                    if _ll_stop_bar >= 0:
-                        _ll_stop_ramp = max(0.0, min(1.0, (self.bar_count - _ll_stop_bar) / LOSS_LATCH_RAMP_BARS))
-                        _stop_abs = _stop_abs * (1.0 - LOSS_LATCH_STOP_TIGHTEN * _ll_stop_ramp)
-                        _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
-                        _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
                 # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
