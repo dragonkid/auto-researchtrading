@@ -2110,24 +2110,6 @@ class Strategy:
                 _vol_std_en = max(float(np.std(_vol_arr_en)), 1e-10)
                 _vol_z_en = (float(bd.history["volume"].values[-1]) - _vol_mean_en) / _vol_std_en
                 _vol_entry_spike = 1.0 - 0.25 * max(0.0, min(1.0, np.tanh((_vol_z_en - 2.0) / 1.5)))  # max 25% shrink at deep spike
-                # branch step3 (Exp3 follow-up): TREND-ALIGNED-uptrend EXEMPTION from the
-                # vol-entry-spike shrink. The opener (Exp3) showed volume-climax in rally's
-                # grinding uptrend is a CONTINUATION signal not exhaustion (removing the
-                # climax exit raised rally Sharpe +0.006). The ENTRY-side analog: a fresh
-                # LONG entry on a volume-climax bar in a PERSISTENT uptrend (ret_vlong>0)
-                # is a volume-confirmed trend-continuation entry, NOT a capitulation/exhaustion
-                # chase -> exempt it from the spike shrink (let the high-quality continuation
-                # entry commit fully). Gated to LONG-ONLY (the opener validated long-side
-                # continuation; shorts in a downtrend on a volume spike are capitulation-
-                # prone, keep the shrink) AND persistent-uptrend (ret_vlong>0, the validated
-                # multi-day separator: rally persistent uptrend keeps; crash bounces have
-                # ret_vlong<0 -> excluded -> crash protected). The exemption is applied per-
-                # direction at the target (the _vol_entry_spike is direction-symmetric here;
-                # the gate narrows it to longs-in-uptrend only, via a directional multiplier
-                # _vol_entry_spike_long computed below and consumed at the bull target line).
-                # Byte-identical for bear entries and for longs outside persistent uptrend.
-                _vol_entry_uptrend = max(0.0, np.tanh(ret_vlong / 0.02))  # ~0 crash/flat, ~1 persistent uptrend
-                _vol_entry_spike_long = 1.0 - (1.0 - _vol_entry_spike) * (1.0 - 0.60 * _vol_entry_uptrend)  # exempt up to 60% of the spike shrink for uptrend longs
                 # Exp3 (architectural, indep): volume-DECLINE entry shrink (volume-price
                 # divergence). Complementary to _vol_entry_spike (shrinks HIGH-volume spike
                 # entries = capitulation/exhaustion chases): this shrinks LOW-volume entries
@@ -2537,9 +2519,9 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike_long * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
-                    self._vol_shrink_held[symbol] = _vol_entry_spike_long  # Exp9: cache for scale-in sustain (branch step3: uptrend-exempted long spike shrink)
+                    self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
                     self._fade_shrink_held[symbol] = _fade_shrink_b  # branch step4: cache for scale-in sustain
                     # branch step16: gate the avg-vol SUSTAIN on counter-trend-at-multi-day.
