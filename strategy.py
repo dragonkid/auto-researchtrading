@@ -1336,8 +1336,17 @@ class Strategy:
             # the SAME pattern as the VWAP chop-dampener above (line ~1320). Crash has high
             # trend-strength so this gate does NOT spare crash -- a direction-specific gate
             # for crash is the next step if crash still regresses.
-            _vws_wt = 0.55 * _trend_strength_w  # 0 in chop (sideways spared), 0.55 in strong trend
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (trend-strength-gated, spared in chop)
+            # Branch step6: HIGHER ONSET ret_long gate on the VWS weight. Step2's
+            # 0.55*tanh(|ret_long|/0.04) saturates by |ret_long|~0.06 -> VWS partly active
+            # at |ret_long|=0.04 (tanh(1)=0.76 -> weight 0.42) -> sideways trending
+            # stretches (|ret_long|~0.04-0.05) leak -> sideways -0.0166. Raise the onset:
+            # 0.55*tanh(max(0,|ret_long|-0.04)/0.03) -> VWS OFF below |ret_long|=0.04,
+            # ramping to full by |ret_long|~0.08. Sideways trending stretches (mostly
+            # |ret_long|<0.04) are spared; genuine trends (mixed/rally/bull/crash,
+            # |ret_long|>0.06 sustained) keep full VWS. Same ret_long form as step2
+            # (validated better than the ret_vlong gate of step5 which crashed crash).
+            _vws_wt = 0.55 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.03))  # onset 0.04, ramp to full by ~0.08
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (higher-onset trend-strength-gated, spared in chop)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
