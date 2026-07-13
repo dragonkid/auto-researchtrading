@@ -1375,8 +1375,14 @@ class Strategy:
             # sideways -0.005 -> composite ~0.102 (+0.004 KEEP) if sideways does not scale
             # badly with weight. Crash stays safe (long-only + crash bounces moderate
             # |ret_long|). If sideways leak scales with weight -> composite may not cross.
-            _vws_wt = 1.10 * _trend_strength_w  # branch step11: weight 1.10 (boost bull) + onset 0 (keep mixed)
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (weight 1.10, onset-0 ret_long gate + long-only)
+            # Branch step12: weight 1.10 + SMALL onset 0.01 (between step9 onset-0 and
+            # step10 onset-0.02). Step10 (onset 0.02) gave bull +0.0086 but killed mixed;
+            # step9/11 (onset 0) keep mixed +0.017 but bull only +0.002. A SMALL onset 0.01
+            # may reduce the sideways leak (-0.005, the |ret_long|~0.04 range) slightly while
+            # keeping most of the mixed gain (mixed's |ret_long|~0.04-0.06 mostly above the
+            # 0.01 onset). Final tuning push toward +0.003 keep.
+            _vws_wt = 1.10 * max(0.0, np.tanh((abs(ret_long) - 0.01) / 0.04))  # branch step12: weight 1.10, onset 0.01 (small, keep mixed, trim sideways)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (weight 1.10, onset-0.01 ret_long gate + long-only)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
