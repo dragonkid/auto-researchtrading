@@ -475,6 +475,47 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
+# Exp1 (architectural, indep, this session): PORTFOLIO BROAD-VOL-REGIME TARGET ATTENUATOR
+# for held LOSING positions. DISTINCT from every existing vol-regime lever:
+#   - _port_vol_spike_cap / _port_vol_avg_cap (lines ~933/945) shrink NEW-ENTRY first-bar
+#     size only (entry-side); they do NOT de-risk EXISTING positions caught in a cascade.
+#   - the prior "vol-expansion-gated exit-THRESHOLD lowering for losers" (discard 8c0872d9)
+#     was BYTE-IDENTICAL INERT: it multiplied _exit_thresh by (vol_gate * sustained_loss_gate),
+#     but a fresh cascade loss is NOT yet a 4-bar sustained_loss -> sustained_loss_gate~0 on
+#     the FIRST adverse bar -> the lowering never engaged -> zero effect on the cascade that
+#     builds the DD.
+# The May-2021 (bull) and Luna/FTX (crash) drawdowns are sharp broad-market vol EXPANSIONS
+# where all three symbols draw down TOGETHER. The entry-side caps catch new entries, but
+# the EXISTING trend-aligned longs (bull) / shorts (crash) are held through the cascade and
+# each is stopped at -2.4%; the cascade of stops accumulates portfolio DD (bull 10.79pct,
+# crash 17.73pct -- both deep past the 5pct dd_gate knee, both regimes' scores crushed by
+# dd_gate despite bull having +8.6pct APY / 0.67 Sharpe). This attacks that gap via a NEW
+# control-flow path: apply a smooth TARGET shrink on held LOSING positions when the broad
+# synchronized vol (avg vol_ratio across symbols) is elevated. Routed through the EMITTED
+# TARGET (the proven lever -- de-risk ramp, target-EMA both modulate the target), NOT the
+# exit threshold (the walled path). Gated on three CONTINUOUS factors (no decision boundary
+# -> noise-robust, stability-preserving):
+#   (1) BROAD-VOL regime: tanh((_port_vol_ratio_avg - ONSET)/SCALE) -- fires when ALL symbols
+#       are vol-elevated together (synchronized event vol), 0 in calm grind / single-symbol
+#       spike. Reuses the validated _port_vol_ratio_avg signal (avg vol_ratio).
+#   (2) LOSS magnitude: max(0, -_pnl_scale) -- continuous tanh of pos_pnl/|stop|, 0 at/above
+#       breakeven (winning rally/mixed trend continuations during vol expansion are
+#       BYTE-IDENTICAL -- the shrink is loss-only), ramps to 1 for a deep loser. No BE flip
+#       (the gate is the magnitude of -tanh, continuous through 0).
+#   (3) TREND-STRENGTH gate: tanh(rsi_trend_str/0.20) -- the validated chop/trend separator
+#       (same as _be_trend_gate, _w_time trend gate). Fires in TRENDING vol-expansion
+#       (bull May-crash, crash Luna) -> SPARES sideways (low rsi_trend_str -> gate~0 ->
+#       byte-identical, the documented sideways mean-reversion-recovery wall respected).
+# Composes multiplicatively with the existing de-risk ramp + opp-gate (both also shrink the
+# target on losers); this adds a VOL-REGIME-conditioned shrink they lack (they read pos_pnl/
+# slope/time, none reads the cross-symbol broad-vol state). Direction-agnostic (fires on
+# losing longs AND losing shorts equally). Byte-identical when vol calm (gate 0), when
+# winning (loss gate 0), or in chop (trend gate 0). Not leverage farming: it is a CONDITIONAL
+# (vol-regime + loss) de-risking that REDUCES exposure during cascades (the opposite of
+# farming), targeting the fat-tail losses that drive bull/crash DD.
+VREG_TARGET_ONSET = 1.10   # broad avg vol_ratio above which attenuator engages (synchronized event vol; 1.10 = all symbols mildly-elevated together)
+VREG_TARGET_SCALE = 0.25   # vol_ratio band over which the vol gate ramps 0->1
+VREG_TARGET_MAX_SHRINK = 0.30  # max fractional target shrink at full saturation (deep loser + full vol + strong trend)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -4340,6 +4381,24 @@ class Strategy:
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
+
+            # Exp1 (architectural, indep, this session): PORTFOLIO BROAD-VOL-REGIME
+            # TARGET ATTENUATOR for held LOSING positions. See VREG_TARGET_* constants
+            # (top of file) for the full rationale. NEW control-flow path: a smooth
+            # target shrink applied AFTER the de-risk ramp + opp-gate (which both read
+            # pos_pnl/slope/time, none reads the cross-symbol broad-vol state) and BEFORE
+            # the emitted-target EMA (so trend-aligned losers -- bull/crash, EMA alpha~0
+            # -- get the IMMEDIATE de-risk the cascade needs; ct positions -- rally/mixed
+            # -- are smoothed downstream). Three continuous gates (no boundary -> noise-
+            # robust): broad-vol regime, loss magnitude, trend-strength. Byte-identical
+            # when calm / winning / chop. Targets the fat-tail cascade losses driving
+            # bull/crash DD past the dd_gate 5pct knee.
+            if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
+                _vreg_vol_gate = max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - VREG_TARGET_ONSET) / VREG_TARGET_SCALE)))
+                _vreg_loss_gate = max(0.0, -_pnl_scale)  # 0 at/above BE, ramps to 1 deep loser (continuous)
+                _vreg_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                _vreg_atten = 1.0 - VREG_TARGET_MAX_SHRINK * _vreg_vol_gate * _vreg_loss_gate * _vreg_trend_gate
+                target = target * _vreg_atten
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
             # EMITTED position target (the final held-position LEVEL) — a NEW smoothing
