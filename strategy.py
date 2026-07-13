@@ -186,7 +186,7 @@ LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab
 # the loss floor 0.85 is untouched so losers still exit fast). Reduction-safe (raising the
 # floor KEEPS more size, never creates new size; the position can only stay the same or
 # de-risk less, never grow beyond its original target).
-WIN_CONVEX_BOOST = 0.8      # branch step7: max ADDITIONAL convexity _dr_k boost for latched winning shorts (baseline _dr_k up to 1.6 -> +0.8 = up to 2.4 with the profit+align+slope-conf cushion, then this ADDS up to +0.8 more for latched winners -> up to ~3.0 clamped). Convex = hold near-full through giveback, then cut fast at ramp end.
+WIN_CONVEX_BOOST = 1.5      # branch step9: raised 0.8->1.5 (bigger over-hold on DEEP winning shorts, the population least likely to reverse; step8 deep-profit gate made the boost crash-neutral at 0.8, push magnitude to capture more strong-winner trend run)
 WIN_FLOOR_RAMP_BARS = 4     # bars to ramp the convexity boost from 0 -> WIN_CONVEX_BOOST after profit-latch fires (gradual = stab-safe)
 
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
