@@ -3660,8 +3660,16 @@ class Strategy:
                 _vol_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
                 _vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
                 _vol_expansion = _vol_6 / _vol_18
-                # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
-                _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Exp3 (architectural simplification, indep, this session): ABLATE
+                # _ve_pressure (vol-of-PRICE expansion exit) to test if it is
+                # load-bearing or redundant with the slope/pp/vc exit pressures. The
+                # term is profit-gated (_w_ve=max(0,_pnl_scale)) exhaustion pressure
+                # firing on 6/18-bar vol-of-price expansion >1.3. Setting it to 0.0
+                # removes it from the MAX-fusion (it contributes 0 to _soft_max via
+                # _w_ve*_ve_pressure). If the score holds/improves, the term is
+                # redundant (simpler = better OOS); if it drops, it is load-bearing.
+                # Single-change ablation; no other edit.
+                _ve_pressure = 0.0  # ablated (was 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4)))
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
