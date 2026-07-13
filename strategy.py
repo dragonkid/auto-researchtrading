@@ -3696,13 +3696,6 @@ class Strategy:
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                # Exp3 (architectural indep, simplification): ABLATE _vc_pressure (volume-
-                # climax exit source, 6th MAX-fusion soft term). Test whether it is load-
-                # bearing or absorbed by the MAX-fusion (another profit-side source
-                # dominating the volume-climax bars). If byte-identical -> absorbed (simplify);
-                # if regression -> load-bearing. Neutralize the contribution (keep the
-                # computation to preserve downstream-noise parity, zero the output).
-                _vc_pressure = 0.0
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
