@@ -1337,6 +1337,20 @@ class Strategy:
             # trend-strength so this gate does NOT spare crash -- a direction-specific gate
             # for crash is the next step if crash still regresses.
             _vws_wt = 0.55 * _trend_strength_w  # 0 in chop (sideways spared), 0.55 in strong trend
+            # Branch step5: MULTI-DAY TREND gate on the VWS weight (replace the 20-bar
+            # ret_long gate with a 96-bar ret_vlong gate). Step2's ret_long gate fixed
+            # sideways to -0.0166 BUT sideways has TRENDING stretches (multi-day directional
+            # legs in 2023) where |ret_long|>0 -> VWS active -> the -0.0166 leak. The 96-bar
+            # ret_vlong is ~0 in sideways (no multi-day trend, only local 20-bar legs) and
+            # LARGE in genuine multi-day trends (mixed's down year, rally, bull, crash).
+            # Gating on ret_vlong fully neutralizes VWS in sideways (including its trending
+            # stretches) while keeping VWS active in mixed/rally/bull/crash. This is the
+            # validated multi-day separator (the _ts_supp / _port_down_persist pattern).
+            # Continuous tanh on |ret_vlong|/0.03 (saturates by |ret_vlong|~0.05; genuine
+            # trends have |ret_vlong| 0.03-0.10, sideways ~0-0.01). Crash has large |ret_vlong|
+            # so VWS stays active in crash (crash stab at window 16 is 0.523 -> crash score ~0
+            # same as baseline -0.000, NOT the binding problem; the sideways leak IS).
+            _vws_wt = 0.55 * max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # multi-day gate: 0 sideways (ret_vlong~0), 0.55 genuine trends
             _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (trend-strength-gated, spared in chop)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
