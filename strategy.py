@@ -565,28 +565,6 @@ class Strategy:
         # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
         # (slow-rise / fast-fall). Reset on full exit; default 0.0.
         self._local_hold_ext_ema = {}
-        # Exp1 (architectural, this session): per-symbol EMA of the PEAK-DAYS
-        # hold-extension magnitude. The existing _ta_dd_hold_ext / _local_hold_ext
-        # both extend longs DURING portfolio DD (gated on (1-_port_dd_atten)). This
-        # is the structurally-opposite condition: extend the hold for 96-bar
-        # trend-aligned in-profit longs when the portfolio is at/near its peak
-        # (_port_dd_atten ~1, i.e. LOW portfolio DD), so a confirmed uptrend winner
-        # (bull/rally grind long) runs longer while the portfolio is healthy. The
-        # existing peak-time hold is the baseline _max_hold; this adds a measured
-        # extension gated on SLOPE-CONFIRMATION (_slope_conf, the 16-bar OLS slope
-        # confirming the position) so the extension RELEASES the instant the
-        # near-term slope falters (trend-fatigue signal) -- distinct from the
-        # DD-gated extensions which have no slope gate. Slope-confirmation is the
-        # release-valve that prevents riding the extension into the reversal that
-        # starts the next DD. Asymmetric EMA (slow-rise to damp AR(1) wobble /
-        # fast-fall to release on winner->loser), mirroring _hold_ext_ema. New
-        # cross-component data dep: _max_hold reads portfolio-PEAK state
-        # (_port_dd_atten HIGH, the inverse of the existing DD-gated term) jointly
-        # with slope-confirmation. Byte-identical for shorts (long gate 0),
-        # counter-trend-at-multi-day longs (_ta_align 0), losers (profit gate 0),
-        # slope-faltering winners (_slope_conf 0), and during portfolio DD
-        # (_port_dd_atten low). Reset on full exit; default 0.0.
-        self._peak_hold_ext_ema = {}
         # Exp1 (architectural, indep): per-symbol LOSS-LATCH permanent target-size cap.
         # The structural mirror of the short-side profit-latch (_short_hold_cache) on the
         # LOSS side: a one-time 1.0 -> LOSS_LATCH_CAP flip when a held position CONFIRMS as
@@ -3465,36 +3443,6 @@ class Strategy:
                     _lhe_alpha = 0.15  # fast fall (release on winner->loser)
                 _local_hold_ext = (1.0 - _lhe_alpha) * _local_hold_ext_raw + _lhe_alpha * _prev_lhe
                 self._local_hold_ext_ema[symbol] = _local_hold_ext
-                # Exp1 (architectural, indep, THIS SESSION): PEAK-DAYS hold-extension
-                # for 96-bar trend-aligned in-profit longs with SLOPE-CONFIRMATION. The
-                # existing _ta_dd_hold_ext / _local_hold_ext both gate on (1-_port_dd_atten)
-                # = they fire DURING portfolio DD. This is the structurally-opposite
-                # condition: extend the hold when the portfolio is at/near its PEAK
-                # (_port_dd_atten ~1 = LOW portfolio DD) for a 96-bar trend-aligned
-                # (bull/rally uptrend, NOT crash ct long: _ta_align high) in-profit long,
-                # GATED on slope-confirmation (_slope_conf: the 16-bar OLS slope still
-                # confirms the position). The slope gate is the release-valve that the
-                # DD-gated extensions lack: it releases the extension the instant the
-                # near-term slope falters (trend-fatigue / pullback-deepening signal) so
-                # the winner is NOT ridden into the reversal that starts the next DD.
-                # Byte-identical for shorts (long gate 0), ct-at-multi-day longs
-                # (_ta_align 0), losers (profit gate 0), slope-faltering winners
-                # (_slope_conf 0), and during portfolio DD (_port_dd_atten low -> peak
-                # gate 0). Composes ADDITIVELY with the DD-gated extensions on _max_hold:
-                # mutually exclusive by the (1-_port_dd_atten) vs _port_dd_atten gates (a
-                # long at peak is NOT in DD -> at most one of peak/DD extension fires per
-                # position per bar -> no double-extension). Asymmetric EMA-smoothed
-                # (slow-rise to damp AR(1) wobble / fast-fall to release on slope-falter),
-                # mirroring _hold_ext_ema. New cross-component data dep: _max_hold reads
-                # portfolio-PEAK state (_port_dd_atten HIGH) jointly with slope-confirmation.
-                _peak_hold_ext_raw = 1.2 * _ta_long_gate * _ta_align * _ta_profit_gate * _slope_conf * _port_dd_atten
-                _prev_phe = self._peak_hold_ext_ema.get(symbol, _peak_hold_ext_raw)
-                if _peak_hold_ext_raw >= _prev_phe:
-                    _phe_alpha = 0.55  # slow rise: low-pass the AR(1) wobble (stability)
-                else:
-                    _phe_alpha = 0.15  # fast fall: release immediately on slope-falter (raw)
-                _peak_hold_ext = (1.0 - _phe_alpha) * _peak_hold_ext_raw + _phe_alpha * _prev_phe
-                self._peak_hold_ext_ema[symbol] = _peak_hold_ext
                 # Exp1 (architectural, indep): apply the POSITION-CACHED short-side
                 # hold-extension (deterministic constant set once at short entry, see
                 # SHORT_HOLD_CACHED_EXT). Unlike _ta_dd_hold_ext/_local_hold_ext (per-bar
@@ -3534,7 +3482,7 @@ class Strategy:
                 # pressure lets confirmed winning shorts run a bit longer before full
                 # de-risk -> more downtrend capture -> crash Sharpe up. Byte-identical
                 # when _short_hold_cached=0 (not eligible / not latched / longs).
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _peak_hold_ext
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
@@ -5037,7 +4985,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._peak_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
