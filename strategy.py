@@ -1277,7 +1277,7 @@ class Strategy:
             # the 0.7 base floor, matching the 8th RC voter) appended WITHOUT modifying any
             # of the 8 existing _base_weights (the trend-strength redistribution shifts only
             # indices 1-3; this 9th weight is untouched). New orthogonal data-source voter.
-            _vws_n = LINREG_PERIOD
+            _vws_n = 24  # branch step4: LONGER window (24 vs 16) -- smoother fresh volume-weighted slope, less per-bar AR(1) noise influence on the OLS fit (no EMA lag). Aims to fix crash stab crash (step2 crash stab 0.523 from VWS bar-to-bar wobble) without the sideways lag that walled step3's EMA.
             _vws_hl2 = (bd.history["high"].values[-_vws_n:] + bd.history["low"].values[-_vws_n:]) / 2.0
             _vws_vol = bd.history["volume"].values[-_vws_n:].astype(float)
             _vws_x = np.arange(_vws_n)
