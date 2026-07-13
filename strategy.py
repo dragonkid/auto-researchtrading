@@ -162,8 +162,8 @@ LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab
 # 1.0 (never shrinks); byte-identical when not latched / longs / non-trend-aligned shorts.
 # Bounded small magnitude (WIN_AMP_MULT 1.12 = max +12pct target) so the trend-reversal
 # downside is bounded (a latched winner that reverses loses at most 12pct more size).
-WIN_AMP_MULT = 1.12        # max target amplification for latched winning trend-aligned shorts (+12pct)
-WIN_AMP_RAMP_BARS = 4     # bars to ramp from 1.0 -> WIN_AMP_MULT after profit-latch fires (gradual = stab-safe)
+WIN_AMP_MULT = 1.06        # max target amplification for latched winning trend-aligned shorts (+6pct -- branch step2: halved from 1.12 to cut per-bar position-value wobble that crashed crash stab to 0.50)
+WIN_AMP_RAMP_BARS = 8     # branch step2: doubled ramp from 4->8 bars (slower ramp = smaller per-bar diff = less cumulative tracking error over crash's long DD; loss-latch 4-bar ramp was stab-safe for a CAP but the win-amp FIRES on more events (every confirmed winner vs only deep losers) so it needs a slower ramp)
 
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
