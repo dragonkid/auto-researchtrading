@@ -4338,9 +4338,17 @@ class Strategy:
                             _shc_k = self._short_hold_cache.get(symbol, 0.0)
                             if _shc_k > 0.5:  # profit-latch fired (latched winning short)
                                 _wa_bar_k = self._short_hold_latch_bar.get(symbol, -1)
-                                if _wa_bar_k >= 0:
+                                # branch step8: gate the convex boost on DEEP profit
+                                # (_pnl_scale>0.5 = pos_pnl > ~0.5*|stop| deep). A near-breakeven
+                                # winner (_pnl_scale~0) is most reversal-prone (a small bounce
+                                # flips it to loss); a DEEP winner is more likely a real ongoing
+                                # trend run. Step7 (boost on any profit) made crash -0.034
+                                # because it over-held near-breakeven winners through reversal.
+                                # Gating on deep profit confines the over-hold to strong winners.
+                                if _wa_bar_k >= 0 and _pnl_scale > 0.5:
                                     _wa_ramp_k = max(0.0, min(1.0, (self.bar_count - _wa_bar_k) / WIN_FLOOR_RAMP_BARS))
-                                    _dr_k = min(3.0, _dr_k + WIN_CONVEX_BOOST * _wa_ramp_k * _dr_slope_conf)
+                                    _wa_deep = max(0.0, min(1.0, (_pnl_scale - 0.5) / 0.5))  # 0 at 0.5 profit, 1 at 1.0+ deep profit
+                                    _dr_k = min(3.0, _dr_k + WIN_CONVEX_BOOST * _wa_ramp_k * _dr_slope_conf * _wa_deep)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
