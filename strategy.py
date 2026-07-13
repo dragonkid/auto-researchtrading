@@ -3582,14 +3582,7 @@ class Strategy:
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
                 # Chop-amplified own-side subtraction with divergence taper: in pure sideways
                 # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence.
-                # Exp5 (architectural simplification, indep, this session): ABLATE _div_taper
-                # (set to 0.0) to test if it is load-bearing or redundant. _div_taper reduces
-                # _chop_amp (exit-pressure amplification) when strong-sum diverges (one-sided
-                # conviction) in low-|ret_long| chop for position-aligned bars -- a niche case.
-                # With _div_taper=0, _chop_amp = (1 + 0.7*chop_gate) (full chop amplification,
-                # no divergence taper). If byte-identical, the taper never binds (niche case
-                # absent); if a regime shifts, the taper is load-bearing. Single-change test.
-                _div_taper = 0.0  # ablated (was: max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010)))
+                _div_taper = max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010))
                 _chop_amp = (1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))) * (1.0 - _div_taper) + _div_taper
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
