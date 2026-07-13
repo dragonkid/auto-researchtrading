@@ -3991,7 +3991,7 @@ class Strategy:
                     if current_pos > 0:
                         _tp_dd_md_align = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.015))
                         _tp_dd_boost_amt = max(0.0, min(1.0, np.tanh((max(0.0, _port_dd_frac) - 0.055) / 0.020)))
-                        _tp_scale = _tp_scale * (1.0 + 0.20 * _tp_dd_boost_amt * _tp_dd_md_align)
+                        _tp_scale = _tp_scale * (1.0 + 0.50 * _tp_dd_boost_amt * _tp_dd_md_align)  # branch step6: 0.20->0.50 aggressive scaling probe (ceiling test)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
