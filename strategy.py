@@ -1337,7 +1337,17 @@ class Strategy:
             # disagree in direction (rotational/divergent market). Composes with the weak-
             # avg and deep-bear tighteners (independent signals). Byte-identical when
             # _port_trend_div_admit_tighten=1.0 (broad agreement, or <2 meaningful symbols).
-            _strong_min = _strong_min * _port_trend_div_admit_tighten
+            # branch step6: gate the divergence tighten to COUNTER-TREND-AT-MULTI-DAY
+            # entries only (entry direction opposes the per-symbol 96-bar ret_vlong).
+            # In a divergent market the CT entry is the idiosyncratic lower-quality one
+            # (no broad confirmation; the trend is rotational). Trend-aligned entries
+            # (aligned with the dominant broad direction) keep the standard threshold ->
+            # the keep's broad-trend relax still fires for them. The ct gate is a smooth
+            # tanh on -|ret_vlong*entry_dir|/0.015 (1 when ct-at-multi-day, 0 when aligned).
+            # Byte-identical when divergence=0 OR entry is trend-aligned.
+            _entry_dir_div = 1.0 if _bull_strong >= _bear_strong else -1.0  # tentative entry direction (the side with larger strong-sum)
+            _ct_div_gate = max(0.0, min(1.0, np.tanh(max(0.0, -ret_vlong * _entry_dir_div) / 0.015)))
+            _strong_min = _strong_min * (1.0 + (PORT_TREND_DIVERGENCE_MAX_TIGHTEN * _port_trend_divergence) * _ct_div_gate)
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
