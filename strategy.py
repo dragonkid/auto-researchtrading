@@ -135,6 +135,7 @@ SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) 
 # prevents latching a position that already bounced off its MAE back toward breakeven).
 LOSS_LATCH_MAE_ONSET = 0.80   # MAE/|stop| depth at which the latch becomes eligible (deep underwater: MAE <= -0.8*stop)
 LOSS_LATCH_STILL_LOSS = 0.30  # pos_pnl/|stop| still-negative threshold: latch fires only while STILL clearly losing (pos_pnl < -0.3*stop), NOT on a position that already recovered off its MAE
+LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
 LOSS_LATCH_CAP = 0.75         # permanent target-size cap for latched losers (held target magnitude capped to 0.75x)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
@@ -572,6 +573,12 @@ class Strategy:
         # preserved). Default 1.0 (no effect) for winners / fresh entries / recovering
         # positions / uncached symbols. Reset on full exit. See LOSS_LATCH_CAP.
         self._loss_latch = {}
+        # branch step4: per-symbol bar_count at which MAE FIRST crossed the deep-loss onset
+        # (LOSS_LATCH_MAE_ONSET*|stop|). Used for the SUSTAINED-MAE-DURATION gate: the latch
+        # fires only after the MAE has been deep for K+ bars (monotonic duration count,
+        # absorbs the latch-bar wobble that crashed crash stab in step1). -1 sentinel =
+        # not yet eligible (MAE not deep yet). Reset on full exit.
+        self._loss_latch_elig_bar = {}
         # Exp1 (architectural, indep): per-symbol POSITION-CACHED short-side hold-
         # extension. Unlike _hold_ext_ema/_local_hold_ext_ema (per-bar EMA recomputed
         # each held bar), this is computed ONCE at short entry from entry-bar state
@@ -3091,41 +3098,44 @@ class Strategy:
                     if _loss_latch_val >= 1.0:  # not yet latched (default 1.0)
                         _mae_deep = self._mae.get(symbol, 0.0) <= -(LOSS_LATCH_MAE_ONSET * abs(STOP_LOSS_PCT))
                         _still_losing = pos_pnl < -(LOSS_LATCH_STILL_LOSS * abs(STOP_LOSS_PCT))
-                        # branch step2: COUNTER-TREND-AT-MULTI-DAY gate on the latch
-                        # trigger (the stability-safe separator). Step1 (ungated) gave the
-                        # REAL rally +0.052 gain (capping rally pullback LOSERS = counter-
-                        # trend shorts that keep losing) BUT crashed crash stab to 0.083.
-                        # Root cause: crash's TREND-ALIGNED shorts (short in a downtrend)
-                        # temporarily go underwater (MAE deep, still losing) before the
-                        # downtrend resumes and they PROFIT -- the ungated latch capped
-                        # these eventual WINNERS, and the LATCH BAR (when MAE first crosses
-                        # -0.8*stop + pos_pnl<-0.3*stop) wobbles under AR(1) -> exit-timing
-                        # wobble over crash's long continuous DD -> stab crash (the SAME
-                        # documented stab cliff the keep 249d8241 profit-latch hit at mag
-                        # 3.5). The separator between rally's losing shorts (cap them) and
-                        # crash's winning shorts (spare them) is TREND-ALIGNMENT at the
-                        # multi-day scale: rally pullback shorts are COUNTER-trend (short in
-                        # an uptrend, ret_vlong*pos_dir<0 -> keep losing); crash shorts are
-                        # trend-aligned (short in a downtrend, ret_vlong*pos_dir>0 ->
-                        # recover+profit). Gate the latch on COUNTER-TREND-AT-MULTI-DAY so
-                        # it fires ONLY on positions structurally destined to keep losing
-                        # (ct), sparing trend-aligned losers that recover (crash). ret_vlong
-                        # is a 96-bar OLS (smooth, noise-robust, ~1/sqrt(96) attenuation)
-                        # -> the gate is stability-safe (near-constant across noise, the
-                        # validated fast-saturating /0.01 ct gate discipline). Byte-identical
-                        # for trend-aligned losers (crash shorts); the latch still fires on
-                        # ct losers (rally pullback shorts, mixed wrong-side longs). The
-                        # still-losing gate is RETAINED (prevents latching a ct position that
-                        # already bounced off its MAE back toward breakeven).
-                        _ll_pos_dir = 1.0 if current_pos > 0 else -1.0
-                        _ll_ct_gate = max(0.0, np.tanh(-_ll_pos_dir * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day (noise-free fast-saturating)
-                        # branch step3: LOWER the ct-gate threshold 0.50->0.15 so rallys
-                        # WEAK-trend ct shorts (ret_vlong~0.005-0.006 -> ct_gate~0.46) pass
-                        # (step2s 0.50 threshold excluded them -> rally byte-identical, the
-                        # +0.052 gain lost). crash shorts (ct_gate=0, trend-aligned) stay
-                        # excluded. Threshold 0.15 captures rally down to ret_vlong~0.0015
-                        # (tanh(0.15)=0.149) while keeping crash (ct_gate=0) clean.
-                        if _mae_deep and _still_losing and _ll_ct_gate > 0.15:
+                        # branch step2/3 (ct-gate) were BYTE-IDENTICAL: the ct-gate excluded
+                        # ALL of step1's latched population, including rally's losers ->
+                        # diagnosis: step1's rally +0.052 came from capping TREND-ALIGNED
+                        # losers (rally pullback LONGS bought at local tops that pull back
+                        # deep), NOT ct shorts. Trend-alignment does NOT separate rally-
+                        # good (trend-aligned longs to cap) from crash-bad (trend-aligned
+                        # shorts that recover). The real separator: crash's winning shorts
+                        # recover FAST (the downtrend resumes within a few bars of the MAE
+                        # dip), whereas rally's persistent losers stay deep for MANY bars.
+                        # branch step4: SUSTAINED-MAE-DURATION gate (the stability-safe
+                        # separator). Track the bar_count at which MAE FIRST crossed the
+                        # deep-loss onset; latch only after the MAE has been deep for K+
+                        # bars. This (a) absorbs the latch-BAR wobble that crashed crash
+                        # stab in step1 (the duration count is MONOTONIC -- the cross bar
+                        # may shift +-1 under AR(1) but the K-bar delay absorbs it -> the
+                        # latch fires on a stable, sustained condition not a noisy
+                        # instantaneous cross), and (b) gives crash's winning shorts time to
+                        # RECOVER (they recover within a few bars -> MAE bounces, the
+                        # eligibility resets -> never reaches K bars -> never latched) while
+                        # rally's persistent losers (deep for many bars) DO reach K -> latch.
+                        # The eligibility bar is set when MAE first goes deep and CLEARED
+                        # (reset to -1) when MAE recovers above the onset (a position that
+                        # bounced off its MAE is no longer a sustained deep loser). The
+                        # still-losing gate is RETAINED (prevents latching a sustained-deep-
+                        # MAE position that has since recovered to near breakeven).
+                        _elig = self._loss_latch_elig_bar.get(symbol, -1)
+                        if _mae_deep:
+                            if _elig < 0:
+                                self._loss_latch_elig_bar[symbol] = self.bar_count
+                                _elig = self.bar_count
+                        else:
+                            # MAE recovered above onset -> reset eligibility (no longer
+                            # sustained deep). A future re-dip restarts the count.
+                            if _elig >= 0:
+                                self._loss_latch_elig_bar[symbol] = -1
+                                _elig = -1
+                        _sustained_deep = (_elig >= 0 and (self.bar_count - _elig) >= LOSS_LATCH_SUSTAIN_BARS)
+                        if _mae_deep and _still_losing and _sustained_deep:
                             self._loss_latch[symbol] = LOSS_LATCH_CAP
                             _loss_latch_val = LOSS_LATCH_CAP
 
@@ -4961,7 +4971,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -4977,6 +4987,7 @@ class Strategy:
                     # position starts unlatched (the latch is set by the trigger on
                     # THIS position's own MAE, not inherited from the prior position).
                     self._loss_latch.pop(symbol, None)
+                    self._loss_latch_elig_bar.pop(symbol, None)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
