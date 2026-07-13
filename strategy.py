@@ -4246,7 +4246,7 @@ class Strategy:
                         _shc_w = self._short_hold_cache.get(symbol, 0.0)
                         if _shc_w > 0.5:  # profit-latch fired (latched winning short)
                             _wa_bar_w = self._short_hold_latch_bar.get(symbol, -1)
-                            if _wa_bar_w >= 0:
+                            if _wa_bar_w >= 0 and _pnl_scale >= 0.0:  # branch step5: gate on PROFIT (step3/step4 bug: floor raise was applied on the LOSS side too -> held losers longer -> crash Sh -0.067)
                                 _wa_ramp_w = max(0.0, min(1.0, (self.bar_count - _wa_bar_w) / WIN_FLOOR_RAMP_BARS))
                                 # Branch step4: SLOPE-CONFIRMATION gate on the floor raise.
                                 # Step3 (ungated floor raise) made crash WORSE (Sh -0.067 from
