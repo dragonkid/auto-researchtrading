@@ -1337,7 +1337,10 @@ class Strategy:
             # disagree in direction (rotational/divergent market). Composes with the weak-
             # avg and deep-bear tighteners (independent signals). Byte-identical when
             # _port_trend_div_admit_tighten=1.0 (broad agreement, or <2 meaningful symbols).
-            _strong_min = _strong_min * _port_trend_div_admit_tighten
+            # branch step7: admission application REMOVED (the admission tightener crashed
+            # crash stability across step1-6; step7 tests the emission-layer application in
+            # isolation, downstream of admission -> no admission flips -> no stab crash).
+            # _strong_min = _strong_min * _port_trend_div_admit_tighten  # DISABLED step7
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
@@ -4847,9 +4850,22 @@ class Strategy:
                     # (the binding positive regime whose dead-capital longs bleed across
                     # many bars) while sparing early-bar reductions everywhere.
                     _hold_dur_profile = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
+                    # branch step7: CROSS-SYMBOL DIVERGENCE add-on to the emission reduction
+                    # throttle. A position being reduced in a DIVERGENT (rotational) market
+                    # is more likely idiosyncratic dead capital (no broad confirmation) ->
+                    # amplify the reduction slightly. Applied at the EMISSION layer
+                    # (downstream of admission) so it does NOT flip ADMISSION decisions ->
+                    # avoids the admission-stability crash that walled step1-6. NEW cross-
+                    # component data dep at emission: the reduction throttle reads the top-
+                    # level _port_trend_divergence (cross-symbol rotational signal). Small
+                    # max 0.20 add-on (below the MTM_CHOP_TRIM_AMP 0.80 base) gated to fire
+                    # only when the base throttle is already active (_mtm_chop>0) so it
+                    # never fires on smooth winners. Byte-identical when _mtm_chop=0 OR
+                    # divergence=0 (broad agreement). Reduction-only (safe family).
+                    _div_emit_addon = 0.20 * _port_trend_divergence * (1.0 if _mtm_chop > 0 else 0.0)
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile
+                    _trim_mult = 1.0 + (MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile) + _div_emit_addon
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
