@@ -137,7 +137,7 @@ LOSS_LATCH_MAE_ONSET = 0.80   # MAE/|stop| depth at which the latch becomes elig
 LOSS_LATCH_STILL_LOSS = 0.30  # pos_pnl/|stop| still-negative threshold: latch fires only while STILL clearly losing (pos_pnl < -0.3*stop), NOT on a position that already recovered off its MAE
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
 LOSS_LATCH_RAMP_BARS = 4     # branch step6: bars over which the target cap ramps 1.0 -> LOSS_LATCH_CAP after the latch fires (gradual application absorbs latch-bar wobble -> stab preserved; reaches the stop-loss path unlike the de-risk floor)
-LOSS_LATCH_CAP = 0.75         # permanent target-size cap for latched losers (held target magnitude capped to 0.75x at full ramp)
+LOSS_LATCH_CAP = 0.65         # branch step7: deeper cap 0.75->0.65 (push rally gain above +0.003; gradual ramp keeps stab safe)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
