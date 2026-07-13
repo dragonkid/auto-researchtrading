@@ -138,33 +138,6 @@ LOSS_LATCH_STILL_LOSS = 0.15  # branch step12: lower still-loss gate 0.30->0.15 
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
 LOSS_LATCH_RAMP_BARS = 4     # branch step10: revert to 4 (step9 2-bar crashed stab 0.081; 4 bars is the stab-safe minimum)
 LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab-safe 4-bar ramp (push composite above +0.003)
-# Exp1 (architectural, indep): LOSS-LATCH applied via the EXIT-THRESHOLD path -- the
-# prior-session-sanctioned untested axis "loss-latch cap depth on a DIFFERENT application
-# path (not target cap) that might decouple the rally gain from the crash stab crash."
-# Prior-session measured wall: deepening the TARGET cap (0.45->0.35) gave a REAL rally
-# +0.0035 AND crash raw Sh crossed zero BUT crashed crash stab to 0.524 at the 4-bar ramp;
-# an 8-bar ramp fixed stab BUT lost the rally gain (mutually exclusive: fast ramp = rally
-# gain + crash stab crash; slow ramp = crash stab + rally loss). Root cause diagnosed:
-# the target cap is a SIZE MULTIPLIER ramped 1.0->cap over RAMP_BARS -> a deeper cap makes
-# a LARGER per-bar position-value jump during the ramp -> cumulative tracking error under
-# AR(1) noise over crash's long continuous 13-month DD -> crash stab crash. The exit-
-# threshold path applies the SAME economic cut (latched loser realized loss is smaller ->
-# higher Sharpe) via EXIT TIMING instead of SIZE: lower _exit_thresh for latched losers so
-# the full exit fires at LOWER _exit_pressure -> the latched loser exits ~1 bar sooner ->
-# smaller realized loss. The TARGET stays at full size until the exit fires -> NO per-bar
-# target-value ramp -> NO wobble source -> stab preserved (the prior-session's stab cliff
-# is a function of the per-bar target ramp, not the latch itself). For rally's fast losers
-# (the latched population that gave the +0.0035), a sooner exit captures them before they
-# give back -> rally gain preserved via exit-timing. NEW control flow: the latch state
-# (already set by the trigger at line ~3146) now ALSO feeds _exit_thresh (a SECOND output
-# path for the same latch signal), distinct from the existing target-cap path which is
-# RETAINED (the keep 11e75515's mechanism). This is the additive decoupling test: the
-# exit-threshold cut is the "deeper" cut via a stab-safe path, stacked on the stab-safe
-# 0.45 target cap. Reduction-only (lower threshold -> exit sooner, never later); byte-
-# identical for unlatched positions (default 1.0). Same gradual RAMP_BARS (4) so the
-# lowering ramps in gradually (a +-1 bar latch shift -> +-1 bar ramp shift -> SMALL
-# threshold diff -> stab preserved, the keep 249d8241 gradual-application lesson).
-LOSS_LATCH_EXIT_THRESH_LOWER = 0.12  # max fractional lowering of _exit_thresh for latched losers (exit at 0.88*thresh instead of 1.0); moderate magnitude isolating the exit-threshold path from the existing 0.45 target cap (stacked, not redundant)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -3983,33 +3956,6 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
-                # Exp1 (architectural, indep): LOSS-LATCH applied via the EXIT-THRESHOLD path.
-                # The latch trigger (line ~3146) sets self._loss_latch[symbol]=LOSS_LATCH_CAP
-                # when a held position CONFIRMS as a sustained deep loser (MAE deep AND still
-                # losing AND sustained K bars). The keep 11e75515 applies that latch as a
-                # TARGET cap (line ~4994, target *= cap ramped over RAMP_BARS). This adds a
-                # SECOND output path for the SAME latch signal: lower _exit_thresh for
-                # latched losers so the full exit fires at lower _exit_pressure -> the latched
-                # loser exits ~1 bar sooner -> smaller realized loss (same economic cut as a
-                # deeper target cap, but via EXIT TIMING not SIZE). The target stays at full
-                # size until the exit fires -> no per-bar target-value ramp wobble -> no
-                # tracking-error stab crash (the prior-session wall at deeper target cap was
-                # a function of the per-bar target ramp, not the latch). NEW control flow:
-                # _exit_thresh now reads the latch state (a new data dep for the exit
-                # threshold). Gradual ramp over the SAME LOSS_LATCH_RAMP_BARS so a +-1 bar
-                # latch-bar shift -> +-1 bar ramp shift -> SMALL threshold diff -> stab
-                # preserved. Reduction-only (lower threshold -> sooner exit, never later).
-                # Byte-identical for unlatched positions (_loss_latch default 1.0 -> gate 0).
-                # Distinct from Exp4's portfolio-DD _exit_thresh lowering (line above): that
-                # is gated on portfolio DD x sustained-loss x trend-strength; this is gated
-                # on the POSITION's own MAE-confirmed deep-loser state, firing regardless of
-                # portfolio DD (a confirmed deep loser cuts sooner even at portfolio peak).
-                _ll_thresh_val = self._loss_latch.get(symbol, 1.0)
-                if _ll_thresh_val < 1.0:
-                    _ll_thresh_bar = self._loss_latch_bar.get(symbol, -1)
-                    if _ll_thresh_bar >= 0:
-                        _ll_thresh_ramp = max(0.0, min(1.0, (self.bar_count - _ll_thresh_bar) / LOSS_LATCH_RAMP_BARS))
-                        _exit_thresh = _exit_thresh * (1.0 - LOSS_LATCH_EXIT_THRESH_LOWER * _ll_thresh_ramp)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
