@@ -273,9 +273,9 @@ DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold thr
 # cut through the giveback faster, because the DD context signals the giveback is more likely
 # a real reversal than noise. NEW cross-component data dep: the de-risk ramp exponent now
 # reads the portfolio-DD state (was profit+trend-align+slope-conf only).
-DERISK_CONVEX_DD_ONSET = 0.06   # raw portfolio-DD FRACTION (_port_dd_frac) above which cushion reduction engages. Onset 0.06 (6% DD) cleanly separates bull's 10.79% sharp-reversal DD + crash's 17.73% from sideways 4.18% / rally 5.36% / mixed 4.91% (all below onset -> byte-identical). The prior onset 0.30 on the (1-_port_dd_atten) INTENSITY was wrong: _port_dd_atten saturates (tanh /0.032) by ~4% DD so ALL regimes read intensity ~0.86-1.0 -> no separation. The RAW dd_frac retains resolution at deep DD.
-DERISK_CONVEX_DD_SCALE = 0.025  # tanh ramp width on (dd_frac - 0.06); 0.06->0.085 saturates
-DERISK_CONVEX_DD_MAX_REDUC = 0.85  # max fraction of the convex AMP removed at deep DD (-> k drops from 1.6 to ~1.09, near-linear)
+DERISK_CONVEX_DD_ONSET = 0.055  # raw portfolio-DD FRACTION (_port_dd_frac) above which cushion reduction engages. Onset 0.055 (5.5% DD) cleanly separates bull's 10.79% sharp-reversal DD + crash's 17.73% from sideways 4.18% / rally 5.36% / mixed 4.91% (all below 0.055 -> byte-identical). The prior onset 0.30 on the (1-_port_dd_atten) INTENSITY was wrong: _port_dd_atten saturates (tanh /0.032) by ~4% DD so ALL regimes read intensity ~0.86-1.0 -> no separation. The RAW dd_frac retains resolution at deep DD. branch step4b: 0.06->0.055 (broaden engagement; the new md-align gate protects crash bounce longs so broader is safe).
+DERISK_CONVEX_DD_SCALE = 0.020  # tanh ramp width on (dd_frac - 0.055); 0.055->0.075 saturates. branch step4b: 0.025->0.020 (broaden engagement; md-align gate protects crash).
+DERISK_CONVEX_DD_MAX_REDUC = 0.85  # max fraction of the convex AMP removed at deep DD (-> k drops from 1.6 to ~1.09, near-linear). step4 tested 1.0 (full linear) but over-cut crash bounce longs BEFORE the md-align gate was added; keep 0.85 (validated in step3) and rely on the md-align gate + broader onset for scaling.
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -4210,7 +4210,26 @@ class Strategy:
                         # AND restore bull stability (no modest-DD firing -> no bull modest-DD
                         # over-cut wobble).
                         if current_pos > 0:
-                            _dr_dd_reduce = 1.0 - DERISK_CONVEX_DD_MAX_REDUC * max(0.0, min(1.0, np.tanh((max(0.0, _port_dd_frac) - DERISK_CONVEX_DD_ONSET) / DERISK_CONVEX_DD_SCALE)))
+                            # BRANCH step4b: MULTI-DAY TREND-ALIGN gate on the DD-cushion-reduction.
+                            # Step4 (onset 0.055, scale 0.020, MAX_REDUC 1.0) regressed crash -0.0043
+                            # even with long-only gate: crash BOUNCE LONGS (dead-cat bounces that
+                            # continue up) are LONGS during crash's deep DD (dd_frac 0.177 > onset)
+                            # so they got the linear cushion reduction -> cut faster -> lost bounce
+                            # capture (the rally-reversion-miss wall, for crash bounce longs).
+                            # The bounce longs are COUNTER-TREND at the MULTI-DAY scale (ret_vlong<0
+                            # in the persistent downtrend, pos_dir=+1 -> product<0) even though the
+                            # 20-bar _dr_align>0 during the bounce. A multi-day-align gate
+                            # (ret_vlong*pos_dir>0) cleanly separates bull trend longs (ret_vlong>0,
+                            # aligned -> reduction fires) from crash bounce longs (ret_vlong<0,
+                            # counter-trend -> reduction OFF -> cushion byte-identical -> crash
+                            # restored). This is the SAME multi-day separator the keep uses for
+                            # _ts_supp tp-harvest suppression (validated). Continuous tanh /0.015
+                            # (fast-saturating, noise-robust); the reduction only engages for
+                            # trend-aligned-at-multi-day longs. Sideways/rally/mixed already spared
+                            # by the dd_frac onset 0.055; this adds crash-bounce-long protection.
+                            _dr_dd_md_align = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.015))
+                            _dr_dd_red_amt = DERISK_CONVEX_DD_MAX_REDUC * max(0.0, min(1.0, np.tanh((max(0.0, _port_dd_frac) - DERISK_CONVEX_DD_ONSET) / DERISK_CONVEX_DD_SCALE)))
+                            _dr_dd_reduce = 1.0 - _dr_dd_red_amt * _dr_dd_md_align
                         else:
                             _dr_dd_reduce = 1.0
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * _dr_dd_reduce * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak/DD-deep, up to ~1.6 trend-aligned+profit+slope-conf+no-DD
