@@ -475,6 +475,29 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
+# Exp2 (architectural, indep, this session): CROSS-SYMBOL BROAD-ADVERSE soft exit source
+# (7th MAX-fusion source). NEW cross-symbol data dep on the EXIT subsystem: every existing
+# soft source reads WITHIN-symbol data (slope/pp/time/ve/vc/be all read this symbol's own
+# price/pnl/volume); NONE reads what the OTHER symbols are doing. The May-2021 (bull) and
+# Luna/FTX (crash) drawdowns are BROAD-MARKET cascades where all 3 symbols draw down
+# TOGETHER: a losing long (bull) whose decline is idiosyncratic (other symbols rising) is a
+# single-symbol pullback that often recovers; a losing long whose decline is BROAD (other
+# symbols ALSO declining) is a cascade leg more likely to EXTEND -> exit sooner. The signal:
+# the mean of the OTHER symbols' 96-bar ret_vlong, signed adversely to the position
+# direction (-pos_dir*mean(other_rv) > 0 = broad adverse). Gated LOSS-ONLY (max(0,-_pnl_scale),
+# so winning trend continuations during a broad move are BYTE-IDENTICAL -- the cascade cut
+# targets losers, not the broad-move winners that drive rally/mixed Sharpe). Added to the
+# confirmation-amplified MAX fusion (line ~3798): on a cascade bar the within-symbol
+# slope-against pressure is the dominant term, and broad-adverse is the CONFIRMING 2nd term
+# -> the agreement amplifier adds it (the documented absorption-wall bypass: a 2nd term
+# agreeing with the dominant term is NO LONGER absorbed). Byte-identical when winning
+# (loss-gate 0), when the position is the only declining symbol (others rising -> broad_adv<0
+# -> tanh 0), or when no other symbols available. Portfolio-EQUITY-INVARIANT (reads other
+# symbols' PRICES, not portfolio equity -> avoids the mixed-coupling wall that capped prior
+# strong-regime levers). Direction-agnostic (longs declining broadly OR shorts declining
+# broadly both fire). Not a regime label.
+XA_PRESSURE_AMP = 0.45       # source magnitude at full broad-adverse + deep loss
+XA_PRESSURE_SCALE = 0.02     # broad-adverse 96-bar return at which the source saturates (0.02 = 2pct other-symbol decline = real broad move)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -864,12 +887,14 @@ class Strategy:
         _port_weak_persist_vals = []  # Exp6: per-symbol weak_persist for max-aggregation
         _port_rv_vals = []  # Exp8: per-symbol raw ret_vlong for max-aggregation deep-bear cap
         _port_vol_ratio_vals = []  # Exp1: per-symbol vol_ratio for max-aggregation vol-spike cap
+        _port_rv_by_sym = {}  # Exp2 (this session): per-symbol ret_vlong dict for cross-symbol broad-adverse exit source
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
             _phl2 = (bar_data[_psym].history["high"].values[-_pn:] + bar_data[_psym].history["low"].values[-_pn:]) / 2.0
             _p_rv = _fast_slope(np.log(_phl2)) * _pn
             _port_rv_vals.append(_p_rv)
+            _port_rv_by_sym[_psym] = _p_rv
             _pdvh = list(self._down_vlong_hist.get(_psym, []))
             _pdvh.append(1 if _p_rv < 0.0 else 0)
             if len(_pdvh) > PERSIST_WINDOW:
@@ -3778,6 +3803,20 @@ class Strategy:
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
+                # Exp2 (architectural, indep, this session): CROSS-SYMBOL BROAD-ADVERSE soft
+                # exit source (7th MAX source). See XA_PRESSURE_* constants (top of file).
+                # NEW cross-symbol data dep: reads the OTHER symbols' 96-bar ret_vlong
+                # (_port_rv_by_sym, computed top-level), signed adversely to the position
+                # direction. Loss-only gate (max(0,-_pnl_scale)) -> winning broad-move
+                # positions byte-identical. Reaches the cascade bars (all symbols declining
+                # together) that within-symbol sources miss; added via the confirmation-
+                # amplified MAX as a confirming 2nd term (absorption-wall bypass).
+                _xa_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _xa_others = [_rv for _s, _rv in _port_rv_by_sym.items() if _s != symbol]
+                _xa_broad = -_xa_pos_dir * (sum(_xa_others) / len(_xa_others)) if _xa_others else 0.0
+                _xa_loss_gate = max(0.0, -_pnl_scale)
+                _xa_pressure = XA_PRESSURE_AMP * max(0.0, np.tanh(_xa_broad / XA_PRESSURE_SCALE)) * _xa_loss_gate
+                _w_xa = 1.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -3792,6 +3831,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
+                    _w_xa * _xa_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
