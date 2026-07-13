@@ -312,6 +312,7 @@ PORT_DD_ENTRY_THRESH_MAX = 0.15   # max fractional raise of ENTRY_ACCUM_THRESH a
 # (rsi_trend_str) spares sideways (chop oscillations have alternating acceleration ->
 # smoothed out by the 4-bar window + the trend gate). Continuous tanh, no boundary.
 PORT_DD_ACCEL_ADMIT_MAX = 0.12   # max fractional raise of _strong_min at deep negative DD acceleration
+PORT_DD_ACCEL_SIZE_MAX = 0.12   # branch step11: max fractional SIZE shrink during cascade (complements admission tighten)
 PORT_DD_ACCEL_HALF = 4           # half-window for the two momentum estimates (8-bar history / 2)
 
 # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator parameters. The
@@ -792,6 +793,15 @@ class Strategy:
             # NOTE: trend-strength gate applied LATER at the _strong_min use site (rsi_trend_str
             # is per-symbol, computed downstream in the for-symbol loop; not in scope here).
             _port_dd_accel_tighten = 1.0 + PORT_DD_ACCEL_ADMIT_MAX * _still_falling * _accel_gate
+            # BRANCH step11: cascade SIZE shrink (complements the admission tighten). A
+            # SEPARATE lever on a DIFFERENT path: shrink first-bar ENTRY SIZE during cascade
+            # (smaller entries when the portfolio is cascading -> smaller realized losses ->
+            # lower DD). Distinct from the admission tighten (cuts trade COUNT) and from
+            # _port_dd_atten (DD LEVEL size shrink): this is the ACCELERATION size shrink.
+            # Applied in the entry target multiplication (composes with _port_dd_atten).
+            # Shrink-only (factor <= 1.0); byte-identical at peak/no-cascade (accel_gate 0 ->
+            # shrink 1.0). The dd_frac gate is applied at the use site (in the target).
+            _port_dd_accel_size_shrink = 1.0 - PORT_DD_ACCEL_SIZE_MAX * _still_falling * _accel_gate
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -2544,7 +2554,12 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    # BRANCH step11: apply cascade SIZE shrink (gated by high dd_frac to spare
+                    # sideways). Composes with _port_dd_atten (DD level) -- a DISTINCT lever
+                    # (acceleration, fires in the cascade phase before the level fully develops).
+                    _accel_size_gate_bull = max(0.0, min(1.0, np.tanh((_port_dd_frac - 0.01) / 0.04)))
+                    _accel_size_shrink_bull = 1.0 + (_port_dd_accel_size_shrink - 1.0) * _accel_size_gate_bull
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _accel_size_shrink_bull * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2563,7 +2578,9 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
+                    _accel_size_gate_bear = max(0.0, min(1.0, np.tanh((_port_dd_frac - 0.01) / 0.04)))
+                    _accel_size_shrink_bear = 1.0 + (_port_dd_accel_size_shrink - 1.0) * _accel_size_gate_bear
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _accel_size_shrink_bear * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
