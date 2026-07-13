@@ -3666,6 +3666,27 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # branch step2 (Exp3 follow-up): TREND-ALIGNED-WINNER attenuation on
+                # _ve_pressure (vol-of-price expansion exit). The opener (Exp3) ablated
+                # _vc_pressure (volume-climax) and showed rally +0.0022: the volume/vol-
+                # expansion exit sources read EXHAUSTION where rally's grinding uptrend has
+                # CONTINUATION (a vol-expansion bar in a persistent uptrend is a
+                # trend-confirmation bar, not a regime shift). _ve_pressure has NO trend-
+                # alignment gate (unlike _pp_pressure which has _ta_winner_gate). Apply the
+                # SAME validated _ta_winner_gate (already computed at line ~3252, with all
+                # 4 safety gates: giveback-mag, slope-against, long-only, up-persist) to
+                # attenuate _ve_pressure for trend-aligned in-profit winners. crash bounce
+                # longs are COUNTER-trend (ret_vlong<0 for a long in the downtrend ->
+                # ret_vlong*pos_dir<0 -> _ta_winner_gate 0 -> NOT spared -> _ve_pressure
+                # still harvests them -> crash protected, the documented load-bearing use).
+                # rally trend longs (ret_vlong>0, pos_dir+1, trend-aligned) ARE spared ->
+                # ride the vol-expansion continuation -> higher rally Sharpe (amplifies the
+                # opener's rally gain). Max 80pct attenuation (let a trend-confirmed winner
+                # keep up to 80pct of its peak through a vol-expansion bar). Byte-identical
+                # when _ta_winner_gate=0 (counter-trend, losers, crash bounces, sideways
+                # trend-aligned-but-flat). New cross-component data dep: _ve_pressure reads
+                # the trend-aligned-winner gate (was profit-side-weight only).
+                _ve_pressure = _ve_pressure * (1.0 - 0.80 * _ta_winner_gate)
                 # Exp3 (architectural simplification, this session): removed the dead
                 # _ep_pressure (early-profit-lock) and _ar_pressure (adverse-recovery)
                 # terms. Both were already zeroed (_ep_pressure=0.0 since the
