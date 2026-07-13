@@ -4248,7 +4248,29 @@ class Strategy:
                             _wa_bar_w = self._short_hold_latch_bar.get(symbol, -1)
                             if _wa_bar_w >= 0:
                                 _wa_ramp_w = max(0.0, min(1.0, (self.bar_count - _wa_bar_w) / WIN_FLOOR_RAMP_BARS))
-                                _de_floor = min(0.95, _de_floor + WIN_FLOOR_RAISE * _wa_ramp_w)
+                                # Branch step4: SLOPE-CONFIRMATION gate on the floor raise.
+                                # Step3 (ungated floor raise) made crash WORSE (Sh -0.067 from
+                                # -0.000016): crash's latched 'winning' shorts REVERSE often
+                                # (dead-cat bounces) -> keeping more size through the reversal
+                                # loses more. Gate the floor raise on the near-term slope STILL
+                                # CONFIRMING the short (_exit_slope<0 = downtrend ongoing) so
+                                # the floor raise (keep more size) only applies while the trend
+                                # CONTINUES; when slope weakens/reverses (bounce starting), the
+                                # gate -> 0 -> floor raise releases -> de-risk normally ->
+                                # HARVEST the winner before the reversal. This separates
+                                # trend-CONTINUING winners (keep size, the gain source) from
+                                # trend-REVERSING winners (harvest, the step3 loss source).
+                                # Uses the SAME _exit_slope (line 3222, 3-window mean, noise-
+                                # robust) and scale /0.0004 as _dr_slope_conf (line 4339). For
+                                # a short _dr_pos_dir=-1, slope-conf = tanh(-_exit_slope/0.0004)
+                                # -> ~1 when _exit_slope strongly negative (downtrend confirms
+                                # short), ~0 when flat/positive (reversal). Smooth (no
+                                # boundary); direction-agnostic principle (no regime label): a
+                                # confirmed winner keeps extra size only while the trend that
+                                # made it a winner is STILL ongoing. Byte-identical when slope
+                                # does not confirm (gate 0).
+                                _wa_slope_conf = max(0.0, np.tanh(-_exit_slope / 0.0004))
+                                _de_floor = min(0.95, _de_floor + WIN_FLOOR_RAISE * _wa_ramp_w * _wa_slope_conf)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
