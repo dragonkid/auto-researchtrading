@@ -1257,50 +1257,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp3 (architectural, indep, combination): 9th voter VWS (volume-weighted
-            # linreg slope) -- volume-confirmed trend. Prior-session-sanctioned orthogonal
-            # data-source voter (validated sub-keep +0.0015 at commit 6a029c78, long-only +
-            # ret_long>0 gate + weight 0.80, plateaued by a sideways leak -0.005 from bullish
-            # VWS in sideways trending stretches). This experiment re-adds the validated VWS
-            # form AND applies the prior-session-suggested NON-ONSET sideways separator: a
-            # 96-bar |ret_vlong| MAGNITUDE gate on the VWS signal. The separator (the prior
-            # session flagged it as the missing fix): sideways's trending stretches are
-            # TRANSIENT multi-day legs in a FLAT year (|ret_vlong| ~0.005 -> gate ~0, VWS
-            # suppressed), while mixed's bounce-phase longs are in a PERSISTENT multi-day
-            # DOWN context (|ret_vlong| ~0.03 -> gate ~0.96, VWS active) and bull/rally are
-            # in a persistent UP context (|ret_vlong| ~0.027 -> gate ~0.93, VWS active).
-            # The 96-bar magnitude dimension separates sideways (flat) from bull/rally/mixed
-            # (strong multi-day trend in either direction) -- the LOCAL 20-bar ret_long gate
-            # could not (sideways trending stretches have ret_long>0, same as mixed bounces
-            # and bull; any ret_long onset > 0 killed mixed). The 96-bar |ret_vlong| is a
-            # DIFFERENT timescale (multi-day vs 20-bar) and a magnitude (not onset) -- mixed
-            # |ret_vlong| ~0.03 is far above the /0.01 onset so mixed is spared. VWS signal:
-            # weighted OLS slope of log(HL2) over LINREG_PERIOD bars, weights = volume/mean
-            # (high-volume bars dominate, low-volume noise downweighted -> noise-robust:
-            # closes perturbed by AR(1), volume not; volume weighting downweights noise bars
-            # -> avoids DVP hard-sign stability wall). Signed bull (long-only clip max(0,raw))
-            # x ret_long>0 gate (onset 0, the validated crash protector: crash dead-cat
-            # bounces have ret_long>0 only briefly) x |ret_vlong| magnitude gate (the new
-            # sideways separator). Same /0.00010 sharpness scale as the 5th _lr_slope voter.
-            # Weight 0.80 (the validated step9 weight). New 9th data-source voter + new
-            # cross-timescale gating control flow (reads 96-bar |ret_vlong|, the multi-day
-            # magnitude axis, distinct from the 20-bar ret_long onset). Byte-identical when
-            # VWS signal <=0 (shorts/ct/declines) or |ret_vlong|<0.01 (sideways flat).
-            _vws_n = LINREG_PERIOD
-            _vws_hl2 = np.log((bd.history["high"].values[-_vws_n:] + bd.history["low"].values[-_vws_n:]) / 2.0)
-            _vws_vol = bd.history["volume"].values[-_vws_n:]
-            _vws_w = _vws_vol / max(_vws_vol.mean(), 1e-10)
-            _vws_x = np.arange(_vws_n, dtype=float)
-            _vws_wsum = max(_vws_w.sum(), 1e-10)
-            _vws_xm = (_vws_w * _vws_x).sum() / _vws_wsum
-            _vws_xd = _vws_x - _vws_xm
-            _vws_ym = (_vws_w * _vws_hl2).sum() / _vws_wsum
-            _vws_yd = _vws_hl2 - _vws_ym
-            _vws_slope = (_vws_w * _vws_xd * _vws_yd).sum() / max((_vws_w * _vws_xd * _vws_xd).sum(), 1e-20)
-            _vws_raw = (_vws_slope - 0.00015) / 0.00010  # same scale as 5th _lr_slope voter
-            _vws_retlong_gate = max(0.0, np.tanh(ret_long / 0.005))  # long-in-uptrend (onset 0, validated crash protector)
-            _vws_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.01) / 0.01)))  # 96-bar magnitude (sideways flat -> 0)
-            _vws_signal = max(0.0, _vws_raw) * _vws_retlong_gate * _vws_mag_gate  # long-only, double-gated
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1310,7 +1266,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _vws_signal / 1.0,  # 9th voter: VWS volume-weighted linreg slope (long-only, 96-bar magnitude gated)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1337,7 +1292,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.80)  # 8th: range/close efficiency voter; 9th: VWS volume-weighted linreg slope (validated weight 0.80, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -1359,13 +1314,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 9)
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
