@@ -4970,36 +4970,7 @@ class Strategy:
                     _ll_bar = self._loss_latch_bar.get(symbol, -1)
                     if _ll_bar >= 0:
                         _ll_ramp = max(0.0, min(1.0, (self.bar_count - _ll_bar) / LOSS_LATCH_RAMP_BARS))
-                        # Exp5 (architectural, indep): COUNTER-TREND-AT-MULTI-DAY-gated loss-
-                        # latch cap depth. Exp4 (direction gate: deeper cap for longs, baseline
-                        # for shorts) was BYTE-IDENTICAL -- the prior session rally +0.0035 from
-                        # the deeper cap (0.45->0.35 uniform) was on SHORT latched losers (rally
-                        # counter-trend shorts caught in the uptrend), NOT long losers; and the
-                        # crash stab crash was ALSO on SHORT losers (crash trend-aligned shorts).
-                        # Both effects are on shorts; the direction axis cannot decouple them.
-                        # The separator that DOES: the MULTI-DAY TREND-ALIGN. rally's latched
-                        # shorts are COUNTER-TREND-AT-MULTI-DAY (short in an UPtrend, ret_vlong>0
-                        # * pos_dir=-1 < 0); crash's latched shorts are TREND-ALIGNED-AT-MULTI-
-                        # DAY (short in a DOWNtrend, ret_vlong<0 * pos_dir=-1 > 0). Gate the
-                        # deeper cap (0.35) on COUNTER-TREND-AT-MULTI-DAY (ret_vlong*pos_dir<0):
-                        # rally's counter-trend shorts AND mixed's counter-trend longs (long in a
-                        # down year) get the deeper cap (smaller realized loss -> higher Sharpe);
-                        # crash's trend-aligned shorts AND bull's trend-aligned longs get the
-                        # baseline cap (0.45) -> crash stability byte-identical (the prior crash
-                        # stab crash was on trend-aligned shorts, EXCLUDED by this gate). The 4-bar
-                        # ramp is RETAINED (fast bite for rally's fast-exiting counter-trend
-                        # shorts -> the rally gain that the slower 8-bar ramp lost in the prior
-                        # session). ret_vlong*pos_dir is a continuous structural signal (used by
-                        # _ct_pos_str, _ta_align), NOT a regime label; the gate is a smooth tanh
-                        # on the multi-day counter-trend magnitude (/0.02, fast-saturating, noise-
-                        # robust -- 96-bar ret_vlong magnitude is AR(1)-stable, the Exp1 lesson).
-                        # New cross-component data dep: the loss-latch cap magnitude reads the
-                        # 96-bar counter-trend alignment (was a uniform constant). Byte-identical
-                        # for TREND-ALIGNED latched losers (crash/bull); COUNTER-TREND latched
-                        # losers (rally shorts, mixed longs) get the deeper cap.
-                        _ll_ct = max(0.0, np.tanh(-(ret_vlong * (1.0 if current_pos > 0 else -1.0)) / 0.02))  # ~1 counter-trend-at-multi-day, ~0 trend-aligned
-                        _ll_cap_target = LOSS_LATCH_CAP + (0.35 - LOSS_LATCH_CAP) * _ll_ct  # 0.45 trend-aligned, 0.35 counter-trend
-                        _ll_cap_now = 1.0 - (1.0 - _ll_cap_target) * _ll_ramp
+                        _ll_cap_now = 1.0 - (1.0 - LOSS_LATCH_CAP) * _ll_ramp
                         target = target * _ll_cap_now
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
