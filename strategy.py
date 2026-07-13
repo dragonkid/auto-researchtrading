@@ -565,9 +565,6 @@ class Strategy:
         # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
         # (slow-rise / fast-fall). Reset on full exit; default 0.0.
         self._local_hold_ext_ema = {}
-        # branch step9: per-symbol EMA of the breadth GATE (damps the AR(1) wobble in the
-        # pp-attenuation breadth gate that caused the bull stability dip). Reset on full exit.
-        self._bth_gate_ema = {}
         # Exp1 (architectural, indep): per-symbol LOSS-LATCH permanent target-size cap.
         # The structural mirror of the short-side profit-latch (_short_hold_cache) on the
         # LOSS side: a one-time 1.0 -> LOSS_LATCH_CAP flip when a held position CONFIRMS as
@@ -3361,20 +3358,7 @@ class Strategy:
                 # not a flip boundary under AR(1) noise. ~0 when broad trend disagrees with
                 # position, saturating to ~1 when all 3 symbols agree WITH the position.
                 _bth_pos_dir = 1.0 if current_pos > 0 else -1.0
-                # branch step10: require near-FULL cross-symbol agreement (|sum| close to 3)
-                # so the breadth gate fires ONLY on the cleanest broad legs (3-agreement),
-                # not 2-agreement. step9 (EMA on gate) was byte-identical to step4 -> the
-                # stability dip is NOT from gate wobble but from the gate changing too many
-                # trades' exit timing (2-agreement gives a high gate too -> fires broadly).
-                # Requiring near-full agreement (steep tanh on (|sum|-2)/0.3 -> ~0 at |sum|=2,
-                # ~1 at |sum|=3) restricts the gate to the cleanest broad legs -> changes
-                # FEWER trades' exit timing -> less stability disruption -> bull stability
-                # holds closer to 1.0 -> the +0.027 Sh gain is less discounted. Signed by
-                # pos_dir so the gate is ~0 when the broad trend disagrees with the position.
-                _bth_broad_gate_raw = max(0.0, np.tanh((_breadth_sign_sum * _bth_pos_dir - 2.0) / 0.3))
-                _prev_bg = self._bth_gate_ema.get(symbol, _bth_broad_gate_raw)
-                _bth_broad_gate = 0.3 * _bth_broad_gate_raw + 0.7 * _prev_bg
-                self._bth_gate_ema[symbol] = _bth_broad_gate
+                _bth_broad_gate = max(0.0, np.tanh(_breadth_sign_sum * _bth_pos_dir / 1.5))
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate * _bth_broad_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
@@ -5063,7 +5047,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._bth_gate_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
