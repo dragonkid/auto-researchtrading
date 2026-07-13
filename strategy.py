@@ -516,6 +516,18 @@ class Strategy:
         # are downweighted. New time-varying voter weighting based on each
         # voter's own track record.
         self._voter_sign_history = {}
+        # Branch step3: per-symbol EMA of the 9th VWS voter SIGNAL (temporal
+        # smoother on the volume-weighted slope signal). The VWS opener (Exp4) and
+        # step2 (trend-strength gate) gave mixed +0.017 + bull +0.001 BUT crashed
+        # crash stability to 0.523 (the VWS signal wobbles bar-to-bar under AR(1)
+        # close noise in crash's high-vol -> voter conf flips near threshold ->
+        # strong-sum wobbles -> entry/exit timing wobbles -> stab crash, the DVP-
+        # voter stab-fragility pattern). EMA-smoothing the VWS signal over a short
+        # span (3 bars) reduces the bar-to-bar wobble -> the voter conf is temporally
+        # stable under AR(1) -> stab preserved. The trend signal is preserved
+        # (mixed's directional phases last many bars -> a 3-bar EMA does not lag
+        # them). New per-symbol state; default 0.0; reset on full exit.
+        self._vws_ema = {}
         # Architectural: per-symbol entry-bar history (rolling list of bar_count
         # values at which entries opened). Used by trade-frequency self-regulator
         # to raise the strong-sum admission threshold when recent entry rate is
@@ -1287,7 +1299,16 @@ class Strategy:
             _vws_xd = _vws_x - _vws_xm
             _vws_yd = np.log(_vws_hl2) - _vws_ym
             _vws_slope = float(np.sum(_vws_w * _vws_xd * _vws_yd) / max(np.sum(_vws_w * _vws_xd * _vws_xd), 1e-20))
-            _vws_signal = (_vws_slope - 0.00015) / 0.00010  # same threshold/scale as 5th _lr_slope voter
+            _vws_signal_raw = (_vws_slope - 0.00015) / 0.00010  # same threshold/scale as 5th _lr_slope voter
+            # Branch step3: EMA-smooth the VWS signal (temporal noise-robustness). Span 3
+            # (alpha 0.5) smooths the bar-to-bar wobble that crashed crash stab (the VWS
+            # signal flips near threshold under AR(1) -> voter conf flips -> strong-sum
+            # wobbles -> stab crash). The 3-bar EMA preserves the trend signal (mixed's
+            # directional phases last many bars). Per-symbol state; default 0.0.
+            _vws_alpha = 2.0 / (3 + 1)
+            _vws_prev = self._vws_ema.get(symbol, _vws_signal_raw)
+            _vws_signal = _vws_alpha * _vws_signal_raw + (1.0 - _vws_alpha) * _vws_prev
+            self._vws_ema[symbol] = _vws_signal
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -5030,7 +5051,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._vws_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
