@@ -972,13 +972,7 @@ class Strategy:
         # 6-12% range of the existing admit tighteners).
         _port_trend_divergence = 0.0
         if len(_port_rv_vals) >= 2:
-            # branch step3: raise magnitude threshold 0.012 -> 0.022 so only DEEP-trending
-            # symbols count (noise-stable, well away from the 0.012 boundary that made
-            # crash's rotational-phase bars flip membership under AR(1) -> stab crash).
-            # Trades a smaller crash gain (fewer bars fire) for stability: the bars that
-            # remain are clearly-rotational deep-trend bars where the dominant direction
-            # is noise-stable.
-            _meaningful_rvs = [_rv for _rv in _port_rv_vals if abs(_rv) > 0.030]
+            _meaningful_rvs = [_rv for _rv in _port_rv_vals if abs(_rv) > 0.012]
             if len(_meaningful_rvs) >= 2:
                 _m_sum = sum(_meaningful_rvs)
                 _m_dir = 1.0 if _m_sum > 0 else (-1.0 if _m_sum < 0 else 0.0)
@@ -991,16 +985,8 @@ class Strategy:
                     _disagree_share = (sum(_disagree_mags) / sum(_all_mags)) if sum(_all_mags) > 1e-10 else 0.0
                     _mean_mag = sum(_all_mags) / len(_all_mags)
                     _port_trend_divergence = _disagree_share * max(0.0, min(1.0, np.tanh(_mean_mag / 0.02)))
-        # branch step5: reduce the tightener magnitude 0.08 -> 0.03 AND gate on high
-        # portfolio dd_frac (the validated portfolio-level separator from the DD-accel
-        # session that made the 2nd-derivative admission tighten stability-safe). The
-        # crash stab crash is from flipping noise-sensitive crash admission decisions;
-        # a SMALLER magnitude flips fewer marginal decisions, and the high-dd_frac gate
-        # confines firing to deep-DD bars (crash's cascade phase) where the portfolio
-        # equity state is a smooth noise-stable signal. Byte-identical when dd_frac<gate.
-        PORT_TREND_DIVERGENCE_MAX_TIGHTEN = 0.03
-        _div_ddfrac_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - 0.02) / 0.04)))
-        _port_trend_div_admit_tighten = 1.0 + PORT_TREND_DIVERGENCE_MAX_TIGHTEN * _port_trend_divergence * _div_ddfrac_gate
+        PORT_TREND_DIVERGENCE_MAX_TIGHTEN = 0.08
+        _port_trend_div_admit_tighten = 1.0 + PORT_TREND_DIVERGENCE_MAX_TIGHTEN * _port_trend_divergence
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
