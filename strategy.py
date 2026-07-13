@@ -565,6 +565,9 @@ class Strategy:
         # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
         # (slow-rise / fast-fall). Reset on full exit; default 0.0.
         self._local_hold_ext_ema = {}
+        # branch step9: per-symbol EMA of the breadth GATE (damps the AR(1) wobble in the
+        # pp-attenuation breadth gate that caused the bull stability dip). Reset on full exit.
+        self._bth_gate_ema = {}
         # Exp1 (architectural, indep): per-symbol LOSS-LATCH permanent target-size cap.
         # The structural mirror of the short-side profit-latch (_short_hold_cache) on the
         # LOSS side: a one-time 1.0 -> LOSS_LATCH_CAP flip when a held position CONFIRMS as
@@ -3358,7 +3361,24 @@ class Strategy:
                 # not a flip boundary under AR(1) noise. ~0 when broad trend disagrees with
                 # position, saturating to ~1 when all 3 symbols agree WITH the position.
                 _bth_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _bth_broad_gate = max(0.0, np.tanh(_breadth_sign_sum * _bth_pos_dir / 1.5))
+                # branch step9: EMA-SMOOTH the breadth gate to fix the bull stability dip
+                # (step4: bull stab 1.0->0.998, min_stab 0.7994 just below the 0.80 knee ->
+                # stab_factor discounts the bull +0.027 Sharpe gain). The raw breadth gate
+                # = tanh(breadth_sum*pos_dir/1.5) wobbles bar-to-bar under AR(1) noise as the
+                # 96-bar ret_vlong SIGN of one symbol flips (a 96-bar OLS crossing zero) ->
+                # the pp attenuation wobbles -> pp_pressure wobbles -> exit-timing noise ->
+                # stability dip. EMA-smooth the GATE (a slow low-pass, alpha 0.3) so the
+                # bar-to-bar gate wobble is damped -> pp attenuation is temporally stable
+                # under AR(1) -> bull stability recovers. The gate is a SMOOTH tanh of a
+                # 96-bar-averaged quantity (already low-frequency), so an EMA on it is a
+                # mild additional low-pass with negligible lag on the real broad-leg
+                # transitions (which unfold over many bars). Per-symbol state; reset on
+                # full exit. Byte-identical for the never-active population (gate ~0 ->
+                # EMA converges to ~0 -> no attenuation change).
+                _bth_broad_gate_raw = max(0.0, np.tanh(_breadth_sign_sum * _bth_pos_dir / 1.5))
+                _prev_bg = self._bth_gate_ema.get(symbol, _bth_broad_gate_raw)
+                _bth_broad_gate = 0.3 * _bth_broad_gate_raw + 0.7 * _prev_bg
+                self._bth_gate_ema[symbol] = _bth_broad_gate
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate * _bth_broad_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
@@ -5047,7 +5067,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._bth_gate_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
