@@ -3298,32 +3298,6 @@ class Strategy:
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
-                # Exp5 (architectural, indep, this session): DEEP-MAE SHUT gate on the pp-
-                # attenuation. NEW cross-component data dep: _ta_winner_gate reads the position's
-                # MAE (self._mae, the low-water pos_pnl since entry). The attenuation lets
-                # trend-aligned long winners RIDE giveback (ride the pullback, resume the
-                # uptrend). But a winner that went DEEPLY underwater (MAE >= ~0.5*stop) then
-                # recovered to profit is STRUCTURALLY FRAGILE: it already demonstrated a leg
-                # big enough to reach half the stop, so the "pullback" was a real adverse leg,
-                # not benign pullback noise -> more likely to re-test the MAE and give back the
-                # recovery -> letting it ride (suppressing pp) risks riding it into the stop.
-                # This is the May-2021 signature: longs that survived a deep May dip, recovered
-                # to profit, got their pp attenuated (ridden), then the cascade resumed -> hit
-                # stop -> DD. The DEEP-MAE gate TURNS OFF the attenuation for deep-MAE winners
-                # (let pp_pressure exit the fragile recovery before it re-tests) while KEEPING
-                # full attenuation for SHALLOW-MAE winners (clean advancers that never went far
-                # underwater = genuine gradual-pullback ride). Distinct from the prior
-                # winner-quality MFE-dominance (an OR-composed 2nd gate on a separate path,
-                # sub-noise +0.000084): this is a multiplicative SHUT gate ON the existing
-                # _ta_winner_gate (removes a keep-in force rather than adding one), and the
-                # reverse direction (deep-MAE turns OFF, not ON). Portfolio-invariant (reads
-                # the position's own MAE, not portfolio equity -> avoids the mixed-coupling
-                # wall). Long-only effective (attenuation is long-only via _long_only_gate
-                # above -> crash shorts byte-identical). Continuous tanh on (-mae)/(|stop|*0.2),
-                # 0 below 0.3*stop MAE, ~1 above 0.7*stop. Byte-identical when MAE shallow.
-                _deep_mae = -self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT)  # >=0, how deep underwater (stop units)
-                _deep_mae_shut = max(0.0, min(1.0, np.tanh((_deep_mae - 0.30) / 0.20)))  # 0 shallow-MAE, 1 deep-MAE
-                _ta_winner_gate = _ta_winner_gate * (1.0 - 0.85 * _deep_mae_shut)
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
