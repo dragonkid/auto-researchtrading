@@ -3049,6 +3049,31 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp2 (architectural indep, this session): CROSS-TIMESCALE SLOPE-AGREEMENT
+                # confirmation on the dominant loss-side exit source. The 3 OLS windows
+                # (12/16/22-bar) are already computed into _slopes but only their MEAN feeds
+                # _exit_slope; their AGREEMENT (sign-consistency across timescales) is a NEW
+                # cross-timescale data dep used nowhere. A slope-against confirmed by ALL 3
+                # windows (genuine multi-timescale reversal) is high-confidence -> boost
+                # pressure; a slope-against driven by ONE window (the others disagree) is
+                # noise-dominated -> attenuate. Multi-timescale CONFIRMATION as a noise
+                # filter on the dominant loss-side source (distinct from the MAX-fusion
+                # confirmation-amplifier which operates ACROSS sources; this operates WITHIN
+                # the slope source across its 3 constituent windows). Continuous agreement
+                # measure: fraction of windows whose slope-against sign matches the mean's
+                # sign, weighted by the mean's magnitude (so a near-zero mean -> low
+                # agreement -> attenuation regardless of signs; the |mean| gate prevents a
+                # tiny noisy mean with coincident signs from being "confirmed"). Pressure
+                # scaled by (1 - AGREE_ATTEN_NOISE * (1 - agree)) when agree<1 (reduction-only
+                # on disagreement; NO boost above 1.0 to preserve the calibrated ramp ceiling
+                # and avoid over-harvesting trend pullbacks where 2/3 windows transiently
+                # agree against). Byte-identical when all 3 windows agree AND the mean is
+                # clearly away from zero (agree=1 -> factor 1.0). Reduction-only (safe family).
+                _agree_mag_gate = max(0.0, min(1.0, abs(_exit_slope) / (0.5 * _slope_thresh)))
+                _agree_signs = sum(1 for _s in _slopes if (_s > 0) == (_exit_slope > 0)) / 3.0
+                _slope_agree = _agree_mag_gate * _agree_signs  # [0,1]
+                SLOPE_AGREE_ATTEN_NOISE = 0.30  # max 30% attenuation when fully disagreeing
+                _sl_slope_pressure = _sl_slope_pressure * (1.0 - SLOPE_AGREE_ATTEN_NOISE * (1.0 - _slope_agree))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
