@@ -1366,17 +1366,8 @@ class Strategy:
             # (long-only removes bearish shorts; crash bounces have moderate |ret_long|
             # so VWS modest). If mixed gain scales with weight -> composite may cross
             # +0.003; if sideways/crash leak scales too -> revert.
-            # Branch step10: weight 1.10 (boost bull more) + higher ret_long onset 0.02
-            # (reduce the sideways leak -0.005 from bullish VWS in sideways trending
-            # stretches |ret_long|~0.04-0.06). Step9 (weight 0.80, onset 0) gave bull +0.0017
-            # (scales with weight) + mixed +0.017 (saturated, gate-limited) + sideways -0.005.
-            # Higher weight 1.10 boosts bull further; the onset 0.02 (tanh((|ret_long|-0.02)/0.04))
-            # reduces VWS in the |ret_long|~0.04 sideways range (tanh(0.5)=0.46 vs onset-0
-            # tanh(1)=0.76) while keeping full activation at |ret_long|>0.06 (genuine trends,
-            # mixed directional phases). Crash stays safe (long-only + crash bounces moderate
-            # |ret_long|). Coordinated: more bull + less sideways leak -> toward +0.003 keep.
-            _vws_wt = 1.10 * max(0.0, np.tanh((abs(ret_long) - 0.02) / 0.04))  # branch step10: weight 1.10, onset 0.02 (less sideways leak, more bull)
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (weight 1.10, onset-0.02 ret_long gate + long-only)
+            _vws_wt = 0.80 * _trend_strength_w  # branch step9: higher weight 0.80 (was 0.55) to boost mixed gain
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (higher-weight trend-strength-gated + long-only)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
