@@ -4132,38 +4132,6 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
-                        # Exp2 (architectural, indep): LOSS-SIDE CONCAVE de-risk ramp gated on
-                        # VOL-EXPANSION (the sharp-reversal precursor). The keep's _dr_k above is
-                        # CONVEX in profit (k>1, holds winners longer); for LOSERS (_pnl_scale<0 ->
-                        # max(0,_pnl_scale)=0) _dr_k stays 1.0 (LINEAR ramp). A linear ramp trims
-                        # proportionally to exit_pressure, so during a SHARP REVERSAL (the
-                        # documented bull DD source: 3+ sessions confirmed the DD-source bars are
-                        # HELD positions riding the reversal at near-full size because the gradual
-                        # linear ramp trims too slowly) the unrealized loss accumulates FASTER than
-                        # the ramp trims -> the DD peak. A CONCAVE ramp for losers (k<1: _dr_x raised
-                        # to k rises faster in the early band -> _de_risk=1-that falls faster ->
-                        # position trims SOONER as pressure rises) cuts the loser faster at each
-                        # pressure level -> smaller unrealized loss during the reversal -> smaller
-                        # DD peak. DISTINCT from the walled exit-side floor-LOWERING (Exp1 prior
-                        # session: lowered _de_floor LEVEL, bull DD byte-identical -- the gradual ramp
-                        # SHAPE unchanged); this changes the ramp SHAPE (concave), not the floor
-                        # level. Gated on VOL-EXPANSION (_vol_expansion>1.3 = vol-of-vol spike =
-                        # the sharp-reversal signature) so calm/gradual pullbacks (linear ramp,
-                        # byte-identical) keep the calibrated gradual trim; only the sharp-reversal
-                        # bars get the faster cut. Loss-side only (_pnl_scale<0 -> winners
-                        # byte-identical, the keep's profit-convex cushion untouched). STABILITY-SAFE
-                        # by construction (mirrors keep 249d8241 TP-attenuation: the EXIT BAR where
-                        # target reaches 0 is at _dr_x=1 [pressure=thresh], UNCHANGED by the ramp
-                        # SHAPE; only intermediate-bar position VALUE changes -> exit-bar
-                        # distribution unchanged under noise -> stab preserved). Targets bull DD
-                        # (dd_gate~0.050 DD-crushed lever); crash byte-identical (crash losers exit
-                        # via SL before the ramp per prior loss-side-concave findings). New
-                        # cross-component data dep: de-risk ramp SHAPE reads vol-expansion x loss
-                        # jointly (keep reads profit x trend-align x slope-conf; this adds the
-                        # loss-side vol-expansion concave complement).
-                        if _pnl_scale < 0.0:
-                            _loss_concave_gate = max(0.0, min(1.0, np.tanh((_vol_expansion - 1.3) / 0.4)))
-                            _dr_k = _dr_k - 0.30 * _loss_concave_gate  # k: 1.0 -> 0.7 at deep vol-expansion (concave = faster cut)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
