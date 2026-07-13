@@ -238,6 +238,44 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Exp1 (this session, architectural indep): PORTFOLIO-DD-CONDITIONED de-risk convex cushion
+# reduction. Score decomposition (this session): at LEVERAGE_K=4, bull_2021's DD=10.79% sits
+# DEEP in the dd_gate exp penalty (dd_gate=0.050), so bull's score (0.021436) is almost
+# entirely crushed by DD. A bull DD reduction 10.79->9.0 would give +0.0076 composite (the
+# single largest lever, 9x more score-efficient than a bull Sharpe gain at this operating
+# point, because bull is deep in the exp tail where the general "Sharpe dominates DD" rule
+# inverts). All prior bull-DD-reduction paths are walled: entry-size climax shrink is size-
+# insensitive (DD accumulates on RIDE bars), held-position de-risk during DD misses rally
+# reversion (row-1015), time-pressure intensification breaches rally DD, giveback-tightening
+# maxed at the 0.50 stability cliff, tp-harvest relax maxed. The ONE untouched lever on the
+# de-risk ramp: the convex cushion EXPONENT _dr_k. The cushion (k>1) holds trend-aligned
+# WINNERS near full size through mid-range giveback noise; during a DEEP portfolio DD (the
+# May-2021 sharp reversal = bull's DD source), REDUCING k toward 1.0 makes the cushion LINEAR
+# so those winners de-risk FASTER through the giveback band -> locks the giveback before the
+# reversal deepens -> caps the DD from riding winners through deep pullbacks. CRITICAL safety
+# properties (distinct from every walled DD lever): (a) it acts ONLY on positions already in
+# the de-risk band (winning/giving-back, _exit_pressure in [_de_floor,1]*_exit_thresh) -> it
+# NEVER cuts an open/losing position at a loss -> cannot miss a reversion (avoids the row-1015
+# reversion-miss wall that killed held-position/time-pressure DD cuts on rally); (b) it changes
+# the de-risk ramp SHAPE (k exponent), NOT the pp giveback parameter (giveback-tightening,
+# maxed) NOR the _ts_supp suppression (tp-harvest relax, maxed) NOR the exit threshold (Exp4
+# exit_thresh lowering, already kept) -> distinct mechanism, additive to the maxed levers;
+# (c) byte-identical at portfolio peak (dd_frac=0 -> factor 1.0 -> _dr_k unchanged). Uses a
+# DEEP-DD onset (fires only at significant portfolio DD, not modest rally pullback DD) so it
+# spares rally's 5.36% grinding pullback DD while engaging bull's 10.79% sharp-reversal DD.
+# The deep-DD onset uses the validated asymmetric-EMA _port_dd_atten (noise-robust, leverage-
+# coupled 0.008*LEVERAGE_K scale); (1 - _port_dd_atten) in [0,1] is the portfolio-DD intensity.
+# Onset at 0.30 (= meaningful DD past the circuit-breaker's mild-DD band) so rally/mixed DD
+# (~0.45-0.55 intensity at their peaks) get partial reduction while bull/crash deep DD
+# (~0.7-0.9 intensity) get near-full linear cut. Continuous tanh (no boundary); reduction-only
+# (k only decreases toward 1.0, never increases); direction-agnostic general principle (no
+# regime label): a winning position being de-risked during a deep portfolio drawdown should
+# cut through the giveback faster, because the DD context signals the giveback is more likely
+# a real reversal than noise. NEW cross-component data dep: the de-risk ramp exponent now
+# reads the portfolio-DD state (was profit+trend-align+slope-conf only).
+DERISK_CONVEX_DD_ONSET = 0.30   # portfolio-DD intensity (1-_port_dd_atten) above which cushion reduction engages
+DERISK_CONVEX_DD_SCALE = 0.20   # tanh ramp width (0.30->0.50 saturates)
+DERISK_CONVEX_DD_MAX_REDUC = 0.85  # max fraction of the convex AMP removed at deep DD (-> k drops from 1.6 to ~1.09, near-linear)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -4131,7 +4169,16 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp1 (architectural indep): PORTFOLIO-DD-CONDITIONED cushion reduction.
+                        # During deep portfolio DD (1-_port_dd_atten high), reduce the convex AMP
+                        # toward linear (k->1) so trend-aligned winners de-risk FASTER through the
+                        # giveback band -> lock giveback before sharp reversals deepen -> cap bull's
+                        # deep-DD. See DERISK_CONVEX_DD_* header for the full mechanism + safety
+                        # properties. Byte-identical at portfolio peak (1-_port_dd_atten=0 ->
+                        # _dr_dd_reduce=1.0 -> _dr_k unchanged). Uses the same asymmetric-EMA
+                        # _port_dd_atten (noise-robust, leverage-coupled). Continuous tanh.
+                        _dr_dd_reduce = 1.0 - DERISK_CONVEX_DD_MAX_REDUC * max(0.0, min(1.0, np.tanh((max(0.0, 1.0 - _port_dd_atten) - DERISK_CONVEX_DD_ONSET) / DERISK_CONVEX_DD_SCALE)))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * _dr_dd_reduce * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak/DD-deep, up to ~1.6 trend-aligned+profit+slope-conf+no-DD
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
