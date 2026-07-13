@@ -136,59 +136,8 @@ SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) 
 LOSS_LATCH_MAE_ONSET = 0.80   # branch step12: revert to 0.80 (step11 onset 0.60 crashed mixed stab -- mixeds shallow whipsaw dips reach -0.6*stop)
 LOSS_LATCH_STILL_LOSS = 0.15  # branch step12: lower still-loss gate 0.30->0.15 (latch fires on positions still modestly losing after sustained deep MAE, expanding population to bounced-off-MAE-but-still-losing losers)
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
-LOSS_LATCH_CAP = 0.35         # branch step13: deeper cap 0.45->0.35 (step11 gave rally +0.0035 + crash Sh +0.0002 BUT crash stab crashed to 0.524)
-LOSS_LATCH_RAMP_BARS = 8     # branch step13: slower ramp 4->8 bars for the deeper cap (the keep 11e75515 lesson: the 4-bar gradual ramp fixed the discrete cap stab crash; a deeper cap produces a larger per-bar position-value change -> a slower ramp absorbs it -> may keep crash stab)
-# Branch opener (architectural): WINNER-AMPLIFICATION -- the structural MIRROR of the
-# loss-latch on the WINNING side, applied to position target SIZE. The loss-latch (keep
-# 11e75515) CAPS confirmed deep LOSERS (smaller realized loss -> crash/sideways Sharpe up).
-# This AMPLIFIES confirmed deep WINNERS that are trend-aligned (larger realized gain on the
-# eventual soft-exit/peak-harvest -> higher APY at preserved Sharpe for 100pct-WR trend
-# populations). Gated on the EXISTING profit-latch _short_hold_cache (set to -1.0 at short
-# entry for trend-aligned deep-downtrend shorts, latched to SHORT_HOLD_CACHED_EXT when
-# pos_pnl confirms positive -- the validated "confirmed winning trend-aligned short"
-# selector the keep 249d8241 profit-latch already uses). So the amplification fires ONLY
-# on a position that has CONFIRMED winner status (pos_pnl>0.5*|stop|) AND was trend-aligned
-# at entry -- it CANNOT amplify crash's losing shorts (the Exp2 1862be24 failure mode: an
-# ENTRY boost pre-confirmation amplified the losing sub-population). This is the
-# orthogonal crash-Sharpe lever the keep 11e75515 explicitly flagged: the loss-latch capped
-# crash losers; this is the complementary mechanism on the winning side. Distinct from the
-# profit-latch hold-EXTENSION (which extends TIME via _time_pressure attenuation, line
-# 3532): this amplifies SIZE (target magnitude). GRADUAL RAMP-IN (same stability-safe
-# lesson as the loss-latch keep 11e75515 step6): the amplification ramps from 1.0 (no
-# effect) to WIN_AMP_MULT over WIN_AMP_RAMP_BARS after the profit-latch fires, so a +-1 bar
-# latch-bar shift produces only a SMALL position-value diff -> stability preserved (a
-# discrete jump would crash stab, same lesson as loss-latch step1/step4). Applied to
-# SAME-SIGN held positions ONLY (full exits/flips exempt) before emission. Amplify floor
-# 1.0 (never shrinks); byte-identical when not latched / longs / non-trend-aligned shorts.
-# Bounded small magnitude (WIN_AMP_MULT 1.12 = max +12pct target) so the trend-reversal
-# downside is bounded (a latched winner that reverses loses at most 12pct more size).
-# Branch step3 (pivot from target-amp): WINNER de-risk FLOOR RAISE -- the stability-safe
-# size-amplification for latched winning trend-aligned shorts. The opener + step2 applied a
-# TARGET amplification (multiply target by up to 1.12/1.06) which pushed crash Sharpe
-# POSITIVE (the keep 11e75515 goal) but CRASHED crash stability (1.0->0.50): a target amp
-# raises target above the held position -> NEW pyramid-up resize signals -> each new
-# buy-more trade is noise-sensitive (emit-threshold crossing wobbles under AR(1)) ->
-# cumulative tracking error over crash's long DD -> stab crashed. Halving magnitude +
-# doubling ramp (step2) barely moved stab (0.5026->0.5186) -> the stab crash is STRUCTURAL
-# (new trades), not ramp-speed. THIS step replaces the target-amp with a DE-RISK FLOOR
-# RAISE: raise _de_floor (the lower bound of the graduated partial-exit ramp, line 4119/
-# 4207) for latched winning shorts so the position de-risks to a HIGHER floor (keeps more
-# size during the exit ramp) -> larger realized gain on the eventual soft-exit -> higher
-# crash APY/Sharpe, with NO new pyramid-up trades (only changes how far the existing de-risk
-# ramp reduces). This is the stability-safe analog of the existing profit-latch
-# time-pressure attenuation (line 3532, extends hold TIME without new trades): this extends
-# hold SIZE without new trades. GRADUAL ramp from the profit-latch bar (reuses
-# _short_hold_latch_bar state from the opener): floor raise ramps 0 -> WIN_FLOOR_RAISE over
-# WIN_FLOOR_RAMP_BARS so a +-1 bar latch-bar shift -> small floor diff -> stab preserved.
-# Gated on _short_hold_cache latched (confirmed winning trend-aligned short, the validated
-# profit-latch selector). Byte-identical when not latched / longs / non-trend-aligned
-# shorts / loss-side (_pnl_scale<0 -> the profit floor 0.55 is the only floor this raises;
-# the loss floor 0.85 is untouched so losers still exit fast). Reduction-safe (raising the
-# floor KEEPS more size, never creates new size; the position can only stay the same or
-# de-risk less, never grow beyond its original target).
-WIN_CONVEX_BOOST = 0.0      # branch step11: DISABLED (set to 0) -- isolate the deeper loss-latch cap. The convexity boost (step7-10) was near-crash-neutral-slightly-negative and added nothing to rally; dropping it isolates the rally +0.0035 gain from the deeper loss-latch cap (0.45->0.35).
-WIN_FLOOR_RAMP_BARS = 4     # bars to ramp the convexity boost from 0 -> WIN_CONVEX_BOOST after profit-latch fires (gradual = stab-safe)
-
+LOSS_LATCH_RAMP_BARS = 4     # branch step10: revert to 4 (step9 2-bar crashed stab 0.081; 4 bars is the stab-safe minimum)
+LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab-safe 4-bar ramp (push composite above +0.003)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -644,14 +593,6 @@ class Strategy:
         # -> zero per-bar wobble -> stability preserved). See SHORT_HOLD_CACHED_EXT.
         # Reset on full exit; set to 0.0 at long entry; default 0.0 (no effect).
         self._short_hold_cache = {}
-        # Branch opener: per-symbol bar_count at which the profit-latch FIRED (the
-        # _short_hold_cache transitioned -1.0 -> SHORT_HOLD_CACHED_EXT on confirmed winning
-        # short). Used to RAMP the WINNER-AMPLIFICATION target multiplier IN gradually from
-        # 1.0 (no effect) to WIN_AMP_MULT over WIN_AMP_RAMP_BARS (the stability-safe lesson
-        # from the loss-latch keep 11e75515 step6: gradual application absorbs the +-1 bar
-        # latch-bar wobble -> stab preserved; a discrete jump would crash stab). -1 sentinel
-        # = not latched. Reset on full exit; cleared at long entry.
-        self._short_hold_latch_bar = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2596,7 +2537,6 @@ class Strategy:
                     # fresh long must not inherit it). Application is gated on
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
-                    self._short_hold_latch_bar.pop(symbol, None)  # branch opener: clear win-amp latch bar at long entry
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
@@ -3525,9 +3465,6 @@ class Strategy:
                     if pos_pnl > 0.5 * abs(STOP_LOSS_PCT):  # confirmed winning short (profit latch; step11/14 showed latch threshold 0.5/1.0/2.0 all byte-identical, keep 0.5x = earlier latch)
                         _short_hold_cached = SHORT_HOLD_CACHED_EXT
                         self._short_hold_cache[symbol] = _short_hold_cached  # LATCH (stays >0)
-                        # Branch opener: record the bar the profit-latch fired so the
-                        # WINNER-AMPLIFICATION can ramp in gradually from this bar.
-                        self._short_hold_latch_bar[symbol] = self.bar_count
                     else:
                         _short_hold_cached = 0.0  # not yet latched
                 # Branch step15: TIME-PRESSURE OUTPUT ATTENUATION (replaces the _max_hold
@@ -4310,45 +4247,6 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
-                        # Branch step7: CONVEXITY BOOST for latched winning shorts. Step3-6
-                        # showed the de-risk FLOOR change (both directions) makes crash worse
-                        # (floor RAISE -> bigger reversal giveback Sh -0.067; floor LOWER ->
-                        # cuts trend capture Sh -0.098). The opener target-amp got crash Sh
-                        # +0.040 but crashed stab (new pyramid trades). The ONE remaining
-                        # no-new-trade size lever is the de-risk ramp SHAPE via _dr_k (the
-                        # convex cushion exponent). Raising _dr_k for a latched winning short
-                        # makes the de-risk ramp MORE CONVEX: holds near-full size longer
-                        # through moderate giveback (the existing cushion) then CUTS faster
-                        # at the end of the ramp. This is a RAMP-SLOPE change (like the
-                        # profit-latch time_pressure attenuation, which is stab-safe because it
-                        # changes the ramp slope not the exit bar), NOT a floor shift (step3/6)
-                        # and NOT a target amp (opener). So: no new trades, no floor shift, just
-                        # a more-convex exit ramp for confirmed winning shorts -> the winner
-                        # rides small giveback (convex holds near full) but de-risks sharply
-                        # once the ramp engages (k>1 -> the reduction steepens at the end),
-                        # capturing the trend run AND cutting before deep reversal. Gated on
-                        # _short_hold_cache latched (confirmed winning trend-aligned short) +
-                        # the existing _dr_slope_conf (slope still confirming -- the convexity
-                        # boost only applies while the downtrend continues; slope-weak -> gate
-                        # 0 -> baseline _dr_k -> linear cut on reversal). GRADUAL ramp from
-                        # the profit-latch bar (reuses _short_hold_latch_bar state). Clamp
-                        # _dr_k <= 3.0 so the ramp stays finite. Byte-identical when not
-                        # latched / longs / non-trend-aligned / loss-side / slope-weak.
-                        if current_pos < 0:
-                            _shc_k = self._short_hold_cache.get(symbol, 0.0)
-                            if _shc_k > 0.5:  # profit-latch fired (latched winning short)
-                                _wa_bar_k = self._short_hold_latch_bar.get(symbol, -1)
-                                # branch step8: gate the convex boost on DEEP profit
-                                # (_pnl_scale>0.5 = pos_pnl > ~0.5*|stop| deep). A near-breakeven
-                                # winner (_pnl_scale~0) is most reversal-prone (a small bounce
-                                # flips it to loss); a DEEP winner is more likely a real ongoing
-                                # trend run. Step7 (boost on any profit) made crash -0.034
-                                # because it over-held near-breakeven winners through reversal.
-                                # Gating on deep profit confines the over-hold to strong winners.
-                                if _wa_bar_k >= 0 and _pnl_scale > 0.5:
-                                    _wa_ramp_k = max(0.0, min(1.0, (self.bar_count - _wa_bar_k) / WIN_FLOOR_RAMP_BARS))
-                                    _wa_deep = max(0.0, min(1.0, (_pnl_scale - 0.5) / 0.5))  # 0 at 0.5 profit, 1 at 1.0+ deep profit
-                                    _dr_k = min(3.0, _dr_k + WIN_CONVEX_BOOST * _wa_ramp_k * _dr_slope_conf * _wa_deep)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
@@ -5087,7 +4985,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._short_hold_latch_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -5105,9 +5003,6 @@ class Strategy:
                     self._loss_latch.pop(symbol, None)
                     self._loss_latch_elig_bar.pop(symbol, None)
                     self._loss_latch_bar.pop(symbol, None)
-                    # Branch opener: clear the win-amp latch bar on any new entry / flip
-                    # so the new position's win-amp ramps from its own profit-latch bar.
-                    self._short_hold_latch_bar.pop(symbol, None)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
