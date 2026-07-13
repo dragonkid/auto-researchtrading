@@ -1357,8 +1357,17 @@ class Strategy:
             # the SAME pattern as the VWAP chop-dampener above (line ~1320). Crash has high
             # trend-strength so this gate does NOT spare crash -- a direction-specific gate
             # for crash is the next step if crash still regresses.
-            _vws_wt = 0.55 * _trend_strength_w  # 0 in chop (sideways spared), 0.55 in strong trend
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (trend-strength-gated, spared in chop)
+            # Branch step9: HIGHER VWS weight magnitude (0.55 -> 0.80) to boost the mixed
+            # gain. Step7 (long-only + ret_long gate, weight 0.55) gave mixed +0.017 (Sh
+            # 0.735) but composite +0.001 (below +0.003 keep). The opener (no gate, weight
+            # 0.55) gave mixed +0.156 (Sh 0.957) -- the gating reduced mixed's VWS
+            # contribution. A HIGHER weight (0.80) recovers more mixed gain while the
+            # ret_long gate + long-only protect sideways (gate off in chop) and crash
+            # (long-only removes bearish shorts; crash bounces have moderate |ret_long|
+            # so VWS modest). If mixed gain scales with weight -> composite may cross
+            # +0.003; if sideways/crash leak scales too -> revert.
+            _vws_wt = 0.80 * _trend_strength_w  # branch step9: higher weight 0.80 (was 0.55) to boost mixed gain
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (higher-weight trend-strength-gated + long-only)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
