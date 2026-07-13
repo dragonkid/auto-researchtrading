@@ -1332,8 +1332,28 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Exp2 (architectural, indep, this session): VOL-ADAPTIVE strong-sum ramp
+            # exponent. The baseline quintic ramp (c-0.5)^5 * 97.66 normalizes a voter at
+            # conf=0.9 (the clip ceiling) to contribute ~1.0; voters near 0.5 contribute ~0.
+            # This makes admission dominated by 1-2 strongly-firing voters (binary-ish). In
+            # HIGH-VOL regimes (crash/bull, vol_ratio high) the voter signals are noisier
+            # (a single voter crossing 0.5->0.6 on noise flips the admission). A STEEPER ramp
+            # (higher exponent) makes marginal-conviction voters contribute EVEN LESS so
+            # only genuinely-saturated voters (conf near 0.9) drive admission -> filters
+            # noise-driven marginal entries in high-vol -> fewer losing trades in crash/bull
+            # -> higher Sharpe. In calm/low-vol keep the baseline quintic (byte-identical).
+            # NEW cross-component data dep: the voter-aggregation ramp SHAPE (exponent) now
+            # reads vol_ratio (was a fixed constant). New control flow on the core
+            # aggregation function. The normalization 1/0.4^k preserves the max-at-0.9 = 1.0
+            # property regardless of k (so the absolute strong-sum scale is invariant to k;
+            # only the RELATIVE weighting of marginal vs saturated voters changes).
+            # Continuous tanh ramp on (vol_ratio-1.0)/0.4 -> 0 calm (k=5), ~0.5 high-vol
+            # (k up to 6.5). Direction-agnostic (vol_ratio is unsigned). Byte-identical at
+            # vol_ratio=1.0 (the quintic 5).
+            _strong_k = 5.0 + 1.5 * max(0.0, min(1.0, np.tanh((vol_ratio - 1.0) / 0.4)))
+            _strong_norm = (0.4 ** _strong_k)  # normalization so conf 0.9 -> contribution 1.0
+            _bull_strong = sum(max(0.0, (c - 0.5) ** _strong_k / _strong_norm) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** _strong_k / _strong_norm) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
