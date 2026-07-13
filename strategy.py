@@ -273,8 +273,8 @@ DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold thr
 # cut through the giveback faster, because the DD context signals the giveback is more likely
 # a real reversal than noise. NEW cross-component data dep: the de-risk ramp exponent now
 # reads the portfolio-DD state (was profit+trend-align+slope-conf only).
-DERISK_CONVEX_DD_ONSET = 0.30   # portfolio-DD intensity (1-_port_dd_atten) above which cushion reduction engages
-DERISK_CONVEX_DD_SCALE = 0.20   # tanh ramp width (0.30->0.50 saturates)
+DERISK_CONVEX_DD_ONSET = 0.06   # raw portfolio-DD FRACTION (_port_dd_frac) above which cushion reduction engages. Onset 0.06 (6% DD) cleanly separates bull's 10.79% sharp-reversal DD + crash's 17.73% from sideways 4.18% / rally 5.36% / mixed 4.91% (all below onset -> byte-identical). The prior onset 0.30 on the (1-_port_dd_atten) INTENSITY was wrong: _port_dd_atten saturates (tanh /0.032) by ~4% DD so ALL regimes read intensity ~0.86-1.0 -> no separation. The RAW dd_frac retains resolution at deep DD.
+DERISK_CONVEX_DD_SCALE = 0.025  # tanh ramp width on (dd_frac - 0.06); 0.06->0.085 saturates
 DERISK_CONVEX_DD_MAX_REDUC = 0.85  # max fraction of the convex AMP removed at deep DD (-> k drops from 1.6 to ~1.09, near-linear)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
@@ -4192,8 +4192,25 @@ class Strategy:
                         # while longs get the faster giveback lock during sharp-reversal DD. For
                         # shorts _dr_dd_reduce=1.0 (cushion byte-identical to baseline) -> crash
                         # restored; longs keep the DD-conditioned reduction -> bull gain preserved.
+                        # BRANCH step3: switch the DD signal from the saturated (1-_port_dd_atten)
+                        # INTENSITY (onset 0.30) to the RAW _port_dd_frac with onset 0.06. Step2
+                        # (long-only, onset 0.30 on intensity) still regressed sideways/rally/mixed
+                        # (-0.009/-0.005/-0.015) AND bull stab dropped to 0.965 (min_stab 0.789
+                        # below 0.80 knee): the (1-_port_dd_atten) intensity uses the circuit-
+                        # breaker's tanh/_port_dd_frac/(0.008*LEVERAGE_K=0.032) scale which
+                        # SATURATES by ~4% DD (tanh(0.04/0.032)=0.86) -> sideways 4.18%, rally
+                        # 5.36%, mixed 4.91% ALL read intensity ~0.86-0.93 -> the onset 0.30 fires
+                        # on ALL of them (no separation), over-cutting their modest-DD longs. The
+                        # RAW _port_dd_frac (EMA-smoothed equity, the existing var) retains
+                        # resolution at deep DD: onset 0.06 fires ONLY at bull 10.79% + crash
+                        # 17.73% (both >0.06) while sideways 4.18% / rally 5.36% / mixed 4.91% are
+                        # below onset -> byte-identical (reduce=0). With long-only gate, crash
+                        # shorts are byte-identical too -> ONLY bull longs (the target) get the
+                        # cushion reduction. This should recover sideways/rally/mixed to baseline
+                        # AND restore bull stability (no modest-DD firing -> no bull modest-DD
+                        # over-cut wobble).
                         if current_pos > 0:
-                            _dr_dd_reduce = 1.0 - DERISK_CONVEX_DD_MAX_REDUC * max(0.0, min(1.0, np.tanh((max(0.0, 1.0 - _port_dd_atten) - DERISK_CONVEX_DD_ONSET) / DERISK_CONVEX_DD_SCALE)))
+                            _dr_dd_reduce = 1.0 - DERISK_CONVEX_DD_MAX_REDUC * max(0.0, min(1.0, np.tanh((max(0.0, _port_dd_frac) - DERISK_CONVEX_DD_ONSET) / DERISK_CONVEX_DD_SCALE)))
                         else:
                             _dr_dd_reduce = 1.0
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * _dr_dd_reduce * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak/DD-deep, up to ~1.6 trend-aligned+profit+slope-conf+no-DD
