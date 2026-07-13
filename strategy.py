@@ -3787,15 +3787,24 @@ class Strategy:
                 _bth_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _bth_trend_align = max(0.0, np.tanh(ret_vlong * _bth_pos_dir / 0.04))  # ~0 ct, ~1 trend-aligned (multi-day /0.04 scale)
                 _bth_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
-                # Base pressure fires for in-profit trend-aligned winners (a small constant
-                # harvest nudge so a broad-leg winner with no other pressure source still
-                # gets a mild trailing pull); the breadth filter SUBTRACTS from it. The
-                # aligned-with-breadth-direction gate (_breadth_dir==pos_dir) ensures the
-                # filter only spares winners moving WITH the confirmed broad trend (a
-                # trend-aligned long during a broad DOWN leg is not spared).
+                # branch step2: INVERT the source shape. The opener used a 0.40 BASE that
+                # fired for ALL in-profit trend-aligned winners (subtracted-down by breadth
+                # during broad legs). That base LEAKED to sideways/mixed local-bounce
+                # winners (which have ret_vlong*pos_dir>0 at the bounce but NO broad
+                # confirmation) -> premature harvest -> sideways -0.0055, mixed -0.0129.
+                # The bull +0.038 Sharpe gain came from the source being ~0 during bull's
+                # BROAD uptrend legs (breadth attenuated the base). Inverting the shape
+                # preserves that: the source now fires ONLY when the leg is ISOLATED
+                # (breadth filter LOW), harvesting the reversion-prone bounce; it is ~0
+                # during confirmed broad legs (let broad-leg winners run -- the bull gain).
+                # The aligned-with-breadth-direction gate (_breadth_dir==pos_dir) ensures
+                # the source only treats a leg as "broad confirmed" when the broad trend
+                # moves WITH the position (a trend-aligned long during a broad DOWN leg is
+                # isolated, not spared). (1 - breadth*dir_gate) is HIGH for isolated legs
+                # -> pressure fires; ~0 for broad-with-position legs -> no pressure.
                 _bth_dir_gate = 1.0 if (_breadth_dir > 0 and current_pos > 0) or (_breadth_dir < 0 and current_pos < 0) else 0.0
-                _bth_base = 0.40 * _bth_profit * _bth_trend_align
-                _bth_pressure = _bth_base * (1.0 - 0.85 * _breadth_filter * _bth_dir_gate)  # 0.85 max attenuation during broad leg
+                _bth_isolated = 1.0 - _breadth_filter * _bth_dir_gate  # ~1 isolated, ~0 broad-with-position
+                _bth_pressure = 0.40 * _bth_profit * _bth_trend_align * _bth_isolated
                 _w_bth = 1.0  # profit-sign-neutral weight (pressure already profit-gated to ~0 for losers)
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
