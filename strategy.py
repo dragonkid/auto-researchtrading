@@ -3531,43 +3531,6 @@ class Strategy:
                 SHORT_HOLD_TP_ATTEN = 0.50  # branch step16 reverted: 0.60 gave +0.003668 (less than 0.50's +0.004013); 0.50 is the sweet spot (over-attenuating lets shorts run too long -> give back gains)
                 if _short_hold_cached > 0.0:
                     _time_pressure = _time_pressure * (1.0 - SHORT_HOLD_TP_ATTEN)
-                # Exp2 (architectural, indep): LONG-SIDE broad-magnitude time-pressure
-                # attenuation -- the long-side analog of the crash-short profit-latch above.
-                # The prior session's sign-breadth time-pressure attenuation (step12) CRASHED
-                # sideways (Sh ~0->-1.317): sideways 2023 has a broad RECOVERY DRIFT (BTC/ETH/SOL
-                # all drift up together -> breadth_sum +3 -> gate HIGH -> sideways recovery
-                # longs rode longer -> bled). The prior session flagged the MAGNITUDE dimension
-                # as the missing cleaner separator: sideways's broad drift is SHALLOW (min
-                # agreeing |ret_vlong| ~0.005 -> tanh/0.02 ~0.24, LOW) while bull/rally strong
-                # trends are DEEP (~0.027 -> ~0.93, HIGH). This experiment gates the long-side
-                # time-pressure attenuation on _port_trend_mag_agree (cross-symbol min-magnitude
-                # among agreeing ret_vlong, top-level line ~979), direction-aligned for longs
-                # (broad uptrend _port_trend_mag_dir>0 & current_pos>0). Mechanism: reduce
-                # _time_pressure for in-profit trend-aligned longs during a confirmed STRONG
-                # broad trend so they de-risk more GRADUALLY (run longer via reduced pressure,
-                # NOT a later exit bar -> no exit-bar SHIFT -> no stability cliff, the validated
-                # short-side lesson). Bull/rally long winners ride the broad uptrend longer;
-                # sideways's shallow recovery drift gets gate LOW (~0.24 -> mild attenuation
-                # only) -- the magnitude dimension is the separator the sign-breadth lacked.
-                # NO _max_hold extension (the prior session's step7 breadth _max_hold extension
-                # crashed bull at the 2021 top rollover -- exit-bar shift; this attenuation does
-                # NOT shift the exit bar, so the rollover is caught by pp/slope/stop pressures).
-                # Gated: long-only (_ta_long_gate) + in-profit (_ta_profit_gate, spares losers)
-                # + 96-bar trend-aligned (_ta_align) + broad-magnitude-HIGH direction-aligned
-                # (_broad_mag_gate). Byte-identical for shorts (long gate 0), ct longs (align 0),
-                # losers (profit gate 0), isolated/shallow bounces (_port_trend_mag_agree=0 or
-                # <2 agreeing -> gate 0). New cross-component data dep on the time-pressure
-                # subsystem (reads top-level cross-symbol magnitude-agreement, currently used
-                # ONLY for admission line ~1418). Conservative attenuation 0.40 (< short-side
-                # 0.50; longs have upside continuation risk shorts lack). Direction-agnostic
-                # general principle (no regime label): a confirmed strong broad trend lets
-                # in-profit trend-aligned winners de-risk more gradually.
-                _broad_mag_long = _port_trend_mag_agree if _port_trend_mag_dir > 0.0 and current_pos > 0 else 0.0
-                _broad_mag_gate = max(0.0, min(1.0, np.tanh(_broad_mag_long / 0.02)))
-                _long_broad_tp_gate = _ta_long_gate * _ta_align * _ta_profit_gate * _broad_mag_gate
-                LONG_BROAD_TP_ATTEN = 0.40
-                if _long_broad_tp_gate > 0.0:
-                    _time_pressure = _time_pressure * (1.0 - LONG_BROAD_TP_ATTEN * _long_broad_tp_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
