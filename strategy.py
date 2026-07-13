@@ -136,8 +136,8 @@ SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) 
 LOSS_LATCH_MAE_ONSET = 0.80   # MAE/|stop| depth at which the latch becomes eligible (deep underwater: MAE <= -0.8*stop)
 LOSS_LATCH_STILL_LOSS = 0.30  # pos_pnl/|stop| still-negative threshold: latch fires only while STILL clearly losing (pos_pnl < -0.3*stop), NOT on a position that already recovered off its MAE
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
-LOSS_LATCH_RAMP_BARS = 2     # branch step9: shorten ramp 4->2 bars (faster full cap -> bigger reduction per latched loser -> bigger gain; still gradual enough for stab at cap 0.55)
-LOSS_LATCH_CAP = 0.55         # branch step8: deeper cap 0.65->0.55 (push composite above +0.003; gradual ramp keeps stab safe at 0.65)
+LOSS_LATCH_RAMP_BARS = 4     # branch step10: revert to 4 (step9 2-bar crashed stab 0.081; 4 bars is the stab-safe minimum)
+LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab-safe 4-bar ramp (push composite above +0.003)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
