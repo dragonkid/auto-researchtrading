@@ -4947,36 +4947,6 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
-            # Exp2 (architectural, indep): LOSS-STREAK-GATED new-entry emission threshold
-            # raise. NEW cross-component data dep at the emission layer: the emission
-            # threshold reads the PORTFOLIO consecutive-loss streak (self._loss_streak,
-            # updated at every exit across all symbols). The scoring's streak_gate =
-            # exp(-max_consecutive_losses/30) is a SIGNIFICANT multiplier at this baseline
-            # (measured by back-out: rally 0.674 ~12 consec losses, bull 0.798 ~7, mixed
-            # 0.879 ~4) -- the streak_gate is NOT 1.0 (only the flip_streak_gate is). A
-            # losing streak is a CLUSTER of consecutive losing trades; raising the new-
-            # entry emission bar during a streak blocks the MARGINAL would-be-streak-
-            # extending re-entries (they stay flat -> the trade never happens -> if it
-            # would have been a loser, the streak BREAKS with a no-trade gap instead of
-            # extending) -> lower max_consecutive_losses -> higher streak_gate -> higher
-            # score (dominant on rally: streak_gate 0.674 is a 33pct score cut). DISTINCT
-            # from prior walled streak mechanisms (admission-throttle, cooldown-window,
-            # emission-trim-magnitude): those scaled SIZE or WINDOW (magnitude -- streak
-            # counts trades not size) or tightened ADMISSION (hurt bull/sideways via
-            # fewer good entries). This raises the EMISSION bar for NEW ENTRIES ONLY
-            # (current_pos==0): held positions, resizes, and flips are byte-identical
-            # (their emission already exceeds the higher bar via scale-in targets); only
-            # the FIRST bar of a new entry is affected, and only the marginal small ones
-            # that barely cross the grid. Continuous tanh on (streak-2)/2.0 (saturates by
-            # streak ~4), max +60pct emission bar (filters entries below ~1.6x baseline
-            # notional -- the marginal re-entries, not the high-conviction trend entries
-            # which emit at full size >> threshold). Symmetric (no regime label, no
-            # direction gate -- a streak hits both directions). New control flow on the
-            # emission decision reading a portfolio-level cross-trade state (baseline
-            # emission reads only per-position target/equity/vol).
-            if current_pos == 0 and target != 0:
-                _streak_em = max(0.0, np.tanh((self._loss_streak - 2) / 2.0))
-                _emit_thresh = _emit_thresh * (1.0 + 0.60 * _streak_em)
             # Exp1 (architectural, indep): LOSS-LATCH application -- GRADUAL RAMP-IN target
             # cap (branch step6, replaces step1/step4 discrete cap + step5 floor lowering).
             # step1/step4 (discrete target *= 0.75) crashed crash stab to 0.081-0.083 (a
