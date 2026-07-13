@@ -3777,37 +3777,6 @@ class Strategy:
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
-                # Exp1 (architectural, indep, this session): STREAK-CONDITIONED SHALLOW-MAE
-                # break-even pressure. NEW cross-component data dep: _be_pressure now reads
-                # the PORTFOLIO consecutive-loss streak (self._loss_streak, already maintained
-                # at exit line ~4985), a data source the baseline _be_pressure did NOT read.
-                # PROBLEM: the baseline _be_pressure fires ONLY on deep-MAE stalls in chop
-                # (the _be_mae_depth path, mae<=-0.4*stop) OR trend-regime stalls (the
-                # _be_trend_gate path). A SHALLOW-MAE near-BE stall in chop (a position that
-                # never went deeply underwater but is stuck near breakeven, drifting) is
-                # PROTECTED by the trend gate (the baseline deliberately protects these as
-                # mean-reversion recoveries -- Exp3 ungated cratered sideways -0.731).
-                # BUT during a PORTFOLIO LOSING STREAK (self._loss_streak>=2), the recovery
-                # assumption is weaker: a near-BE stall during an adverse regime is more
-                # likely to bleed to the stop than recover. Let _be_pressure fire on the
-                # shallow-MAE population CONDITIONALLY on the streak. This is a third
-                # activation path on _be_pressure (new control flow), gated by the streak
-                # (byte-identical when streak<1 -- the default state, so all baseline
-                # regimes at streak=0 are unaffected). Targets sideways (the near-zero-Sharpe
-                # non-DD-gated regime where cutting BE stalls before they bleed to the stop
-                # raises Sharpe directly into a multiplicative positive score; sideways DD
-                # 4.18pct is well below the 5pct dd_gate knee so the full Sharpe gain
-                # translates to score). Direction-agnostic (uses position MAE + portfolio
-                # streak, no regime label). Continuous tanh on the streak (ramps from 2).
-                # The added path composes via MAX with the existing two paths (the deeper of
-                # trend-gate / mae-depth / streak-shallow wins), so it can only RAISE
-                # pressure (reduction-only on the protected population, never lowers the
-                # deep-MAE or trend protection). The 0.30 magnitude is below the baseline
-                # 0.45 so the trend/mae paths still dominate where they fire.
-                _be_streak = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))  # 0 streak<=1, ~1 streak>=3
-                _be_shallow = max(0.0, 1.0 - _be_mae_depth)  # 1 shallow-MAE (baseline-protected), 0 deep-MAE
-                _be_streak_path = 0.30 * _be_streak * _be_shallow * _be_hold_gate_mae
-                _be_pressure = max(_be_pressure, _be_streak_path)
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
