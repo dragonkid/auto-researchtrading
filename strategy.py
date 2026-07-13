@@ -2538,39 +2538,7 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
-                    # Exp1 (architectural, indep): BEAR-SIDE TREND-ALIGNED entry-frac
-                    # boost -- the structural mirror of the validated long-side
-                    # _entry_frac_boost_bull (line 2521), closing an asymmetry the keep
-                    # 11e75515 explicitly flagged as the orthogonal untested lever:
-                    # crash Sharpe is ~0 (-0.000016); the loss-latch capped crash LOSERS,
-                    # but crash's TREND-ALIGNED WINNING SHORTS (100pct WR, return-limited)
-                    # get NO return-seeking entry boost. The bull-side boost is gated on
-                    # _weak_persist (fires for mixed's weak trend, NOT crash's strong
-                    # downtrend -> weak_persist~0 blocks crash) AND has no bear analog.
-                    # This adds the bear analog gated on _down_persist (the VALIDATED
-                    # crash/bear separator: crash persistent downtrend ~0.9, mixed
-                    # oscillating ~0.5, bull/rally transient ~0.3 -- same separator the
-                    # _consensus_boost_bear comment at line 2483 and the fe6acd4d keep
-                    # use). Crash trend-aligned shorts (ret_vlong<0 -> short aligned with
-                    # downtrend) at portfolio-peak get a larger first-bar commitment ->
-                    # higher APY (return_bonus) at preserved Sharpe (100pct WR winners;
-                    # Sharpe scale-invariant -> bigger trend-aligned entries raise return
-                    # without lowering Sharpe). The _frac_dd_headroom gate (computed at
-                    # line 2466, shared with the bull boost) spares rally pullback
-                    # entries: rally pullbacks DRIVE the portfolio DD -> dd_frac>0 ->
-                    # headroom gate ~0 -> boost gated off -> rally entry size unchanged ->
-                    # rally DD stays 5.19pct. Byte-identical when ret_vlong>=0 (no
-                    # downtrend align), _down_persist~0 (bull/rally/sideways), or portfolio
-                    # in DD. Direction-agnostic general principle (no regime label): a
-                    # short aligned with a PERSISTENT multi-day downtrend at portfolio peak
-                    # is a high-quality trend-aligned entry -> larger first-bar commit.
-                    # NEW cross-component data dep: bear _entry_frac_dyn depends on
-                    # trend-alignment x down_persist x portfolio-DD-headroom (was vol-
-                    # only, same as the bull side was before Exp3 1a9b9750). Reduction-
-                    # safe family (amplify floor 1.0; never shrinks).
-                    _frac_trend_align_bear = max(0.0, np.tanh(-ret_vlong / 0.02))  # short aligned with downtrend (ret_vlong<0 -> near 1)
-                    _entry_frac_boost_bear = 1.0 + 0.15 * _frac_trend_align_bear * _down_persist * _frac_dd_headroom
-                    target = -size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bear) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
