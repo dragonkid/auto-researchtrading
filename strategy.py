@@ -1324,7 +1324,20 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency voter; 9th: volume-weighted slope voter (both small fixed weights, untouched by _wt_shift)
+            # Branch step2: TREND-STRENGTH GATE on the 9th VWS voter weight (the validated
+            # sideways separator). The VWS opener (Exp4) gave mixed +0.156 BUT crashed
+            # sideways -0.513 (VWS admits trend-continuation entries in sideways MEAN-
+            # REVERSION -- exactly wrong) and crash -0.204 (VWS admits bad crash high-
+            # conviction shorts). Sideways is the BIGGEST regression (-0.513). Scale the
+            # VWS weight with trend-strength (_trend_strength_w = tanh(|ret_long|/0.04)):
+            # low in chop (sideways, |ret_long|~0 -> VWS weight ~0 -> voter neutralized ->
+            # sideways byte-identical to baseline) and full in genuine trends (mixed/rally/
+            # bull/crash, |ret_long| high -> VWS active -> mixed +0.156 preserved). This is
+            # the SAME pattern as the VWAP chop-dampener above (line ~1320). Crash has high
+            # trend-strength so this gate does NOT spare crash -- a direction-specific gate
+            # for crash is the next step if crash still regresses.
+            _vws_wt = 0.55 * _trend_strength_w  # 0 in chop (sideways spared), 0.55 in strong trend
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (trend-strength-gated, spared in chop)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
