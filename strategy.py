@@ -3370,11 +3370,7 @@ class Strategy:
                 # are the safety: attenuation ONLY fires on gradual pullbacks in persistent uptrends,
                 # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
                 # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
-                # branch step5: raise magnitude 0.95 -> 1.0 now that the breadth gate isolates
-                # the attenuation to confirmed broad-leg winners (sideways/mixed byte-identical
-                # via the breadth gate, not via the magnitude). Full pp suppression (1.0) lets
-                # broad-leg bull/rally longs ride pullback giveback completely -> more Sharpe.
-                _pp_pressure = _pp_pressure * (1.0 - 1.00 * _ta_winner_gate)
+                _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
