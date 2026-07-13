@@ -501,6 +501,16 @@ class Strategy:
         # makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation
         # while preserving the pullback-depth signal that drives the rally DD relief.
         self._equity_ema = 0.0
+        # branch step2: persistent EMA of the cross-symbol trend-DIVERGENCE admission
+        # signal. The raw divergence wobbles bar-to-bar under AR(1) close noise (a symbol's
+        # 96-bar ret_vlong wobbles -> the dominant direction can flip -> disagree_share
+        # jumps -> tightener amount wobbles -> crash stability crashes to 0.485). EMA-
+        # smoothing the divergence (alpha 0.4, ~3-bar memory, persistent state) makes the
+        # tightener amount bar-to-bar stable under AR(1) -> admission decisions do NOT
+        # shift across the noise ensemble -> stability preserved. The validated noise-
+        # robustness fix for 2nd-derivative-like signals (mirrors the DD-accel _accel_ema
+        # from a prior session that fixed the identical stab/raw cliff).
+        self._divergence_ema = 0.0
         # Architectural (Exp2): per-symbol entry-readiness EMA accumulator (bull, bear)
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
@@ -985,6 +995,14 @@ class Strategy:
                     _disagree_share = (sum(_disagree_mags) / sum(_all_mags)) if sum(_all_mags) > 1e-10 else 0.0
                     _mean_mag = sum(_all_mags) / len(_all_mags)
                     _port_trend_divergence = _disagree_share * max(0.0, min(1.0, np.tanh(_mean_mag / 0.02)))
+        # branch step2: EMA-smooth the divergence signal (persistent state) for noise
+        # robustness. The raw divergence wobbles under AR(1) (dominant-direction flips
+        # -> disagree_share jumps -> stab crash). EMA alpha 0.4 (~3-bar memory) damps the
+        # bar-to-bar wobble so the tightener amount is stable -> stab preserved (mirrors
+        # the validated DD-accel _accel_ema fix for the identical stab/raw cliff).
+        _div_alpha = 0.4
+        self._divergence_ema = _div_alpha * _port_trend_divergence + (1.0 - _div_alpha) * self._divergence_ema
+        _port_trend_divergence = self._divergence_ema
         PORT_TREND_DIVERGENCE_MAX_TIGHTEN = 0.08
         _port_trend_div_admit_tighten = 1.0 + PORT_TREND_DIVERGENCE_MAX_TIGHTEN * _port_trend_divergence
 
