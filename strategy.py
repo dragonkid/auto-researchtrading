@@ -136,8 +136,8 @@ SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) 
 LOSS_LATCH_MAE_ONSET = 0.80   # branch step12: revert to 0.80 (step11 onset 0.60 crashed mixed stab -- mixeds shallow whipsaw dips reach -0.6*stop)
 LOSS_LATCH_STILL_LOSS = 0.15  # branch step12: lower still-loss gate 0.30->0.15 (latch fires on positions still modestly losing after sustained deep MAE, expanding population to bounced-off-MAE-but-still-losing losers)
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
-LOSS_LATCH_RAMP_BARS = 4     # branch step10: revert to 4 (step9 2-bar crashed stab 0.081; 4 bars is the stab-safe minimum)
-LOSS_LATCH_CAP = 0.40         # branch step12: middle cap 0.40 (between 0.45 stab-safe keep 11e75515 and 0.35 stab-crashed step11). step11 cap 0.35 gave rally +0.0035 + crash Sh +0.0002 BUT crashed crash stab to 0.524. 0.40 may capture part of the rally gain while keeping crash stab above 0.80 full-credit.
+LOSS_LATCH_CAP = 0.35         # branch step13: deeper cap 0.45->0.35 (step11 gave rally +0.0035 + crash Sh +0.0002 BUT crash stab crashed to 0.524)
+LOSS_LATCH_RAMP_BARS = 8     # branch step13: slower ramp 4->8 bars for the deeper cap (the keep 11e75515 lesson: the 4-bar gradual ramp fixed the discrete cap stab crash; a deeper cap produces a larger per-bar position-value change -> a slower ramp absorbs it -> may keep crash stab)
 # Branch opener (architectural): WINNER-AMPLIFICATION -- the structural MIRROR of the
 # loss-latch on the WINNING side, applied to position target SIZE. The loss-latch (keep
 # 11e75515) CAPS confirmed deep LOSERS (smaller realized loss -> crash/sideways Sharpe up).
