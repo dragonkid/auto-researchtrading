@@ -3344,7 +3344,7 @@ class Strategy:
                 # attenuation gate. Crash (down_persist~0.9) byte-identical (gate 0); bull
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate * _bth_broad_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
@@ -3745,67 +3745,40 @@ class Strategy:
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
-                # Exp1 (architectural, indep): BREADTH-GATED EXIT-PRESSURE SOURCE. The 7th
-                # soft source in the MAX fusion. The prior session's reversion-symmetry wall
-                # (4 "let winners run" mechanisms all leaked to sideways/mixed reverting
-                # bounces) was diagnosed as requiring a NON-LOCAL separator: a signal that
-                # distinguishes a PERSISTING broad trend leg from a REVERTING isolated
-                # bounce using info NOT available in the single-symbol local primitives
-                # (ret_vlong, 16-bar slope, vol). The top-level _breadth_filter (computed
-                # once per bar from the cross-symbol 96-bar ret_vlong SIGN agreement) IS
-                # that non-local separator: it is HIGH only when ALL THREE symbols' multi-
-                # day trends agree on direction (a broad-market leg that persists), and
-                # ~0 for narrow/isolated legs (a single symbol's local bounce that reverts).
-                #
-                # Mechanism: an exit-pressure source that is SUPPRESSED (toward 0) when the
-                # position is trend-aligned AT THE MULTI-DAY SCALE (ret_vlong*pos_dir>0),
-                # IN PROFIT (pos_pnl>0, a developing winner -- losers byte-identical since
-                # profit-gate 0), AND the broad-trend _breadth_filter confirms the leg is
-                # cross-symbol persistent. Under all three conditions the winner is riding
-                # a CONFIRMED BROAD trend -> attenuate the soft exit pressure so the winner
-                # runs longer through pullback noise (less premature harvest -> higher
-                # Sharpe in the trend regimes). The attenuation is realized as a pressure
-                # SOURCE that fires at a BASELINE level for all in-profit trend-aligned
-                # winners and is SUBTRACTED DOWN (toward 0) by the breadth filter: the net
-                # _breadth_pressure is small during confirmed broad legs (the other 6
-                # sources dominate -> winner runs) and rises toward baseline when the leg
-                # is isolated (sideways/mixed bounces -> full pressure -> winner harvested).
-                # This is the OPPOSITE shape from the prior-session wall: those mechanisms
-                # BOOSTED hold-time (additive to max_hold, leaky); this is a pressure SOURCE
-                # in the MAX fusion (the MAX only adds exit pressure, never reduces the
-                # other 6 sources below their own level), so the breadth filter's effect
-                # is confined to THIS source -- it cannot reduce _pp_pressure/_sl_slope/etc.
-                # on reverting bounces (those fire full and dominate the MAX -> fast exit,
-                # the desired behavior). The MAX fusion is the structural firewall that
-                # keeps the leak isolated to the breadth source's own contribution.
-                # Continuous tanh on all axes (no boundary); profit-side only (weight 0 for
-                # losers -> byte-identical for the loss-side regimes' losers); direction-
-                # symmetric. Distinct from every existing soft source (each reads single-
-                # symbol slope/peak-giveback/time/vol-expansion/volume-climax/breakeven;
-                # this reads cross-symbol multi-day breadth). New exit-pressure source +
-                # new cross-symbol data dep in the MAX fusion.
+                # Exp1 (architectural, indep) -> BRANCH step3: the breadth filter is now
+                # applied as a GATE on the existing _ta_winner_gate (pp_pressure trend-aligned-
+                # winner attenuation, line ~3299) instead of as a standalone MAX-fusion
+                # source. The opener (standalone source) and step2 (inverted source) both
+                # LEAKED to sideways/mixed: any added pressure on in-profit trend-aligned
+                # positions hits sideways/mixed's reverting-bounce winners (their bounces
+                # ARE isolated legs). The MAX fusion can only ADD pressure, so a new source
+                # structurally cannot avoid that leak. The fix: apply the breadth filter as
+                # a NON-LOCAL GATE on the EXISTING "let long winners run" lever
+                # (_ta_winner_gate attenuates _pp_pressure for trend-aligned in-profit longs).
+                # That lever is the prior session's walled mechanism -- it leaks to
+                # sideways/mixed via its LOCAL up_persist gate (down_persist<0.40 can fire
+                # during mixed's rally phases). The breadth filter (cross-symbol 96-bar
+                # trend SIGN agreement) is the NON-LOCAL separator the prior session flagged
+                # as required: it is HIGH only when ALL THREE symbols trend together (a broad
+                # persistent leg = bull/rally), ~0 for isolated sideways/mixed bounces.
+                # Gating _ta_winner_gate by breadth BLOCKS the attenuation during isolated
+                # sideways/mixed bounces (full pp_pressure -> harvested at giveback, byte-
+                # identical to baseline) while ENABLING it during broad legs (bull/rally longs
+                # ride pullback giveback -> higher Sharpe). Compute the breadth gate here;
+                # applied at the _ta_winner_gate multiplication (line ~3347).
                 _bth_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _bth_trend_align = max(0.0, np.tanh(ret_vlong * _bth_pos_dir / 0.04))  # ~0 ct, ~1 trend-aligned (multi-day /0.04 scale)
-                _bth_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
-                # branch step2: INVERT the source shape. The opener used a 0.40 BASE that
-                # fired for ALL in-profit trend-aligned winners (subtracted-down by breadth
-                # during broad legs). That base LEAKED to sideways/mixed local-bounce
-                # winners (which have ret_vlong*pos_dir>0 at the bounce but NO broad
-                # confirmation) -> premature harvest -> sideways -0.0055, mixed -0.0129.
-                # The bull +0.038 Sharpe gain came from the source being ~0 during bull's
-                # BROAD uptrend legs (breadth attenuated the base). Inverting the shape
-                # preserves that: the source now fires ONLY when the leg is ISOLATED
-                # (breadth filter LOW), harvesting the reversion-prone bounce; it is ~0
-                # during confirmed broad legs (let broad-leg winners run -- the bull gain).
-                # The aligned-with-breadth-direction gate (_breadth_dir==pos_dir) ensures
-                # the source only treats a leg as "broad confirmed" when the broad trend
-                # moves WITH the position (a trend-aligned long during a broad DOWN leg is
-                # isolated, not spared). (1 - breadth*dir_gate) is HIGH for isolated legs
-                # -> pressure fires; ~0 for broad-with-position legs -> no pressure.
+                # Aligned-with-breadth-direction gate: the broad trend moves WITH the
+                # position (a long during a broad UP leg, a short during a broad DOWN leg).
                 _bth_dir_gate = 1.0 if (_breadth_dir > 0 and current_pos > 0) or (_breadth_dir < 0 and current_pos < 0) else 0.0
-                _bth_isolated = 1.0 - _breadth_filter * _bth_dir_gate  # ~1 isolated, ~0 broad-with-position
-                _bth_pressure = 0.40 * _bth_profit * _bth_trend_align * _bth_isolated
-                _w_bth = 1.0  # profit-sign-neutral weight (pressure already profit-gated to ~0 for losers)
+                # branch step5: SOFTEN the breadth gate from a hard 0/1 to a continuous
+                # ramp so the gate is not a flip boundary under AR(1) noise (the openers
+                # used a hard dir_gate which flips when the broad sign sum crosses 0 -> the
+                # attenuation jumps -> pp_pressure jumps -> exit-timing noise -> stability).
+                # Continuous tanh on the SIGNED breadth sum * pos_dir (no boundary):
+                # ~0 when the broad trend disagrees with the position, saturating to ~1
+                # when all 3 symbols agree WITH the position. The |sum| magnitude ramps
+                # the strength (3-agreement full, 2-agreement partial).
+                _bth_broad_gate = max(0.0, np.tanh(_breadth_sign_sum * _bth_pos_dir / 1.5))
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
@@ -3901,7 +3874,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                     _w_be * _be_pressure,
-                    _w_bth * _bth_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # STRUCTURAL_EXPLORATION: subsystem rewrite of the soft-pressure FUSION
