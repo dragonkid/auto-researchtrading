@@ -3971,6 +3971,27 @@ class Strategy:
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
                     _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # BRANCH step5: complementary PEAK-HARVEST DD-amplification for LONGS. The
+                    # cushion reduction (step3) is capped at ~+0.0005 bull Sharpe because it acts
+                    # DURING the giveback band (after the DD peak accumulated). The tp-harvest acts
+                    # AT the deep peak (peak >= 1.6*_pp_min) -- BEFORE the giveback -> harvesting
+                    # more at the peak locks realized gains before the reversal deepens -> smaller
+                    # remaining position -> less giveback into the reversal -> the lever that CAN
+                    # reduce DD (vs the cushion's Sharpe-only lever). During deep portfolio DD
+                    # (bull's sharp reversal), boost the tp-harvest MAGNITUDE for trend-aligned-
+                    # at-multi-day LONGS. Byte-identical for shorts (long-only gate) AND for
+                    # counter-trend-at-multi-day longs (md-align gate: crash bounce longs ret_vlong<0
+                    # -> spared) AND when dd_frac < 0.055 (sideways/rally/mixed modest DD spared).
+                    # Uses the SAME raw _port_dd_frac onset 0.055 as the cushion reduction (step3)
+                    # for consistency. Continuous tanh; reduction/complementary to the existing
+                    # _dd_tp_relax suppression-weakener (this boosts the magnitude on top). Max
+                    # +0.20 magnitude (0.45 -> 0.65 at full deep-DD for trend-aligned longs). A
+                    # peak-harvesting lever (locks gains at the peak, never cuts an open loser ->
+                    # rally-safe, distinct from the walled held-position de-risk).
+                    if current_pos > 0:
+                        _tp_dd_md_align = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.015))
+                        _tp_dd_boost_amt = max(0.0, min(1.0, np.tanh((max(0.0, _port_dd_frac) - 0.055) / 0.020)))
+                        _tp_scale = _tp_scale * (1.0 + 0.20 * _tp_dd_boost_amt * _tp_dd_md_align)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
