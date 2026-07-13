@@ -136,7 +136,8 @@ SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) 
 LOSS_LATCH_MAE_ONSET = 0.80   # MAE/|stop| depth at which the latch becomes eligible (deep underwater: MAE <= -0.8*stop)
 LOSS_LATCH_STILL_LOSS = 0.30  # pos_pnl/|stop| still-negative threshold: latch fires only while STILL clearly losing (pos_pnl < -0.3*stop), NOT on a position that already recovered off its MAE
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
-LOSS_LATCH_CAP = 0.75         # permanent target-size cap for latched losers (held target magnitude capped to 0.75x)
+LOSS_LATCH_RAMP_BARS = 4     # branch step6: bars over which the target cap ramps 1.0 -> LOSS_LATCH_CAP after the latch fires (gradual application absorbs latch-bar wobble -> stab preserved; reaches the stop-loss path unlike the de-risk floor)
+LOSS_LATCH_CAP = 0.75         # permanent target-size cap for latched losers (held target magnitude capped to 0.75x at full ramp)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -579,6 +580,12 @@ class Strategy:
         # absorbs the latch-bar wobble that crashed crash stab in step1). -1 sentinel =
         # not yet eligible (MAE not deep yet). Reset on full exit.
         self._loss_latch_elig_bar = {}
+        # branch step6: per-symbol bar_count at which the loss-latch FIRED (the cap engaged).
+        # Used to RAMP the target cap IN gradually from 1.0 (no effect) to LOSS_LATCH_CAP over
+        # LOSS_LATCH_RAMP_BARS, so the cap is gradual (absorbs latch-bar wobble -> stab
+        # preserved) AND reaches the stop-loss path (it is a target cap applied before
+        # emission regardless of exit path). -1 sentinel = not latched. Reset on full exit.
+        self._loss_latch_bar = {}
         # Exp1 (architectural, indep): per-symbol POSITION-CACHED short-side hold-
         # extension. Unlike _hold_ext_ema/_local_hold_ext_ema (per-bar EMA recomputed
         # each held bar), this is computed ONCE at short entry from entry-bar state
@@ -3137,6 +3144,7 @@ class Strategy:
                         _sustained_deep = (_elig >= 0 and (self.bar_count - _elig) >= LOSS_LATCH_SUSTAIN_BARS)
                         if _mae_deep and _still_losing and _sustained_deep:
                             self._loss_latch[symbol] = LOSS_LATCH_CAP
+                            self._loss_latch_bar[symbol] = self.bar_count
                             _loss_latch_val = LOSS_LATCH_CAP
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
@@ -4138,31 +4146,6 @@ class Strategy:
                         # boundary). Byte-identical at portfolio peak (both terms 0).
                         _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
                         _de_floor -= (0.13 * (1.0 - _port_dd_atten) + 0.07 * _port_dd_active) * _exit_dd_gate
-                    # branch step5: LOSS-LATCH de-risk floor lowering (GRADUAL application,
-                    # replaces the step1/step4 DISCRETE target cap that crashed crash stab
-                    # to 0.081-0.083). For a LATCHED loser (confirmed deep-MAE per the trigger
-                    # above), lower the de-risk ramp floor so the graduated partial-exit
-                    # ramp STARTS EARLIER -> the loser shrinks GRADUALLY over MORE bars
-                    # (lower floor = the ramp engages at lower exit_pressure). This is the
-                    # structural mirror of the keep 249d8241 profit-latch (which attenuated a
-                    # GRADUAL pressure so +-1 bar latch shift had minimal impact): here the
-                    # GRADUAL de-risk ramp absorbs the latch-bar wobble -> a +-1 bar shift in
-                    # when the latch fires shifts the gradual ramp-start by +-1 bar -> a
-                    # small position-value difference (NOT a discrete 25pct cut) -> stab
-                    # preserved. Loss-side only (gated on _pnl_scale<0 -> only losers;
-                    # winners byte-identical, _de_floor unchanged). NOT gated on portfolio DD
-                    # (the latch is a POSITION-STATE signal, distinct from the portfolio-DD
-                    # floor lowering above which fires for ALL losers during DD). The two
-                    # compose: a latched loser during portfolio DD gets BOTH lowerings (the
-                    # position has demonstrated deep structural loss AND the portfolio is in
-                    # a correlated drawdown = highest extending risk -> earliest ramp start).
-                    # Max lowering 0.15 (a 0.85 loser floor -> 0.70 at full latch), smaller
-                    # than the 0.30 profit/loss swing to keep the ramp from over-firing.
-                    # Reduction-only (floor lowering = earlier trim = risk-reducing).
-                    if _pnl_scale < 0.0:
-                        _ll_val_dr = self._loss_latch.get(symbol, 1.0)
-                        if _ll_val_dr < 1.0:
-                            _de_floor -= 0.15 * (1.0 - _ll_val_dr) / (1.0 - LOSS_LATCH_CAP)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
@@ -4964,20 +4947,31 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
-            # Exp1 (architectural, indep): LOSS-LATCH is APPLIED via the de-risk ramp
-            # floor (branch step5: a GRADUAL ramp-start lowering, NOT a discrete target
-            # cap). The step1/step4 discrete target *= 0.75 cap crashed crash stab to
-            # 0.081-0.083: a 25pct size cut applied on a single bar, where the latch bar
-            # wobbles +-1-2 across noise realizations, creates a DISCRETE position-value
-            # difference that propagates over crashs long DD -> stab crash. The keep
-            # 249d8241 profit-latch avoided this by attenuating a GRADUAL pressure
-            # (_time_pressure ramps) so +-1 bar shift had minimal impact. The mirror here:
-            # for a latched loser, LOWER the de-risk ramp FLOOR (_de_floor) so the
-            # graduated partial-exit ramp STARTS EARLIER -> the loser shrinks GRADUALLY
-            # over MORE bars (not a discrete cut on one bar). A +-1 bar latch-bar shift
-            # now shifts the gradual ramp-start by +-1 bar -> a small, gradual position-
-            # value difference (not a discrete 25pct jump) -> stability preserved. See
-            # the _de_floor lowering block in the de-risk ramp section below.
+            # Exp1 (architectural, indep): LOSS-LATCH application -- GRADUAL RAMP-IN target
+            # cap (branch step6, replaces step1/step4 discrete cap + step5 floor lowering).
+            # step1/step4 (discrete target *= 0.75) crashed crash stab to 0.081-0.083 (a
+            # 25pct cut on one bar, latch bar wobbles +-1-2 -> discrete position-value
+            # diff propagates over crashs long DD). step5 (de-risk floor lowering) was
+            # byte-identical: latched deep losers exit via the STOP-LOSS binary path BEFORE
+            # the de-risk ramp engages -> the floor lowering never reaches them. This step
+            # applies the cap as a TARGET cap (reaches ALL exit paths, applied before
+            # emission regardless of which exit path fires) BUT RAMPED IN GRADUALLY over
+            # LOSS_LATCH_RAMP_BARS: cap = 1.0 - (1.0 - LOSS_LATCH_CAP) * min(1, bars-since-
+            # latch / RAMP_BARS). On the latch bar the cap is ~1.0 (no effect); it ramps to
+            # 0.75 over RAMP_BARS. A +-1 bar latch-bar shift now shifts the gradual ramp by
+            # +-1 bar -> a SMALL position-value diff (the cap barely moved that bar) -> stab
+            # preserved (the keep 249d8241 lesson: gradual application absorbs latch-bar
+            # wobble). The ramp reaches the stop-loss path (it is a target cap, not a de-
+            # risk-floor change). Applied to SAME-SIGN held positions ONLY (full exits /
+            # flips exempt). Reduction-only (cap <= 1.0); byte-identical when unlatched.
+            if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
+                _ll_val = self._loss_latch.get(symbol, 1.0)
+                if _ll_val < 1.0:
+                    _ll_bar = self._loss_latch_bar.get(symbol, -1)
+                    if _ll_bar >= 0:
+                        _ll_ramp = max(0.0, min(1.0, (self.bar_count - _ll_bar) / LOSS_LATCH_RAMP_BARS))
+                        _ll_cap_now = 1.0 - (1.0 - LOSS_LATCH_CAP) * _ll_ramp
+                        target = target * _ll_cap_now
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
@@ -4991,7 +4985,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -5008,6 +5002,7 @@ class Strategy:
                     # THIS position's own MAE, not inherited from the prior position).
                     self._loss_latch.pop(symbol, None)
                     self._loss_latch_elig_bar.pop(symbol, None)
+                    self._loss_latch_bar.pop(symbol, None)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
