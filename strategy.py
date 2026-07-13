@@ -272,6 +272,39 @@ NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
+# Exp1 (architectural, indep): OWN-VOLUME-LEVEL admission tightener. Prior session
+# sanctioned lead: "a NEW data-source voter whose CORE SIGNAL is noise-robust ...
+# e.g. a volume-only or range-only signal with no close-noise sensitivity." The
+# noise test (noise_test.py) perturbs ONLY close/high/low -- the `volume` field is
+# NOT perturbed, so a pure volume signal is noise-IMMUNE by construction (stability
+# 1.0). Existing volume usages are all magnitude-trend BOOSTERS (always >=1.0, e.g.
+# _vol_rise_boost, _vol_decline_shrink) or close-signed DVP (sign(close[i]-
+# close[i-1]) = close-noise-sensitive). NONE uses volume as an ADMISSION
+# SELECTIVITY gate (the opposite direction: tighten when participation is THIN).
+# Mechanism: a low-own-volume regime (24-bar volume below a 96-bar average) means
+# thin participation -> price is wobbly -> voter conviction signals are LESS
+# reliable -> the marginal chop entries admitted on barely-crossing conviction are
+# more likely to revert (sideways's flat-volume wobbly-conviction losers that keep
+# sideways Sharpe at ~0 despite WR 67%). Tighten the admission threshold (raise
+# strong_min) in low-volume regimes so only HIGHER-conviction entries pass -> cut
+# the low-quality tail -> raise sideways Sharpe (sideways DD is low at 4.18%, so
+# dd_gate ~0.96 -> a Sharpe gain converts ~1:1 to score, the cleanest un-walled
+# lever). Gated INVERTED-trend: the tightener fires only when rsi_trend_str is LOW
+# (chop), sparing strong-trend entries (bull/rally) regardless of volume (gate ~0
+# -> byte-identical in trends). This is the INVERSE of the keep's fade-shrink
+# trend-gate (which fires in trend, spares chop): both use the same validated
+# rsi_trend_str/0.20 separator but on opposite populations -- the fade-shrink
+# shrinks fading-conviction TREND entries (wrong for chop), this tightens
+# thin-volume CHOP entries (the gate makes trends byte-identical so the walled
+# trend-regime DD/APY are untouched). Continuous tanh on the volume deficit (no
+# boundary), symmetric (both bull/bear strong_min), shrink-equivalent (raises the
+# admission bar = fewer/smaller entries, never boosts). New cross-component data
+# dep: admission threshold reads own-volume-level x trend-strength jointly (the
+# baseline strong_min reads only rsi_trend_str + portfolio states).
+LOW_VOL_ADMIT_TIGHTEN_MAX = 0.10   # max fractional admission-bar raise in deep thin-volume chop
+LOW_VOL_SHORT = 24                 # recent volume window (bars)
+LOW_VOL_LONG = 96                  # baseline volume window (bars)
+LOW_VOL_TREND_GATE = 0.20          # rsi_trend_str below this -> chop (tightener active); above -> trend (byte-identical)
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
 # emission layer (downstream of all quantization — the ONLY layer that reaches
 # mixed_2025 per prior session's root-cause finding), a same-sign REDUCTION resize
@@ -1347,6 +1380,24 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp1 (architectural, indep): OWN-VOLUME-LEVEL admission tightener. Apply the
+            # thin-volume chop tightener (computed here from own volume, which is NOT
+            # perturbed by the noise test -> noise-immune). The trend gate
+            # (1 - rsi_trend_str/0.20) makes strong trends byte-identical (gate~0 -> factor
+            # 1.0); in chop (rsi_trend_str~0) the gate saturates to 1.0 so the full volume
+            # deficit tightens. Continuous tanh on the volume deficit (recent vs baseline),
+            # symmetric (applies to the shared _strong_min used by both bull and bear). This
+            # is a NEW control flow on the admission threshold reading own-volume-level x
+            # trend-strength jointly (baseline read only rsi_trend_str + portfolio states).
+            if len(bd.history) >= LOW_VOL_LONG:
+                _lv_recent_m = float(np.mean(bd.history["volume"].values[-LOW_VOL_SHORT:]))
+                _lv_long_m = max(float(np.mean(bd.history["volume"].values[-LOW_VOL_LONG:])), 1e-10)
+                _lv_deficit = max(0.0, (_lv_long_m - _lv_recent_m) / _lv_long_m)  # 0 at/above baseline, + when thin
+                _lv_trend_gate = max(0.0, min(1.0, 1.0 - np.tanh(rsi_trend_str / LOW_VOL_TREND_GATE)))
+                _low_vol_admit_tighten = 1.0 + LOW_VOL_ADMIT_TIGHTEN_MAX * _lv_trend_gate * max(0.0, min(1.0, np.tanh(_lv_deficit / 0.30)))
+            else:
+                _low_vol_admit_tighten = 1.0
+            _strong_min = _strong_min * _low_vol_admit_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
