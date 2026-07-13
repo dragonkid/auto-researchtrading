@@ -565,6 +565,10 @@ class Strategy:
         # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
         # (slow-rise / fast-fall). Reset on full exit; default 0.0.
         self._local_hold_ext_ema = {}
+        # branch step7: per-symbol EMA of the BREADTH-GATED hold-extension magnitude
+        # (the broad-leg trend-aligned in-profit long hold-extension feeding _max_hold).
+        # Asymmetric slow-rise / fast-fall EMA (mirrors _hold_ext_ema). Reset on full exit.
+        self._bth_hold_ext_ema = {}
         # Exp1 (architectural, indep): per-symbol LOSS-LATCH permanent target-size cap.
         # The structural mirror of the short-side profit-latch (_short_hold_cache) on the
         # LOSS side: a one-time 1.0 -> LOSS_LATCH_CAP flip when a held position CONFIRMS as
@@ -3469,6 +3473,37 @@ class Strategy:
                     _he_alpha = 0.15  # fast fall: release immediately on winner->loser (raw)
                 _ta_dd_hold_ext = (1.0 - _he_alpha) * _ta_dd_hold_ext_raw + _he_alpha * _prev_he
                 self._hold_ext_ema[symbol] = _ta_dd_hold_ext
+                # branch step7 (architectural): BREADTH-GATED hold extension for BROAD-LEG
+                # trend-aligned in-profit longs. The prior session's "let rally winners run
+                # longer" axis (peak-hold Exp1/Exp2, ve_pressure removal Exp3/Exp4) was ROBUST
+                # for rally (+0.0007 to +0.0021) BUT leaked to sideways/mixed reverting
+                # bounces via the LOCAL reversion-symmetry wall (local ret_vlong/slope/vol
+                # cannot distinguish a persisting rally uptrend leg from a reverting
+                # sideways/mixed bounce). The non-local breadth filter (_bth_broad_gate,
+                # cross-symbol 96-bar ret_vlong sign agreement) is the separator that BREAKS
+                # that wall: it is HIGH only during confirmed broad-market legs (all 3
+                # symbols trend together = bull/rally persistent uptrend), ~0 for isolated
+                # sideways/mixed bounces. Gate a _max_hold extension on it: extend the hold
+                # for long-only trend-aligned in-profit winners ONLY during broad legs ->
+                # ride the persistent leg's pullback giveback -> higher Sharpe in bull/rally.
+                # Byte-identical for shorts (_ta_long_gate 0), ct (_ta_align 0), losers
+                # (_ta_profit_gate 0), and ISOLATED legs (_bth_broad_gate 0 -> sideways/mixed
+                # byte-identical, the non-local separation). Distinct from _ta_dd_hold_ext
+                # (that fires during portfolio DD via (1-_port_dd_atten); this fires during
+                # broad legs via _bth_broad_gate, a DIFFERENT axis -- the two compose).
+                # EMA-smoothed at the source (asymmetric slow-rise/fast-fall, same pattern as
+                # _ta_dd_hold_ext) so _max_hold is temporally stable under AR(1) noise (the
+                # validated stability lesson: smooth the hold-extension MAGNITUDE to damp
+                # the bar-to-bar _time_pressure wobble that drives tracking error). New
+                # per-symbol state _bth_hold_ext_ema; new control flow on _max_hold.
+                _bth_hold_ext_raw = 2.0 * _ta_long_gate * _ta_align * _ta_profit_gate * _bth_broad_gate
+                _prev_bhe = self._bth_hold_ext_ema.get(symbol, _bth_hold_ext_raw)
+                if _bth_hold_ext_raw >= _prev_bhe:
+                    _bhe_alpha = 0.55  # slow rise: low-pass the AR(1) wobble (stability)
+                else:
+                    _bhe_alpha = 0.15  # fast fall: release immediately on winner->loser / leg-end
+                _bth_hold_ext = (1.0 - _bhe_alpha) * _bth_hold_ext_raw + _bhe_alpha * _prev_bhe
+                self._bth_hold_ext_ema[symbol] = _bth_hold_ext
                 # Exp4 (architectural, indep, this session): LOCAL-TREND hold extension
                 # for COUNTER-TREND-AT-MULTI-DAY in-profit longs (mixed's bounce winners).
                 # The existing _ta_dd_hold_ext extends hold for longs that are 96-bar
@@ -3544,7 +3579,7 @@ class Strategy:
                 # pressure lets confirmed winning shorts run a bit longer before full
                 # de-risk -> more downtrend capture -> crash Sharpe up. Byte-identical
                 # when _short_hold_cached=0 (not eligible / not latched / longs).
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _ta_dd_hold_ext + _local_hold_ext + _bth_hold_ext
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
@@ -5047,7 +5082,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._bth_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
