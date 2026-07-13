@@ -3662,6 +3662,25 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Exp4 (architectural, indep, this session): gate _ve_pressure OFF
+                # for TREND-ALIGNED-AT-96-BAR LONGS. Exp3 (f818bdc2, discarded) ablated
+                # _ve_pressure entirely: crash -0.0031 (load-bearing -- it harvests
+                # crash's dead-cat-bounce LONGS at vol-of-price expansion) BUT rally
+                # +0.0011 + mixed +0.0006 (trend-aligned winners run longer without the
+                # exhaustion harvest). This refines: remove _ve_pressure ONLY for
+                # trend-aligned-at-96-bar LONGS (rally/bull uptrend winners, which
+                # BENEFIT from running longer -- the exhaustion harvest cut them too
+                # early) while KEEPING it for counter-trend-at-96-bar longs (crash/mixed
+                # bounce longs, which REVERT -- the harvest is correct) and ALL shorts
+                # (direction-agnostic exhaustion). Gate: _ve_ta_long = _ta_align *
+                # _ta_long_gate (1 only for trend-aligned longs, 0 for ct longs + shorts);
+                # _ve_pressure *= (1 - _ve_ta_long). Byte-identical for ct longs
+                # (crash/mixed bounce) and all shorts (gate 0 -> ve_pressure unchanged);
+                # trend-aligned longs (rally/bull) get ve_pressure=0 (run longer).
+                # NEW cross-component data dep: _ve_pressure reads 96-bar trend-align +
+                # position direction (was vol-of-price only). Continuous (tanh _ta_align).
+                _ve_ta_long = _ta_align * _ta_long_gate  # 1 trend-aligned long, 0 otherwise
+                _ve_pressure = _ve_pressure * (1.0 - _ve_ta_long)
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
