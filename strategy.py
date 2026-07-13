@@ -162,8 +162,32 @@ LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab
 # 1.0 (never shrinks); byte-identical when not latched / longs / non-trend-aligned shorts.
 # Bounded small magnitude (WIN_AMP_MULT 1.12 = max +12pct target) so the trend-reversal
 # downside is bounded (a latched winner that reverses loses at most 12pct more size).
-WIN_AMP_MULT = 1.06        # max target amplification for latched winning trend-aligned shorts (+6pct -- branch step2: halved from 1.12 to cut per-bar position-value wobble that crashed crash stab to 0.50)
-WIN_AMP_RAMP_BARS = 8     # branch step2: doubled ramp from 4->8 bars (slower ramp = smaller per-bar diff = less cumulative tracking error over crash's long DD; loss-latch 4-bar ramp was stab-safe for a CAP but the win-amp FIRES on more events (every confirmed winner vs only deep losers) so it needs a slower ramp)
+# Branch step3 (pivot from target-amp): WINNER de-risk FLOOR RAISE -- the stability-safe
+# size-amplification for latched winning trend-aligned shorts. The opener + step2 applied a
+# TARGET amplification (multiply target by up to 1.12/1.06) which pushed crash Sharpe
+# POSITIVE (the keep 11e75515 goal) but CRASHED crash stability (1.0->0.50): a target amp
+# raises target above the held position -> NEW pyramid-up resize signals -> each new
+# buy-more trade is noise-sensitive (emit-threshold crossing wobbles under AR(1)) ->
+# cumulative tracking error over crash's long DD -> stab crashed. Halving magnitude +
+# doubling ramp (step2) barely moved stab (0.5026->0.5186) -> the stab crash is STRUCTURAL
+# (new trades), not ramp-speed. THIS step replaces the target-amp with a DE-RISK FLOOR
+# RAISE: raise _de_floor (the lower bound of the graduated partial-exit ramp, line 4119/
+# 4207) for latched winning shorts so the position de-risks to a HIGHER floor (keeps more
+# size during the exit ramp) -> larger realized gain on the eventual soft-exit -> higher
+# crash APY/Sharpe, with NO new pyramid-up trades (only changes how far the existing de-risk
+# ramp reduces). This is the stability-safe analog of the existing profit-latch
+# time-pressure attenuation (line 3532, extends hold TIME without new trades): this extends
+# hold SIZE without new trades. GRADUAL ramp from the profit-latch bar (reuses
+# _short_hold_latch_bar state from the opener): floor raise ramps 0 -> WIN_FLOOR_RAISE over
+# WIN_FLOOR_RAMP_BARS so a +-1 bar latch-bar shift -> small floor diff -> stab preserved.
+# Gated on _short_hold_cache latched (confirmed winning trend-aligned short, the validated
+# profit-latch selector). Byte-identical when not latched / longs / non-trend-aligned
+# shorts / loss-side (_pnl_scale<0 -> the profit floor 0.55 is the only floor this raises;
+# the loss floor 0.85 is untouched so losers still exit fast). Reduction-safe (raising the
+# floor KEEPS more size, never creates new size; the position can only stay the same or
+# de-risk less, never grow beyond its original target).
+WIN_FLOOR_RAISE = 0.15      # max raise of _de_floor for latched winning shorts (0.55 -> 0.70 floor at full ramp)
+WIN_FLOOR_RAMP_BARS = 4     # bars to ramp the floor raise from 0 -> WIN_FLOOR_RAISE after profit-latch fires (gradual = stab-safe)
 
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
@@ -4197,6 +4221,34 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # Branch step3 (pivot): WINNER de-risk FLOOR RAISE for latched winning
+                    # trend-aligned shorts. See WIN_FLOOR_RAISE header. Raising _de_floor
+                    # keeps more size during the graduated exit ramp (the position de-risks
+                    # to a HIGHER floor) -> larger realized gain on the eventual soft-exit,
+                    # with NO new pyramid-up trades (only changes how far the de-risk ramp
+                    # reduces -- stability-safe, the lesson from the opener/step2 target-amp
+                    # failure). Gated on the profit-latch _short_hold_cache latched (sentinel
+                    # >0 = confirmed winning trend-aligned short, set at line 3466). The
+                    # existing trend-align relaxation (_ta_de_align, ret_long*pos_dir) ALREADY
+                    # lowers the floor for trend-aligned winners -- but that goes the OPPOSITE
+                    # direction (widens the ramp, de-risks MORE gradually = rides giveback).
+                    # This RAISES the floor (de-risks LESS = keeps MORE size through the
+                    # ramp). The two compose: _ta_de_align widens the ramp START (lower
+                    # floor, engage de-risk earlier but reduce slowly), this RAISES the
+                    # floor (stop the reduction higher). Net: a latched winning short keeps
+                    # more size AND reduces more gradually -> larger realized gain. Only
+                    # fires for latched shorts (the profit-confirmation gate); longs and
+                    # non-latched shorts byte-identical. GRADUAL ramp from the profit-latch
+                    # bar (_short_hold_latch_bar) so a +-1 bar latch shift -> small floor diff
+                    # -> stab preserved. Clamp _de_floor to <= 0.95 so a latched winner still
+                    # de-risks (never floors at 1.0 = never holds full size forever).
+                    if current_pos < 0:
+                        _shc_w = self._short_hold_cache.get(symbol, 0.0)
+                        if _shc_w > 0.5:  # profit-latch fired (latched winning short)
+                            _wa_bar_w = self._short_hold_latch_bar.get(symbol, -1)
+                            if _wa_bar_w >= 0:
+                                _wa_ramp_w = max(0.0, min(1.0, (self.bar_count - _wa_bar_w) / WIN_FLOOR_RAMP_BARS))
+                                _de_floor = min(0.95, _de_floor + WIN_FLOOR_RAISE * _wa_ramp_w)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -5011,27 +5063,6 @@ class Strategy:
                         _ll_ramp = max(0.0, min(1.0, (self.bar_count - _ll_bar) / LOSS_LATCH_RAMP_BARS))
                         _ll_cap_now = 1.0 - (1.0 - LOSS_LATCH_CAP) * _ll_ramp
                         target = target * _ll_cap_now
-                # Branch opener: WINNER-AMPLIFICATION -- GRADUAL RAMP-IN target amplification
-                # (structural mirror of the loss-latch cap above, on the winning side). Fires
-                # ONLY when the profit-latch _short_hold_cache has latched (sentinel >0 =
-                # confirmed winning TREND-ALIGNED short, set at line 3466 when pos_pnl first
-                # confirms positive AND the short was trend-aligned deep-downtrend at entry).
-                # This CANNOT amplify crash's losing shorts (the Exp2 1862be24 failure mode:
-                # an entry boost pre-confirmation amplified the losing sub-population) -- the
-                # profit-latch gate selects only CONFIRMED winners. Amplify floor 1.0; GRADUAL
-                # ramp 1.0 -> WIN_AMP_MULT over WIN_AMP_RAMP_BARS from the profit-latch bar
-                # (stability-safe: a +-1 bar latch-bar shift -> small position-value diff ->
-                # stab preserved, same lesson as the loss-latch keep 11e75515 step6). Applied
-                # to same-sign held positions ONLY (full exits/flips exempt) before emission.
-                # Byte-identical when not latched / longs / non-trend-aligned shorts.
-                if current_pos < 0:
-                    _shc = self._short_hold_cache.get(symbol, 0.0)
-                    if _shc > 0.5:  # profit-latch has fired (latched winning short)
-                        _wa_bar = self._short_hold_latch_bar.get(symbol, -1)
-                        if _wa_bar >= 0:
-                            _wa_ramp = max(0.0, min(1.0, (self.bar_count - _wa_bar) / WIN_AMP_RAMP_BARS))
-                            _wa_mult_now = 1.0 + (WIN_AMP_MULT - 1.0) * _wa_ramp
-                            target = target * _wa_mult_now
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
