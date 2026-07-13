@@ -462,37 +462,6 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
 
-# Exp1 (architectural, indep): WITH-TREND velocity entry shrink (blow-off-top precursor).
-# The kept COUNTER_VEL shrink above shrinks trend-aligned entries taken AFTER a COUNTER-move
-# (long after a DOWN pullback, short after an UP bounce) -- validated, even sustained/extended
-# in prior sessions. The structural mirror -- shrinking trend-aligned entries taken after a
-# steep WITH-trend run-up -- is the prior-session-sanctioned untested SIZING-side lead for the
-# bull DD lever: "a mechanism on the SIZING side that reduces position magnitude specifically
-# on sharp-reversal-precursor bars (without the gradual-ramp lag)". Bull's DD (10.79pct, deep
-# in the dd_gate exp tail -> dd_gate~0.050 -> bull score 0.0214 is ~95pct DD-crushed) is a
-# SHARP-REVERSAL phenomenon: 3+ sessions confirmed the DD-source bars exit at near-full size
-# BEFORE the de-risk floor ramp can trim (the gradual ramp is too slow). The exit-side floor-
-# lowering (vol-expansion-gated) was walled (bull DD byte-identical). The ENTRY-side lever --
-# shrinking the SIZE of NEW entries taken at the top of a steep short-term run-up -- is
-# distinct: those positions START smaller, so when the sharp reversal hits they LOSE LESS ->
-# smaller DD peak. The blow-off-top precursor signature for a LONG: a steep POSITIVE 3-bar
-# return (the price has run up fast into a potential top) immediately before a trend-aligned
-# long entry. Shrinking that entry reduces the size of the position that will be at-full-size
-# when the reversal hits. DIRECTIONALLY ASYMMETRIC (the prior bull/crash coupling wall): only
-# the LONG side gets the with-trend shrink -- crash's trend-aligned SHORTS after a steep DOWN
-# move are the profitable trend-continuation trade (the keep's crash Sh is nearly zero; the
-# prior power-asymmetry session confirmed a steeper bear ramp excludes the profitable crash
-# short population). A symmetric with-trend short shrink would regress crash. VOL-GATED (the
-# prior bull/rally separator): rally's trend-aligned longs in a calm GRIND (vol_ratio<0.8) also
-# have 3-bar up moves but are NOT blow-off tops (the grind continues) -> gate on HIGH vol_ratio
-# (the sharp regime, bull-2021) so the calm grind (rally) is byte-identical. Same _grind_gate
-# separator pattern as the emission throttle (proven to split bull sharp vs rally grind).
-# Continuous tanh, no boundary; shrink-only; first-bar-only. New cross-component data dep:
-# entry size reads the 3-bar WITH-trend velocity x trend-alignment x vol-regime jointly (the
-# kept _cv_shrink reads the COUNTER-move velocity; this reads the WITH-move velocity).
-WITH_VEL_SHRINK_MAX = 0.20   # max shrink at deep with-trend run-up (blow-off-top precursor)
-WITH_VEL_SCALE = 0.015       # 3-bar return magnitude at which shrink saturates (1.5pct run-up)
-
 
 class Strategy:
     def __init__(self):
@@ -2146,20 +2115,6 @@ class Strategy:
                 _cv_counter_bear = max(0.0, _cv_ret3)   # short entered after an up-move
                 _cv_shrink_bull = 1.0 - COUNTER_VEL_SHRINK_MAX * _cv_ta_bull * max(0.0, min(1.0, np.tanh(_cv_counter_bull / COUNTER_VEL_SCALE)))
                 _cv_shrink_bear = 1.0 - COUNTER_VEL_SHRINK_MAX * _cv_ta_bear * max(0.0, min(1.0, np.tanh(_cv_counter_bear / COUNTER_VEL_SCALE)))
-                # Exp1: WITH-TREND velocity entry shrink (blow-off-top precursor). See
-                # WITH_VEL_SHRINK_MAX header. The kept _cv_shrink above shrinks trend-aligned
-                # entries after a COUNTER-move; this is the structural mirror -- shrinks trend-
-                # aligned LONGS after a steep WITH-trend 3-bar run-up (the bull blow-off-top
-                # precursor). DIRECTIONALLY ASYMMETRIC: long-only (bear side gets 1.0 -- crash's
-                # trend-aligned shorts after steep down-moves are the profitable trend-continuation
-                # trade). VOL-GATED: fire only in the HIGH-vol sharp regime (bull-2021), byte-
-                # identical in the calm grind (rally, vol_ratio<0.8) and chop (sideways, no
-                # multi-day uptrend -> _cv_ta_bull~0). 3-bar return reused from _cv_ret3 above.
-                # Continuous tanh, shrink-only, first-bar-only.
-                _cv_with_bull = max(0.0, _cv_ret3)  # long entered after an UP run-up (blow-off-top)
-                _sharp_gate = max(0.0, min(1.0, (vol_ratio - 0.8) / 0.5))  # ~0 calm grind (vol_ratio<=0.8 rally), ~1 sharp (vol_ratio>=1.3 bull)
-                _with_vel_shrink_bull = 1.0 - WITH_VEL_SHRINK_MAX * _cv_ta_bull * _sharp_gate * max(0.0, min(1.0, np.tanh(_cv_with_bull / WITH_VEL_SCALE)))
-                _with_vel_shrink_bear = 1.0  # asymmetric: crash trend-aligned shorts after down-moves are profitable (the prior power-asymmetry wall)
                 # Exp5 (architectural, indep): volume-RISING trend-ALIGNED entry boost —
                 # bilateral counterpart to the Exp3 decline shrink. A trend-aligned entry on
                 # RISING volume has strong participation confirming the trend (rally longs on
@@ -2511,7 +2466,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _with_vel_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2530,7 +2485,7 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _with_vel_shrink_bear * _fade_shrink_s
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
