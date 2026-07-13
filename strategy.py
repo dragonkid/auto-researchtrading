@@ -1357,23 +1357,8 @@ class Strategy:
             # the SAME pattern as the VWAP chop-dampener above (line ~1320). Crash has high
             # trend-strength so this gate does NOT spare crash -- a direction-specific gate
             # for crash is the next step if crash still regresses.
-            # Branch step8: MULTI-DAY ret_vlong gate on the VWS weight (replace the 20-bar
-            # ret_long gate of step2). Step7 (long-only VWS) fixed crash (stab 1.0, no bearish
-            # shorts) and preserved mixed +0.017 BUT sideways still leaks -0.006 (bullish VWS
-            # in sideways trending stretches |ret_long|~0.04-0.06). The ret_long gate cannot
-            # separate mixed's bounces from sideways trending stretches (same |ret_long|
-            # range). The MULTI-DAY ret_vlong DOES: mixed is a multi-day DOWN year (|ret_vlong|
-            # large) -> sideways trending stretches have ret_vlong~0 (no multi-day context, only
-            # local 20-bar legs). Gate VWS on |ret_vlong|: fully OFF in sideways (ret_vlong~0 ->
-            # byte-identical sideways), full in mixed/bull/rally (|ret_vlong| large). CRASH also
-            # has large |ret_vlong| BUT the long-only clip (step7) zeroes bearish VWS -> crash
-            # gets no VWS contribution regardless of the gate -> crash stays byte-identical
-            # (step5's ret_vlong gate crashed crash ONLY because that step had bearish VWS;
-            # long-only removes that failure mode). So ret_vlong gate + long-only = spare
-            # sideways fully + protect crash via long-only + keep mixed/bull. Continuous tanh
-            # on |ret_vlong|/0.03 (saturates by ~0.05; genuine multi-day trends 0.03-0.10).
-            _vws_wt = 0.55 * max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # multi-day gate: 0 sideways, full genuine multi-day trends
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (multi-day-gated + long-only, sideways+crash spared)
+            _vws_wt = 0.55 * _trend_strength_w  # 0 in chop (sideways spared), 0.55 in strong trend
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (trend-strength-gated, spared in chop)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
