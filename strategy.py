@@ -972,19 +972,30 @@ class Strategy:
         # 6-12% range of the existing admit tighteners).
         _port_trend_divergence = 0.0
         if len(_port_rv_vals) >= 2:
-            _meaningful_rvs = [_rv for _rv in _port_rv_vals if abs(_rv) > 0.012]
-            if len(_meaningful_rvs) >= 2:
-                _m_sum = sum(_meaningful_rvs)
-                _m_dir = 1.0 if _m_sum > 0 else (-1.0 if _m_sum < 0 else 0.0)
+            # branch step1: replace the hard |rv|>0.012 membership threshold with a SMOOTH
+            # tanh membership weight so no symbol flips in/out of the meaningful set
+            # discretely under AR(1) noise (the opener's hard threshold made the disagreement
+            # share jump discretely as a symbol near 0.012 flipped -> tightener amount
+            # wobbled -> crash stab crashed to 0.485). Each symbol gets a continuous
+            # meaningful-weight w_i = tanh(|rv_i|/0.012) (0 near calm, ~1 past 0.024) and a
+            # signed directional contribution. The divergence is a continuous weighted
+            # disagreement fraction: sum(w_i for disagree) / sum(w_i), times a weighted
+            # mean-magnitude gate. No discrete membership; byte-identical at calm (all w~0)
+            # and full agreement (disagree sum 0).
+            _w_mag = [max(0.0, np.tanh(abs(_rv) / 0.012)) for _rv in _port_rv_vals]  # meaningful weight [0,1]
+            _w_total = sum(_w_mag)
+            if _w_total > 1e-6:
+                # signed weighted direction: sum(rv*w) sign = dominant direction (weighted)
+                _w_signed_sum = sum(_rv * _wwm for _rv, _wwm in zip(_port_rv_vals, _w_mag))
+                _m_dir = 1.0 if _w_signed_sum > 0 else (-1.0 if _w_signed_sum < 0 else 0.0)
                 if _m_dir != 0.0:
-                    _disagree_mags = [abs(_rv) for _rv in _meaningful_rvs if (_rv > 0) != (_m_dir > 0)]
-                    _all_mags = [abs(_rv) for _rv in _meaningful_rvs]
-                    # divergence = disagreement share, weighted by mean magnitude (so a deep
-                    # divergent trend registers more than a shallow one). tanh(/0.02) so a
-                    # deep rotational market (|rv|~0.04 with split signs) saturates.
-                    _disagree_share = (sum(_disagree_mags) / sum(_all_mags)) if sum(_all_mags) > 1e-10 else 0.0
-                    _mean_mag = sum(_all_mags) / len(_all_mags)
-                    _port_trend_divergence = _disagree_share * max(0.0, min(1.0, np.tanh(_mean_mag / 0.02)))
+                    _w_disagree = sum(_wwm for _rv, _wwm in zip(_port_rv_vals, _w_mag) if (_rv > 0) != (_m_dir > 0))
+                    _disagree_share = _w_disagree / _w_total  # continuous [0,1]
+                    # weighted mean magnitude gate (tanh(/0.02)) so a deep divergent trend
+                    # registers more than a shallow one; weighted by w_mag so calm symbols
+                    # don't dilute the magnitude.
+                    _w_mean_mag = sum(abs(_rv) * _wwm for _rv, _wwm in zip(_port_rv_vals, _w_mag)) / _w_total
+                    _port_trend_divergence = _disagree_share * max(0.0, min(1.0, np.tanh(_w_mean_mag / 0.02)))
         PORT_TREND_DIVERGENCE_MAX_TIGHTEN = 0.08
         _port_trend_div_admit_tighten = 1.0 + PORT_TREND_DIVERGENCE_MAX_TIGHTEN * _port_trend_divergence
 
