@@ -238,44 +238,6 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
-# Exp1 (this session, architectural indep): PORTFOLIO-DD-CONDITIONED de-risk convex cushion
-# reduction. Score decomposition (this session): at LEVERAGE_K=4, bull_2021's DD=10.79% sits
-# DEEP in the dd_gate exp penalty (dd_gate=0.050), so bull's score (0.021436) is almost
-# entirely crushed by DD. A bull DD reduction 10.79->9.0 would give +0.0076 composite (the
-# single largest lever, 9x more score-efficient than a bull Sharpe gain at this operating
-# point, because bull is deep in the exp tail where the general "Sharpe dominates DD" rule
-# inverts). All prior bull-DD-reduction paths are walled: entry-size climax shrink is size-
-# insensitive (DD accumulates on RIDE bars), held-position de-risk during DD misses rally
-# reversion (row-1015), time-pressure intensification breaches rally DD, giveback-tightening
-# maxed at the 0.50 stability cliff, tp-harvest relax maxed. The ONE untouched lever on the
-# de-risk ramp: the convex cushion EXPONENT _dr_k. The cushion (k>1) holds trend-aligned
-# WINNERS near full size through mid-range giveback noise; during a DEEP portfolio DD (the
-# May-2021 sharp reversal = bull's DD source), REDUCING k toward 1.0 makes the cushion LINEAR
-# so those winners de-risk FASTER through the giveback band -> locks the giveback before the
-# reversal deepens -> caps the DD from riding winners through deep pullbacks. CRITICAL safety
-# properties (distinct from every walled DD lever): (a) it acts ONLY on positions already in
-# the de-risk band (winning/giving-back, _exit_pressure in [_de_floor,1]*_exit_thresh) -> it
-# NEVER cuts an open/losing position at a loss -> cannot miss a reversion (avoids the row-1015
-# reversion-miss wall that killed held-position/time-pressure DD cuts on rally); (b) it changes
-# the de-risk ramp SHAPE (k exponent), NOT the pp giveback parameter (giveback-tightening,
-# maxed) NOR the _ts_supp suppression (tp-harvest relax, maxed) NOR the exit threshold (Exp4
-# exit_thresh lowering, already kept) -> distinct mechanism, additive to the maxed levers;
-# (c) byte-identical at portfolio peak (dd_frac=0 -> factor 1.0 -> _dr_k unchanged). Uses a
-# DEEP-DD onset (fires only at significant portfolio DD, not modest rally pullback DD) so it
-# spares rally's 5.36% grinding pullback DD while engaging bull's 10.79% sharp-reversal DD.
-# The deep-DD onset uses the validated asymmetric-EMA _port_dd_atten (noise-robust, leverage-
-# coupled 0.008*LEVERAGE_K scale); (1 - _port_dd_atten) in [0,1] is the portfolio-DD intensity.
-# Onset at 0.30 (= meaningful DD past the circuit-breaker's mild-DD band) so rally/mixed DD
-# (~0.45-0.55 intensity at their peaks) get partial reduction while bull/crash deep DD
-# (~0.7-0.9 intensity) get near-full linear cut. Continuous tanh (no boundary); reduction-only
-# (k only decreases toward 1.0, never increases); direction-agnostic general principle (no
-# regime label): a winning position being de-risked during a deep portfolio drawdown should
-# cut through the giveback faster, because the DD context signals the giveback is more likely
-# a real reversal than noise. NEW cross-component data dep: the de-risk ramp exponent now
-# reads the portfolio-DD state (was profit+trend-align+slope-conf only).
-DERISK_CONVEX_DD_ONSET = 0.06   # raw portfolio-DD FRACTION (_port_dd_frac) above which cushion reduction engages. Onset 0.06 (6% DD) cleanly separates bull's 10.79% sharp-reversal DD + crash's 17.73% from sideways 4.18% / rally 5.36% / mixed 4.91% (all below onset -> byte-identical). The prior onset 0.30 on the (1-_port_dd_atten) INTENSITY was wrong: _port_dd_atten saturates (tanh /0.032) by ~4% DD so ALL regimes read intensity ~0.86-1.0 -> no separation. The RAW dd_frac retains resolution at deep DD.
-DERISK_CONVEX_DD_SCALE = 0.025  # tanh ramp width on (dd_frac - 0.06); 0.06->0.085 saturates
-DERISK_CONVEX_DD_MAX_REDUC = 0.85  # max fraction of the convex AMP removed at deep DD (-> k drops from 1.6 to ~1.09, near-linear)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -3971,27 +3933,6 @@ class Strategy:
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
                     _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
-                    # BRANCH step5: complementary PEAK-HARVEST DD-amplification for LONGS. The
-                    # cushion reduction (step3) is capped at ~+0.0005 bull Sharpe because it acts
-                    # DURING the giveback band (after the DD peak accumulated). The tp-harvest acts
-                    # AT the deep peak (peak >= 1.6*_pp_min) -- BEFORE the giveback -> harvesting
-                    # more at the peak locks realized gains before the reversal deepens -> smaller
-                    # remaining position -> less giveback into the reversal -> the lever that CAN
-                    # reduce DD (vs the cushion's Sharpe-only lever). During deep portfolio DD
-                    # (bull's sharp reversal), boost the tp-harvest MAGNITUDE for trend-aligned-
-                    # at-multi-day LONGS. Byte-identical for shorts (long-only gate) AND for
-                    # counter-trend-at-multi-day longs (md-align gate: crash bounce longs ret_vlong<0
-                    # -> spared) AND when dd_frac < 0.055 (sideways/rally/mixed modest DD spared).
-                    # Uses the SAME raw _port_dd_frac onset 0.055 as the cushion reduction (step3)
-                    # for consistency. Continuous tanh; reduction/complementary to the existing
-                    # _dd_tp_relax suppression-weakener (this boosts the magnitude on top). Max
-                    # +0.20 magnitude (0.45 -> 0.65 at full deep-DD for trend-aligned longs). A
-                    # peak-harvesting lever (locks gains at the peak, never cuts an open loser ->
-                    # rally-safe, distinct from the walled held-position de-risk).
-                    if current_pos > 0:
-                        _tp_dd_md_align = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.015))
-                        _tp_dd_boost_amt = max(0.0, min(1.0, np.tanh((max(0.0, _port_dd_frac) - 0.055) / 0.020)))
-                        _tp_scale = _tp_scale * (1.0 + 0.50 * _tp_dd_boost_amt * _tp_dd_md_align)  # branch step6: 0.20->0.50 aggressive scaling probe (ceiling test)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
@@ -4190,51 +4131,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp1 (architectural indep): PORTFOLIO-DD-CONDITIONED cushion reduction.
-                        # During deep portfolio DD (1-_port_dd_atten high), reduce the convex AMP
-                        # toward linear (k->1) so trend-aligned winners de-risk FASTER through the
-                        # giveback band -> lock giveback before sharp reversals deepen -> cap bull's
-                        # deep-DD. See DERISK_CONVEX_DD_* header for the full mechanism + safety
-                        # properties. Byte-identical at portfolio peak (1-_port_dd_atten=0 ->
-                        # _dr_dd_reduce=1.0 -> _dr_k unchanged). Uses the same asymmetric-EMA
-                        # _port_dd_atten (noise-robust, leverage-coupled). Continuous tanh.
-                        # BRANCH step2: GATE TO LONGS ONLY (current_pos > 0). The opener (ungated)
-                        # gave bull +0.0036 BUT crashed crash -0.108 (50pct gate breached): crash
-                        # SHORTS are trend-aligned WINNERS being de-risked during deep DD, so the
-                        # cushion reduction cut them FASTER through giveback = harvested the
-                        # profitable downtrend-continuation shorts too early -> lost downtrend
-                        # capture (SAME wall as keep 249d8241's TP-attenuation: short-side trend-
-                        # continuation is persistent, cutting faster regresses crash). The keep
-                        # 249d8241 itself ATTENUATES time-pressure for latched winning shorts
-                        # (SHORT_HOLD_TP_ATTEN=0.50) to let them run; a cushion reduction for shorts
-                        # FIGHTS that keep. STRUCTURAL long/short asymmetry (documented by the keep
-                        # itself, NOT a regime label): short-side trend-continuation is more
-                        # persistent than long-side, so shorts should keep the cushion (let run)
-                        # while longs get the faster giveback lock during sharp-reversal DD. For
-                        # shorts _dr_dd_reduce=1.0 (cushion byte-identical to baseline) -> crash
-                        # restored; longs keep the DD-conditioned reduction -> bull gain preserved.
-                        # BRANCH step3: switch the DD signal from the saturated (1-_port_dd_atten)
-                        # INTENSITY (onset 0.30) to the RAW _port_dd_frac with onset 0.06. Step2
-                        # (long-only, onset 0.30 on intensity) still regressed sideways/rally/mixed
-                        # (-0.009/-0.005/-0.015) AND bull stab dropped to 0.965 (min_stab 0.789
-                        # below 0.80 knee): the (1-_port_dd_atten) intensity uses the circuit-
-                        # breaker's tanh/_port_dd_frac/(0.008*LEVERAGE_K=0.032) scale which
-                        # SATURATES by ~4% DD (tanh(0.04/0.032)=0.86) -> sideways 4.18%, rally
-                        # 5.36%, mixed 4.91% ALL read intensity ~0.86-0.93 -> the onset 0.30 fires
-                        # on ALL of them (no separation), over-cutting their modest-DD longs. The
-                        # RAW _port_dd_frac (EMA-smoothed equity, the existing var) retains
-                        # resolution at deep DD: onset 0.06 fires ONLY at bull 10.79% + crash
-                        # 17.73% (both >0.06) while sideways 4.18% / rally 5.36% / mixed 4.91% are
-                        # below onset -> byte-identical (reduce=0). With long-only gate, crash
-                        # shorts are byte-identical too -> ONLY bull longs (the target) get the
-                        # cushion reduction. This should recover sideways/rally/mixed to baseline
-                        # AND restore bull stability (no modest-DD firing -> no bull modest-DD
-                        # over-cut wobble).
-                        if current_pos > 0:
-                            _dr_dd_reduce = 1.0 - DERISK_CONVEX_DD_MAX_REDUC * max(0.0, min(1.0, np.tanh((max(0.0, _port_dd_frac) - DERISK_CONVEX_DD_ONSET) / DERISK_CONVEX_DD_SCALE)))
-                        else:
-                            _dr_dd_reduce = 1.0
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * _dr_dd_reduce * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak/DD-deep, up to ~1.6 trend-aligned+profit+slope-conf+no-DD
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
