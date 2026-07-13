@@ -3593,27 +3593,6 @@ class Strategy:
                 SHORT_HOLD_TP_ATTEN = 0.50  # branch step16 reverted: 0.60 gave +0.003668 (less than 0.50's +0.004013); 0.50 is the sweet spot (over-attenuating lets shorts run too long -> give back gains)
                 if _short_hold_cached > 0.0:
                     _time_pressure = _time_pressure * (1.0 - SHORT_HOLD_TP_ATTEN)
-                # branch step12: BREADTH-GATED time-pressure attenuation for broad-leg
-                # trend-aligned in-profit longs. step4 (breadth gate on pp) gave bull Sh
-                # +0.027 but composite +0.000222 (sub-noise): the pp axis only moves the
-                # giveback-harvest exit, a small population. The TIME-pressure axis (the
-                # hold-time exit) is a SECOND, structurally different exit path for winners
-                # -- attenuating it during confirmed broad legs lets long winners run LONGER
-                # (past the baseline max_hold) before time-pressure fires. The prior session
-                # walled max_hold EXTENSION (step7 here: rides the 2021 top rollover, bull
-                # Sh -0.231) because extending _max_hold shifts the exit BAR (stability cliff
-                # + holds through reversals). Attenuating the time-pressure VALUE (not the
-                # max_hold level) is the step15-lesson safe path: the exit bar stays at
-                # baseline (no shift -> no stab cliff, no reversal-ride), the pressure just
-                # ramps slower so the winner de-risks more gradually through the late-hold
-                # giveback. Gated by the SAME non-local breadth filter (sideways/mixed byte-
-                # identical: isolated legs -> _bth_broad_gate 0 -> no attenuation -> full
-                # time-pressure -> harvested at hold-time as baseline). Distinct from the
-                # pp attenuation (different exit source). Modest 0.30 max attenuation.
-                # Byte-identical for shorts (long gate 0), ct (align 0), losers (profit gate 0),
-                # isolated legs (breadth gate 0).
-                _bth_tp_atten = 0.30 * _ta_long_gate * _ta_align * _ta_profit_gate * _bth_broad_gate
-                _time_pressure = _time_pressure * (1.0 - _bth_tp_atten)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
