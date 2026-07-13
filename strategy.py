@@ -4970,7 +4970,30 @@ class Strategy:
                     _ll_bar = self._loss_latch_bar.get(symbol, -1)
                     if _ll_bar >= 0:
                         _ll_ramp = max(0.0, min(1.0, (self.bar_count - _ll_bar) / LOSS_LATCH_RAMP_BARS))
-                        _ll_cap_now = 1.0 - (1.0 - LOSS_LATCH_CAP) * _ll_ramp
+                        # Exp4 (architectural, indep): DIRECTION-GATED loss-latch cap depth.
+                        # Prior session: deeper cap 0.45->0.35 gave REAL rally +0.0035 (smaller
+                        # latched-long losses -> higher rally Sharpe) BUT crashed CRASH stab to
+                        # 0.524 (the latch-bar +-1 wobble propagates over crash's long continuous
+                        # DD for the latched SHORT losers); the slower 8-bar ramp fixed crash stab
+                        # BUT lost the rally gain (the slower ramp did not bite fast enough for
+                        # rally's fast-exiting long losers before the stop). The trade-off was
+                        # mutually exclusive on the RAMP-SPEED axis (uniform cap). This experiment
+                        # decouples them on the DIRECTION axis: a DEEPER cap (0.35) for LONG
+                        # latched losers (rally/bull/mixed long losers -- the deeper cap bites fast
+                        # via the 4-bar ramp before the stop -> rally gain preserved) and the
+                        # BASELINE cap (0.45) for SHORT latched losers (crash -- baseline 4-bar
+                        # ramp -> crash stability byte-identical, the crash stab crash avoided).
+                        # Position direction is a structural property (used by _long_only_gate,
+                        # _short_hold_cache), NOT a regime label. The latch-bar wobble that crashed
+                        # crash stab is specific to crash's CHOPPY downtrend (shorts in bounces);
+                        # rally/bull/mixed LONG losers are in smoother trend contexts where the
+                        # 4-bar ramp absorbs the wobble (the prior deeper-cap crash was on crash
+                        # SHORTS, not rally longs -- longs may be stab-safe at the deeper cap).
+                        # New cross-component data dep: the loss-latch cap magnitude reads
+                        # position direction (was a uniform constant). Byte-identical for SHORT
+                        # latched losers (baseline cap); LONG latched losers get the deeper cap.
+                        _ll_cap_target = 0.35 if current_pos > 0 else LOSS_LATCH_CAP
+                        _ll_cap_now = 1.0 - (1.0 - _ll_cap_target) * _ll_ramp
                         target = target * _ll_cap_now
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
