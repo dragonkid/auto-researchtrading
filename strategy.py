@@ -3361,21 +3361,17 @@ class Strategy:
                 # not a flip boundary under AR(1) noise. ~0 when broad trend disagrees with
                 # position, saturating to ~1 when all 3 symbols agree WITH the position.
                 _bth_pos_dir = 1.0 if current_pos > 0 else -1.0
-                # branch step9: EMA-SMOOTH the breadth gate to fix the bull stability dip
-                # (step4: bull stab 1.0->0.998, min_stab 0.7994 just below the 0.80 knee ->
-                # stab_factor discounts the bull +0.027 Sharpe gain). The raw breadth gate
-                # = tanh(breadth_sum*pos_dir/1.5) wobbles bar-to-bar under AR(1) noise as the
-                # 96-bar ret_vlong SIGN of one symbol flips (a 96-bar OLS crossing zero) ->
-                # the pp attenuation wobbles -> pp_pressure wobbles -> exit-timing noise ->
-                # stability dip. EMA-smooth the GATE (a slow low-pass, alpha 0.3) so the
-                # bar-to-bar gate wobble is damped -> pp attenuation is temporally stable
-                # under AR(1) -> bull stability recovers. The gate is a SMOOTH tanh of a
-                # 96-bar-averaged quantity (already low-frequency), so an EMA on it is a
-                # mild additional low-pass with negligible lag on the real broad-leg
-                # transitions (which unfold over many bars). Per-symbol state; reset on
-                # full exit. Byte-identical for the never-active population (gate ~0 ->
-                # EMA converges to ~0 -> no attenuation change).
-                _bth_broad_gate_raw = max(0.0, np.tanh(_breadth_sign_sum * _bth_pos_dir / 1.5))
+                # branch step10: require near-FULL cross-symbol agreement (|sum| close to 3)
+                # so the breadth gate fires ONLY on the cleanest broad legs (3-agreement),
+                # not 2-agreement. step9 (EMA on gate) was byte-identical to step4 -> the
+                # stability dip is NOT from gate wobble but from the gate changing too many
+                # trades' exit timing (2-agreement gives a high gate too -> fires broadly).
+                # Requiring near-full agreement (steep tanh on (|sum|-2)/0.3 -> ~0 at |sum|=2,
+                # ~1 at |sum|=3) restricts the gate to the cleanest broad legs -> changes
+                # FEWER trades' exit timing -> less stability disruption -> bull stability
+                # holds closer to 1.0 -> the +0.027 Sh gain is less discounted. Signed by
+                # pos_dir so the gate is ~0 when the broad trend disagrees with the position.
+                _bth_broad_gate_raw = max(0.0, np.tanh((_breadth_sign_sum * _bth_pos_dir - 2.0) / 0.3))
                 _prev_bg = self._bth_gate_ema.get(symbol, _bth_broad_gate_raw)
                 _bth_broad_gate = 0.3 * _bth_broad_gate_raw + 0.7 * _prev_bg
                 self._bth_gate_ema[symbol] = _bth_broad_gate
