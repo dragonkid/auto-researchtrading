@@ -4270,7 +4270,30 @@ class Strategy:
                                 # made it a winner is STILL ongoing. Byte-identical when slope
                                 # does not confirm (gate 0).
                                 _wa_slope_conf = max(0.0, np.tanh(-_exit_slope / 0.0004))
-                                _de_floor = min(0.95, _de_floor + WIN_FLOOR_RAISE * _wa_ramp_w * _wa_slope_conf)
+                                # Branch step6: PIVOT direction -- LOWER the de-risk floor for
+                                # latched winning shorts (faster harvest), the OPPOSITE of step3.
+                                # Step3/step5 (raise floor = keep more size through de-risk)
+                                # made crash WORSE (Sh -0.067): crash winning shorts REVERSE
+                                # (dead-cat bounces) and bigger size gives back more before exit.
+                                # Crash winners reverse often -> HARVEST faster -> lock gains
+                                # before the reversal. Lowering _de_floor starts the de-risk
+                                # ramp EARLIER (at lower exit pressure) so a latched winning
+                                # short de-risks sooner -> smaller per-winner realized gain BUT
+                                # less giveback on the reversal -> higher Sharpe for the
+                                # reversal-prone crash population. Distinct from the existing
+                                # _de_floor lowering for LOSERS during portfolio DD (line 4187,
+                                # loss-side only): this is a PROFIT-side lowering for confirmed
+                                # winning shorts. Stability-safe (no new trades, only changes
+                                # the ramp start). Gated on profit + slope-conf (a winner whose
+                                # slope still confirms harvests a bit slower via slope-conf
+                                # gate ~1; a winner whose slope is weakening harvests faster via
+                                # gate ->0 -- exactly the reversal pattern). Direction-agnostic
+                                # principle (no regime label): a confirmed winner in a regime
+                                # where winners reverse should be harvested faster. Clamp
+                                # _de_floor >= 0.30 so the ramp still engages (never below the
+                                # point where de-risk is always-on). Byte-identical when not
+                                # latched / longs / non-trend-aligned / loss-side.
+                                _de_floor = max(0.30, _de_floor - WIN_FLOOR_RAISE * _wa_ramp_w * (1.0 - 0.5 * _wa_slope_conf))
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
