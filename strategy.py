@@ -972,7 +972,13 @@ class Strategy:
         # 6-12% range of the existing admit tighteners).
         _port_trend_divergence = 0.0
         if len(_port_rv_vals) >= 2:
-            _meaningful_rvs = [_rv for _rv in _port_rv_vals if abs(_rv) > 0.012]
+            # branch step3: raise magnitude threshold 0.012 -> 0.022 so only DEEP-trending
+            # symbols count (noise-stable, well away from the 0.012 boundary that made
+            # crash's rotational-phase bars flip membership under AR(1) -> stab crash).
+            # Trades a smaller crash gain (fewer bars fire) for stability: the bars that
+            # remain are clearly-rotational deep-trend bars where the dominant direction
+            # is noise-stable.
+            _meaningful_rvs = [_rv for _rv in _port_rv_vals if abs(_rv) > 0.022]
             if len(_meaningful_rvs) >= 2:
                 _m_sum = sum(_meaningful_rvs)
                 _m_dir = 1.0 if _m_sum > 0 else (-1.0 if _m_sum < 0 else 0.0)
