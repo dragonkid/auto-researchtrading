@@ -949,44 +949,6 @@ class Strategy:
         # cross-symbol magnitude-agreement stays as the broad-trend CONFIRMATION; the
         # per-symbol rsi_trend_str is the LOCAL-trend gate -- two distinct timescales.
         _port_trend_admit_relax = max(0.0, min(1.0, np.tanh(_port_trend_mag_agree / 0.02)))
-        # Exp3 (architectural indep, this session): CROSS-SYMBOL 96-bar TREND-DIVERGENCE
-        # admission tightener. The STRUCTURAL OPPOSITE of the keep's cross-symbol trend-
-        # MAGNITUDE-AGREEMENT relaxation (line above). Prior sessions confirmed cross-symbol
-        # DIRECTION divergence is RARE at 96-bar (symbols all trend the same direction at
-        # 96-bar) -> a prior DIRECTION-divergence experiment was INERT. THIS is a genuinely
-        # different signal: divergence measured ONLY over symbols with MEANINGFUL trend
-        # magnitude (|ret_vlong| > 0.012, excluding the near-zero calm symbols that dominate
-        # sideways), so it fires when genuinely-trending symbols DISAGREE in direction
-        # (a rotational/divergent market: one symbol uptrending, another downtrending) ->
-        # trend-following entries in a divergent market are lower quality (no broad-market
-        # confirmation; the trend is idiosyncratic not broad) -> TIGHTEN admission. Distinct
-        # from the agreement relaxation (which fires on SAME-direction strength) and from
-        # the weak_persist avg tighten (which fires on ALL-weak = sideways calm): this fires
-        # on STRONG-but-DISAGREED = rotational. NEW cross-symbol data dep using the existing
-        # _port_rv_vals (no new price reads): the fraction of MEANINGFUL-trending symbols
-        # whose sign disagrees with the dominant sign, weighted by mean magnitude. Byte-
-        # identical when fewer than 2 symbols have |ret_vlong|>0.012 (sideways all-calm, or
-        # single-symbol trend) OR all meaningful symbols agree (bull/rally/crash broad trend).
-        # Continuous, no boundary. Applied as an admission TIGHTENER (raises _strong_min),
-        # composed with the existing tighteners. Max 8% tighten (conservative, mirrors the
-        # 6-12% range of the existing admit tighteners).
-        _port_trend_divergence = 0.0
-        if len(_port_rv_vals) >= 2:
-            _meaningful_rvs = [_rv for _rv in _port_rv_vals if abs(_rv) > 0.012]
-            if len(_meaningful_rvs) >= 2:
-                _m_sum = sum(_meaningful_rvs)
-                _m_dir = 1.0 if _m_sum > 0 else (-1.0 if _m_sum < 0 else 0.0)
-                if _m_dir != 0.0:
-                    _disagree_mags = [abs(_rv) for _rv in _meaningful_rvs if (_rv > 0) != (_m_dir > 0)]
-                    _all_mags = [abs(_rv) for _rv in _meaningful_rvs]
-                    # divergence = disagreement share, weighted by mean magnitude (so a deep
-                    # divergent trend registers more than a shallow one). tanh(/0.02) so a
-                    # deep rotational market (|rv|~0.04 with split signs) saturates.
-                    _disagree_share = (sum(_disagree_mags) / sum(_all_mags)) if sum(_all_mags) > 1e-10 else 0.0
-                    _mean_mag = sum(_all_mags) / len(_all_mags)
-                    _port_trend_divergence = _disagree_share * max(0.0, min(1.0, np.tanh(_mean_mag / 0.02)))
-        PORT_TREND_DIVERGENCE_MAX_TIGHTEN = 0.08
-        _port_trend_div_admit_tighten = 1.0 + PORT_TREND_DIVERGENCE_MAX_TIGHTEN * _port_trend_divergence
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1332,15 +1294,6 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
-            # Exp3 (this session): apply CROSS-SYMBOL TREND-DIVERGENCE admission tightener
-            # (computed at top level). Tightens admission when genuinely-trending symbols
-            # disagree in direction (rotational/divergent market). Composes with the weak-
-            # avg and deep-bear tighteners (independent signals). Byte-identical when
-            # _port_trend_div_admit_tighten=1.0 (broad agreement, or <2 meaningful symbols).
-            # branch step7: admission application REMOVED (the admission tightener crashed
-            # crash stability across step1-6; step7 tests the emission-layer application in
-            # isolation, downstream of admission -> no admission flips -> no stab crash).
-            # _strong_min = _strong_min * _port_trend_div_admit_tighten  # DISABLED step7
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
@@ -4850,22 +4803,9 @@ class Strategy:
                     # (the binding positive regime whose dead-capital longs bleed across
                     # many bars) while sparing early-bar reductions everywhere.
                     _hold_dur_profile = 0.5 + 0.9 * max(0.0, min(1.0, np.tanh((bars_held - 3.0) / 3.0)))
-                    # branch step7: CROSS-SYMBOL DIVERGENCE add-on to the emission reduction
-                    # throttle. A position being reduced in a DIVERGENT (rotational) market
-                    # is more likely idiosyncratic dead capital (no broad confirmation) ->
-                    # amplify the reduction slightly. Applied at the EMISSION layer
-                    # (downstream of admission) so it does NOT flip ADMISSION decisions ->
-                    # avoids the admission-stability crash that walled step1-6. NEW cross-
-                    # component data dep at emission: the reduction throttle reads the top-
-                    # level _port_trend_divergence (cross-symbol rotational signal). Small
-                    # max 0.20 add-on (below the MTM_CHOP_TRIM_AMP 0.80 base) gated to fire
-                    # only when the base throttle is already active (_mtm_chop>0) so it
-                    # never fires on smooth winners. Byte-identical when _mtm_chop=0 OR
-                    # divergence=0 (broad agreement). Reduction-only (safe family).
-                    _div_emit_addon = 0.20 * _port_trend_divergence * (1.0 if _mtm_chop > 0 else 0.0)
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + (MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile) + _div_emit_addon
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade * _hold_dur_profile
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
