@@ -273,9 +273,9 @@ DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold thr
 # cut through the giveback faster, because the DD context signals the giveback is more likely
 # a real reversal than noise. NEW cross-component data dep: the de-risk ramp exponent now
 # reads the portfolio-DD state (was profit+trend-align+slope-conf only).
-DERISK_CONVEX_DD_ONSET = 0.06   # raw portfolio-DD FRACTION (_port_dd_frac) above which cushion reduction engages. Onset 0.06 (6% DD) cleanly separates bull's 10.79% sharp-reversal DD + crash's 17.73% from sideways 4.18% / rally 5.36% / mixed 4.91% (all below onset -> byte-identical). The prior onset 0.30 on the (1-_port_dd_atten) INTENSITY was wrong: _port_dd_atten saturates (tanh /0.032) by ~4% DD so ALL regimes read intensity ~0.86-1.0 -> no separation. The RAW dd_frac retains resolution at deep DD.
-DERISK_CONVEX_DD_SCALE = 0.025  # tanh ramp width on (dd_frac - 0.06); 0.06->0.085 saturates
-DERISK_CONVEX_DD_MAX_REDUC = 0.85  # max fraction of the convex AMP removed at deep DD (-> k drops from 1.6 to ~1.09, near-linear)
+DERISK_CONVEX_DD_ONSET = 0.055  # raw portfolio-DD FRACTION (_port_dd_frac) above which cushion reduction engages. Onset 0.055 (5.5% DD) cleanly separates bull's 10.79% sharp-reversal DD + crash's 17.73% from sideways 4.18% / rally 5.36% / mixed 4.91% (all below 0.055 -> byte-identical). The prior onset 0.30 on the (1-_port_dd_atten) INTENSITY was wrong: _port_dd_atten saturates (tanh /0.032) by ~4% DD so ALL regimes read intensity ~0.86-1.0 -> no separation. The RAW dd_frac retains resolution at deep DD.
+DERISK_CONVEX_DD_SCALE = 0.020  # tanh ramp width on (dd_frac - 0.055); 0.055->0.075 saturates
+DERISK_CONVEX_DD_MAX_REDUC = 1.0   # branch step4: 0.85->1.0 (full linear at saturation -> k drops to 1.0 exactly at deep DD, the strongest giveback lock). Step3's 0.85 gave +0.000255 sub-noise; push magnitude to engage the cushion more fully on the bull deep-DD bars.
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
