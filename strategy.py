@@ -2895,6 +2895,28 @@ class Strategy:
                     _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
+                    # Exp3 (architectural, indep, this session): PROFIT-ACCELERATED scale-in
+                    # for TREND-ALIGNED winners. The scale-in subsystem only ever SLOWS or
+                    # FREEZES (_acc_fade_slowdown delays; _adv_freeze freezes ct losers); it
+                    # never ACCELERATES. An early-winning trend-aligned entry (bull/rally
+                    # trend long immediately in profit) is a high-quality signal -> commit
+                    # faster (reach full size sooner) -> capture more of the early trend
+                    # move -> higher Sharpe/APY in trend regimes. INVERSE of the freeze
+                    # (delays losers) and DISTINCT from the reverted MAE-acc-fade slowdown
+                    # (slowed on MAE depth) and the MAE-responsive pace discard (used
+                    # trend-magnitude, load-bearing for bull): this reads pos_pnl PROFIT
+                    # directly (position-level portfolio-invariant) gated on the SAME
+                    # trend-aligned _pos_dir_si/ret_long gate the freeze uses (mirrored),
+                    # so COUNTER-TREND winners (rally ct bears briefly in profit -- the
+                    # rally-ct fragility population) are BYTE-IDENTICAL (gate 0); trend-
+                    # aligned winners (bull/rally trend longs) accelerate. profit_gate uses
+                    # the SAME 0.4*|stop| scale as _adv_freeze (symmetric). Capped at full
+                    # size (min 1.0). Bars-held gate (<= ENTRY_FULL_BARS) restricts to the
+                    # scale-in window. Continuous tanh, no boundary.
+                    _ta_si_gate = max(0.0, np.tanh(ret_long * _pos_dir_si / 0.04))  # trend-aligned (20-bar), MIRROR of _ct_si_gate
+                    _profit_si = max(0.0, np.tanh(pos_pnl / (0.4 * abs(STOP_LOSS_PCT))))  # in profit, SAME scale as _adv_freeze
+                    _si_accel = 1.0 + 0.25 * _ta_si_gate * _profit_si * (1.0 if bars_held <= ENTRY_FULL_BARS else 0.0)
+                    scale_frac = min(1.0, scale_frac * _si_accel)
                     # Exp1 (architectural, indep): FEED-FORWARD scale_frac quantization
                     # to a FIXED discrete fraction grid. The continuous scale-in ramp
                     # (ENTRY_INITIAL_FRAC + (1-ENTRY_INITIAL_FRAC)*progress) lands at a
