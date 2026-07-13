@@ -138,6 +138,35 @@ LOSS_LATCH_STILL_LOSS = 0.15  # branch step12: lower still-loss gate 0.30->0.15 
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
 LOSS_LATCH_RAMP_BARS = 4     # branch step10: revert to 4 (step9 2-bar crashed stab 0.081; 4 bars is the stab-safe minimum)
 LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab-safe 4-bar ramp (push composite above +0.003)
+# Exp2 (architectural, indep): LOSS-LATCH applied via the STOP-LOSS BINARY EXIT path -- the
+# prior-session-sanctioned untested axis "loss-latch cap depth on a DIFFERENT application
+# path (not target cap) that might decouple the rally gain from the crash stab crash."
+# Exp1 (this session) tested the EXIT-THRESHOLD path and proved it BYTE-IDENTICAL INERT:
+# _exit_thresh is read ONLY by the de-risk ramp (line ~4168), but latched DEEP losers exit via
+# the STOP-LOSS BINARY path (line ~4061: _sl_pressure>=0.95 AND _exit_pressure>=1.0 -> target=0)
+# BEFORE the de-risk ramp engages -> the exit-threshold lowering never reaches them (3rd
+# confirmation of the prior-session wall: only the TARGET cap and the STOP-LOSS binary path
+# reach the latched population before exit). This experiment applies the latch via the
+# STOP-LOSS BINARY path: LOWER the _exit_pressure>=1.0 requirement for latched losers so the
+# binary stop-loss exit fires at LOWER _exit_pressure (sooner, at a shallower realized loss).
+# Mechanism: when _sl_pressure>=0.95 (stop LEVEL reached) the binary exit still requires
+# _exit_pressure>=1.0; since _exit_pressure = max(_sl_pressure,_soft_max)+_voter_bias, the
+# >=1.0 gate needs voter_bias>=0.05 (a reversal-confirmation voter signal). For a latched
+# CONFIRMED deep loser, the voter-confirmation requirement is redundant (the position's own
+# MAE already confirmed it is a persistent loser) -> drop the confirmation -> the binary exit
+# fires on the bar the stop LEVEL is reached (soonest) -> smaller realized loss -> higher
+# Sharpe (same economic cut as a deeper target cap, but via EXIT TIMING on the binary path the
+# latched population actually exits through). The TARGET stays at full size until the binary
+# exit fires -> NO per-bar target-value ramp -> NO tracking-error stab crash (the prior-session
+# wall at the deeper target cap was a function of the per-bar target ramp, not the latch).
+# For rally's fast latched losers, the sooner binary exit captures them before they give back
+# -> rally gain preserved via exit-timing. NEW control flow: the binary exit threshold now
+# reads the latch state (a new data dep for the binary exit path). Gradual ramp over the SAME
+# LOSS_LATCH_RAMP_BARS (a +-1 bar latch shift -> +-1 bar ramp shift -> SMALL threshold diff
+# -> stab preserved). Reduction-only (lower threshold -> sooner exit, never later); byte-
+# identical for unlatched (default 1.0 -> gate 0 -> threshold stays 1.0). RETAIN the keep
+# 11e75515 0.45 target cap (the keep's mechanism); this is an additive 2nd output for the latch.
+LOSS_LATCH_BIN_THRESH_LOWER = 0.12  # max fractional lowering of the binary-exit _exit_pressure threshold (1.0 -> 0.88) for latched losers; moderate magnitude isolating the stop-loss-binary path from the existing 0.45 target cap
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -4058,7 +4087,28 @@ class Strategy:
                 # Removing it: fresh entries (bars 0-1) become protected from soft-
                 # pressure noise (only SL or opp_gate can close them); bars>=2 keep
                 # identical exit behavior via de-risk ramp (de_risk=0 at pressure=thresh).
-                if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
+                # Exp2 (architectural, indep): LOSS-LATCH via the STOP-LOSS BINARY EXIT path.
+                # The binary exit (line below) requires _sl_pressure>=0.95 (stop LEVEL reached)
+                # AND _exit_pressure>=1.0 (voter-bias reversal confirmation). For a latched
+                # CONFIRMED deep loser the voter-confirmation is redundant (the position's own
+                # MAE already confirmed it is a persistent loser), so LOWER the _exit_pressure
+                # threshold for latched losers -> the binary exit fires on the bar the stop LEVEL
+                # is reached (soonest) -> smaller realized loss -> higher Sharpe. This is the
+                # exit-timing cut via the binary path the latched population actually exits
+                # through (Exp1 proved the de-risk-ramp exit-threshold path is INERT for latched
+                # losers because they exit via this binary path first). NEW data dep: the binary
+                # exit threshold now reads the latch state. Gradual ramp over LOSS_LATCH_RAMP_BARS
+                # (a +-1 bar latch shift -> +-1 bar ramp shift -> small threshold diff -> stab
+                # preserved). Byte-identical for unlatched (threshold stays 1.0). RETAIN the
+                # 0.45 target cap (keep 11e75515); additive 2nd output for the latch.
+                _ll_bin_thresh = 1.0
+                _ll_bin_val = self._loss_latch.get(symbol, 1.0)
+                if _ll_bin_val < 1.0:
+                    _ll_bin_bar = self._loss_latch_bar.get(symbol, -1)
+                    if _ll_bin_bar >= 0:
+                        _ll_bin_ramp = max(0.0, min(1.0, (self.bar_count - _ll_bin_bar) / LOSS_LATCH_RAMP_BARS))
+                        _ll_bin_thresh = 1.0 - LOSS_LATCH_BIN_THRESH_LOWER * _ll_bin_ramp
+                if _sl_pressure >= 0.95 and _exit_pressure >= _ll_bin_thresh and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: PnL-conditioned partial-exit floor (replaces
