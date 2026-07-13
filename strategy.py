@@ -133,7 +133,7 @@ SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) 
 # recomputed per bar). Byte-identical for winners (MAE never deep -> never latches),
 # fresh entries (no MAE yet), and recovering positions (the "still losing" gate
 # prevents latching a position that already bounced off its MAE back toward breakeven).
-LOSS_LATCH_MAE_ONSET = 0.80   # MAE/|stop| depth at which the latch becomes eligible (deep underwater: MAE <= -0.8*stop)
+LOSS_LATCH_MAE_ONSET = 0.60   # branch step11: lower onset 0.80->0.60 (expand latch population to shallower-MAE losers; 4-bar sustain gate absorbs extra noise sensitivity)
 LOSS_LATCH_STILL_LOSS = 0.30  # pos_pnl/|stop| still-negative threshold: latch fires only while STILL clearly losing (pos_pnl < -0.3*stop), NOT on a position that already recovered off its MAE
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
 LOSS_LATCH_RAMP_BARS = 4     # branch step10: revert to 4 (step9 2-bar crashed stab 0.081; 4 bars is the stab-safe minimum)
