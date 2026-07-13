@@ -1279,8 +1279,25 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
+            # Exp1 (architectural indep, this session): DIRECTIONAL QUINTIC POWER ASYMMETRY
+            # on the voter-aggregation conviction ramp. The aggregation FORM (the quintic
+            # (c-0.5)**POWER) was always SYMMETRIC across long/short; prior directional
+            # asymmetry lives only in the THRESHOLD (_bull/_bear_strong_min ret_long tanh
+            # terms) and in size/exit, never in the aggregation ramp itself. The documented
+            # long/short asymmetry (short-side trend-continuation is MORE PERSISTENT than
+            # long-side uptrend-pullback giveback; short squeeze risk at exhaustion) motivates
+            # a STEEPER conviction ramp for SHORTS: a bear voter must sit FURTHER above 0.5
+            # to contribute the same amount, so marginal bear voters (near 0.5) contribute
+            # less -> filtering low-conviction short entries that are squeeze-prone. Longs
+            # keep the proven power-5 ramp (untouched). NEW cross-direction data dep at the
+            # AGGREGATION form (the ramp SHAPE differs by direction, not just the threshold).
+            # Scale K adjusted per power so the per-voter MAX contribution (at c=1.0) is
+            # preserved across both sides: power 5 -> K=97.66 (0.5^5*97.66=3.04); power 7 ->
+            # K=390.6 (0.5^7*390.6=3.04). So only the SHAPE changes, not the ceiling. Continuous
+            # in the voter confidence (no boundary); byte-identical for any single voter at
+            # c=0.5 (both powers give 0) and at c=1.0 (both give 3.04*w); differs in the ramp.
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 7 * 390.6) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
