@@ -1287,7 +1287,28 @@ class Strategy:
             _vws_xd = _vws_x - _vws_xm
             _vws_yd = np.log(_vws_hl2) - _vws_ym
             _vws_slope = float(np.sum(_vws_w * _vws_xd * _vws_yd) / max(np.sum(_vws_w * _vws_xd * _vws_xd), 1e-20))
-            _vws_signal = (_vws_slope - 0.00015) / 0.00010  # same threshold/scale as 5th _lr_slope voter
+            _vws_signal_raw = (_vws_slope - 0.00015) / 0.00010  # same threshold/scale as 5th _lr_slope voter
+            # Branch step7: LONG-ONLY VWS signal (clip to max(0, raw)). The VWS voter
+            # contributes only BULLISH conviction (long entries), never bearish (short
+            # entries). When the volume-weighted slope is bearish (signal<0 -> clipped to
+            # 0), both bull and bear confs are tanh(0)=0.5 (neutral -> no contribution to
+            # either side). When bullish (signal>0), the bull conf gets the full
+            # contribution (admits longs), the bear conf gets nothing. This excludes
+            # crash's BEARISH VWS shorts (step2 crash stab 0.523 was from bearish VWS
+            # admitting bad high-conviction shorts -> long-only removes them -> crash
+            # byte-identical to baseline, stab held) while keeping mixed's BULLISH
+            # up-bounce longs (mixed's local up-bounces have bullish volume-weighted
+            # slope -> VWS admits longs -> the mixed +0.017 gain, preserved) and bull's
+            # bullish longs. The prior session's CROSS-EXPERIMENT CONCLUSION (3 sessions:
+            # short-side VWS/pp-attenuation signals are structurally wrong for crash
+            # because crash bounces develop AFTER the short peaked) is respected: VWS
+            # does not vote bearish at all. Direction-ASYMMETRIC (long-only), general
+            # principle (no regime label): the volume-confirmed trend voter is a
+            # continuation signal for LONGS (buy volume-confirmed uptrends) but NOT for
+            # shorts (crash's profitable shorts are moderate-conviction, not high-
+            # conviction volume-confirmed). RETAIN the step2 ret_long trend-strength gate
+            # (spares sideways chop).
+            _vws_signal = max(0.0, _vws_signal_raw)  # long-only: VWS votes bullish only, never bearish (excludes crash bad shorts)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
