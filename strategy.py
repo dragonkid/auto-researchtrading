@@ -106,6 +106,36 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # persistent-downtrend-during-DD entries). New per-position cached state + new
 # control flow (computed at entry, read during hold -- not recomputed per bar).
 SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) with a HIGHER latch threshold so only deep winners latch (safer exit-bar shift)
+# Exp1 (architectural, indep): LOSS-LATCH permanent target-size cap. The structural
+# MIRROR of the keep 249d8241's profit-latch (short-side hold-attenuation set once when
+# a short CONFIRMS winning), applied to the LOSS side and to the position's target SIZE.
+# When a held position CONFIRMS as a deep loser -- its MAE (max adverse excursion, the
+# low-water mark of pos_pnl since entry) has reached a deep threshold AND it is STILL
+# losing (not recovering) -- LATCH a permanent target-size cap (one-time 1.0 -> CAP
+# flip, held for the life of the position). The cap shrinks the held position's target
+# magnitude for the remainder of its life -> smaller realized loss on the eventual
+# stop/soft-exit -> higher Sharpe in the negative/near-zero regimes (crash, sideways,
+# mixed's oscillating losers, bull's pullback longs that don't recover). Distinct from
+# EVERY existing loss-side mechanism: (a) the de-risk RAMP is continuous + recomputed
+# per bar (bypassed by sharp reversals, confirmed walled on bull DD); (b) the
+# break-even pressure fires NEAR BREAKEVEN, not on confirmed deep losers; (c) the
+# stop-loss is binary and preempted by soft-exit; (d) the MTM-chop emission trim is
+# per-bar recomputed, not latched; (e) the sustained-loss exit-threshold lowering is
+# DD-CONDITIONAL (only fires during portfolio DD) and per-bar. The loss-latch is a
+# POSITION-STATE separator (the keep 249d8241's validated separator family): it
+# captures the structural property "this position has DEMONSTRATED it is a confirmed
+# deep loser" regardless of portfolio state, and is set ONCE -> deterministic under
+# AR(1) noise (the latch bar may shift +-1 but the post-latch cap is a CONSTANT ->
+# stability preserved, same lesson as the profit-latch). Reduction-only (size cap,
+# never boost -> safe family). Direction-agnostic (no regime label): a confirmed deep
+# loser in any regime gets capped. NEW per-position cached state + new control flow
+# (triggered once on confirmation, read as a constant cap during hold -> not
+# recomputed per bar). Byte-identical for winners (MAE never deep -> never latches),
+# fresh entries (no MAE yet), and recovering positions (the "still losing" gate
+# prevents latching a position that already bounced off its MAE back toward breakeven).
+LOSS_LATCH_MAE_ONSET = 0.80   # MAE/|stop| depth at which the latch becomes eligible (deep underwater: MAE <= -0.8*stop)
+LOSS_LATCH_STILL_LOSS = 0.30  # pos_pnl/|stop| still-negative threshold: latch fires only while STILL clearly losing (pos_pnl < -0.3*stop), NOT on a position that already recovered off its MAE
+LOSS_LATCH_CAP = 0.75         # permanent target-size cap for latched losers (held target magnitude capped to 0.75x)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -533,6 +563,15 @@ class Strategy:
         # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
         # (slow-rise / fast-fall). Reset on full exit; default 0.0.
         self._local_hold_ext_ema = {}
+        # Exp1 (architectural, indep): per-symbol LOSS-LATCH permanent target-size cap.
+        # The structural mirror of the short-side profit-latch (_short_hold_cache) on the
+        # LOSS side: a one-time 1.0 -> LOSS_LATCH_CAP flip when a held position CONFIRMS as
+        # a deep loser (MAE deep AND still losing), then read as a CONSTANT cap on the
+        # held target magnitude for the rest of the position's life. Deterministic under
+        # AR(1) noise (set once, never recomputed -> zero per-bar wobble -> stability
+        # preserved). Default 1.0 (no effect) for winners / fresh entries / recovering
+        # positions / uncached symbols. Reset on full exit. See LOSS_LATCH_CAP.
+        self._loss_latch = {}
         # Exp1 (architectural, indep): per-symbol POSITION-CACHED short-side hold-
         # extension. Unlike _hold_ext_ema/_local_hold_ext_ema (per-bar EMA recomputed
         # each held bar), this is computed ONCE at short entry from entry-bar state
@@ -3031,6 +3070,30 @@ class Strategy:
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
+                # Exp1 (architectural, indep): LOSS-LATCH trigger. The position's MAE
+                # (low-water mark of pos_pnl since entry) is already updated above. If this
+                # is the FIRST bar the position CONFIRMS as a deep loser -- MAE has reached a
+                # deep threshold (MAE <= -LOSS_LATCH_MAE_ONSET*|stop|) AND the position is
+                # STILL clearly losing (pos_pnl < -LOSS_LATCH_STILL_LOSS*|stop|, NOT a
+                # position that already bounced off its MAE back toward breakeven) -- LATCH
+                # a permanent target-size cap (one-time 1.0 -> LOSS_LATCH_CAP flip). The
+                # "still losing" gate is the structural separator that distinguishes a
+                # confirmed-to-bleed loser (latch) from a recovering position (MAE deep but
+                # pos_pnl bounced back -> no latch: the recovery is the mean-reversion the
+                # break-even pressure and de-risk ramp already protect). Set ONCE and held
+                # for the life of the position (deterministic under AR(1) noise: the latch
+                # bar may shift +-1 but the post-latch cap is a CONSTANT -> stability
+                # preserved). Byte-identical for winners (MAE never deep -> gate never
+                # passes), fresh entries (no MAE depth), and recovering positions (still-
+                # loss gate fails). Reduction-only (cap < 1.0). Direction-agnostic.
+                if current_pos != 0:
+                    _loss_latch_val = self._loss_latch.get(symbol, 1.0)
+                    if _loss_latch_val >= 1.0:  # not yet latched (default 1.0)
+                        _mae_deep = self._mae.get(symbol, 0.0) <= -(LOSS_LATCH_MAE_ONSET * abs(STOP_LOSS_PCT))
+                        _still_losing = pos_pnl < -(LOSS_LATCH_STILL_LOSS * abs(STOP_LOSS_PCT))
+                        if _mae_deep and _still_losing:
+                            self._loss_latch[symbol] = LOSS_LATCH_CAP
+                            _loss_latch_val = LOSS_LATCH_CAP
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
                 # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
@@ -4832,6 +4895,25 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
+            # Exp1 (architectural, indep): LOSS-LATCH application. If this held position
+            # has latched a permanent target-size cap (a confirmed deep loser per the
+            # trigger above), cap the held target magnitude. Applied to SAME-SIGN held
+            # positions ONLY (current_pos != 0, target same sign as current_pos): full
+            # exits (target==0) and sign flips (opposite sign) are risk transitions that
+            # must hit their exact target -> NEVER capped. The cap shrinks |target|
+            # toward 0 proportionally (target *= LOSS_LATCH_CAP); for a held loser this
+            # means the remaining position target is smaller -> smaller realized loss on
+            # the eventual stop/soft-exit. Reduction-only (cap < 1.0); byte-identical
+            # when unlatched (default 1.0 -> no change). Deterministic (the latch is a
+            # constant set once -> no per-bar wobble -> stability preserved). Applied
+            # AFTER all upstream transforms (de-risk ramp, tp-harvest, opp-gate, target
+            # EMAs, median filter, grid quantization, deadband, mtm-chop trim) and BEFORE
+            # the emission threshold check so the smaller target still respects the
+            # execution floor. New control flow at emission: a position-state-cached cap.
+            if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
+                _ll_val = self._loss_latch.get(symbol, 1.0)
+                if _ll_val < 1.0:
+                    target = target * _ll_val
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
@@ -4845,7 +4927,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -4857,6 +4939,10 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    # Exp1: clear the loss-latch on any new entry / flip so the new
+                    # position starts unlatched (the latch is set by the trigger on
+                    # THIS position's own MAE, not inherited from the prior position).
+                    self._loss_latch.pop(symbol, None)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
