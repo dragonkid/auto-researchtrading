@@ -3119,7 +3119,13 @@ class Strategy:
                         # already bounced off its MAE back toward breakeven).
                         _ll_pos_dir = 1.0 if current_pos > 0 else -1.0
                         _ll_ct_gate = max(0.0, np.tanh(-_ll_pos_dir * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day (noise-free fast-saturating)
-                        if _mae_deep and _still_losing and _ll_ct_gate > 0.50:
+                        # branch step3: LOWER the ct-gate threshold 0.50->0.15 so rallys
+                        # WEAK-trend ct shorts (ret_vlong~0.005-0.006 -> ct_gate~0.46) pass
+                        # (step2s 0.50 threshold excluded them -> rally byte-identical, the
+                        # +0.052 gain lost). crash shorts (ct_gate=0, trend-aligned) stay
+                        # excluded. Threshold 0.15 captures rally down to ret_vlong~0.0015
+                        # (tanh(0.15)=0.149) while keeping crash (ct_gate=0) clean.
+                        if _mae_deep and _still_losing and _ll_ct_gate > 0.15:
                             self._loss_latch[symbol] = LOSS_LATCH_CAP
                             _loss_latch_val = LOSS_LATCH_CAP
 
