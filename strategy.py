@@ -978,7 +978,7 @@ class Strategy:
             # Trades a smaller crash gain (fewer bars fire) for stability: the bars that
             # remain are clearly-rotational deep-trend bars where the dominant direction
             # is noise-stable.
-            _meaningful_rvs = [_rv for _rv in _port_rv_vals if abs(_rv) > 0.022]
+            _meaningful_rvs = [_rv for _rv in _port_rv_vals if abs(_rv) > 0.030]
             if len(_meaningful_rvs) >= 2:
                 _m_sum = sum(_meaningful_rvs)
                 _m_dir = 1.0 if _m_sum > 0 else (-1.0 if _m_sum < 0 else 0.0)
