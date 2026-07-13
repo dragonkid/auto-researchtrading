@@ -4138,6 +4138,31 @@ class Strategy:
                         # boundary). Byte-identical at portfolio peak (both terms 0).
                         _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
                         _de_floor -= (0.13 * (1.0 - _port_dd_atten) + 0.07 * _port_dd_active) * _exit_dd_gate
+                    # branch step5: LOSS-LATCH de-risk floor lowering (GRADUAL application,
+                    # replaces the step1/step4 DISCRETE target cap that crashed crash stab
+                    # to 0.081-0.083). For a LATCHED loser (confirmed deep-MAE per the trigger
+                    # above), lower the de-risk ramp floor so the graduated partial-exit
+                    # ramp STARTS EARLIER -> the loser shrinks GRADUALLY over MORE bars
+                    # (lower floor = the ramp engages at lower exit_pressure). This is the
+                    # structural mirror of the keep 249d8241 profit-latch (which attenuated a
+                    # GRADUAL pressure so +-1 bar latch shift had minimal impact): here the
+                    # GRADUAL de-risk ramp absorbs the latch-bar wobble -> a +-1 bar shift in
+                    # when the latch fires shifts the gradual ramp-start by +-1 bar -> a
+                    # small position-value difference (NOT a discrete 25pct cut) -> stab
+                    # preserved. Loss-side only (gated on _pnl_scale<0 -> only losers;
+                    # winners byte-identical, _de_floor unchanged). NOT gated on portfolio DD
+                    # (the latch is a POSITION-STATE signal, distinct from the portfolio-DD
+                    # floor lowering above which fires for ALL losers during DD). The two
+                    # compose: a latched loser during portfolio DD gets BOTH lowerings (the
+                    # position has demonstrated deep structural loss AND the portfolio is in
+                    # a correlated drawdown = highest extending risk -> earliest ramp start).
+                    # Max lowering 0.15 (a 0.85 loser floor -> 0.70 at full latch), smaller
+                    # than the 0.30 profit/loss swing to keep the ramp from over-firing.
+                    # Reduction-only (floor lowering = earlier trim = risk-reducing).
+                    if _pnl_scale < 0.0:
+                        _ll_val_dr = self._loss_latch.get(symbol, 1.0)
+                        if _ll_val_dr < 1.0:
+                            _de_floor -= 0.15 * (1.0 - _ll_val_dr) / (1.0 - LOSS_LATCH_CAP)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
@@ -4939,25 +4964,20 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
-            # Exp1 (architectural, indep): LOSS-LATCH application. If this held position
-            # has latched a permanent target-size cap (a confirmed deep loser per the
-            # trigger above), cap the held target magnitude. Applied to SAME-SIGN held
-            # positions ONLY (current_pos != 0, target same sign as current_pos): full
-            # exits (target==0) and sign flips (opposite sign) are risk transitions that
-            # must hit their exact target -> NEVER capped. The cap shrinks |target|
-            # toward 0 proportionally (target *= LOSS_LATCH_CAP); for a held loser this
-            # means the remaining position target is smaller -> smaller realized loss on
-            # the eventual stop/soft-exit. Reduction-only (cap < 1.0); byte-identical
-            # when unlatched (default 1.0 -> no change). Deterministic (the latch is a
-            # constant set once -> no per-bar wobble -> stability preserved). Applied
-            # AFTER all upstream transforms (de-risk ramp, tp-harvest, opp-gate, target
-            # EMAs, median filter, grid quantization, deadband, mtm-chop trim) and BEFORE
-            # the emission threshold check so the smaller target still respects the
-            # execution floor. New control flow at emission: a position-state-cached cap.
-            if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
-                _ll_val = self._loss_latch.get(symbol, 1.0)
-                if _ll_val < 1.0:
-                    target = target * _ll_val
+            # Exp1 (architectural, indep): LOSS-LATCH is APPLIED via the de-risk ramp
+            # floor (branch step5: a GRADUAL ramp-start lowering, NOT a discrete target
+            # cap). The step1/step4 discrete target *= 0.75 cap crashed crash stab to
+            # 0.081-0.083: a 25pct size cut applied on a single bar, where the latch bar
+            # wobbles +-1-2 across noise realizations, creates a DISCRETE position-value
+            # difference that propagates over crashs long DD -> stab crash. The keep
+            # 249d8241 profit-latch avoided this by attenuating a GRADUAL pressure
+            # (_time_pressure ramps) so +-1 bar shift had minimal impact. The mirror here:
+            # for a latched loser, LOWER the de-risk ramp FLOOR (_de_floor) so the
+            # graduated partial-exit ramp STARTS EARLIER -> the loser shrinks GRADUALLY
+            # over MORE bars (not a discrete cut on one bar). A +-1 bar latch-bar shift
+            # now shifts the gradual ramp-start by +-1 bar -> a small, gradual position-
+            # value difference (not a discrete 25pct jump) -> stability preserved. See
+            # the _de_floor lowering block in the de-risk ramp section below.
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
