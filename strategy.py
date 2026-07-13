@@ -4177,7 +4177,25 @@ class Strategy:
                         # properties. Byte-identical at portfolio peak (1-_port_dd_atten=0 ->
                         # _dr_dd_reduce=1.0 -> _dr_k unchanged). Uses the same asymmetric-EMA
                         # _port_dd_atten (noise-robust, leverage-coupled). Continuous tanh.
-                        _dr_dd_reduce = 1.0 - DERISK_CONVEX_DD_MAX_REDUC * max(0.0, min(1.0, np.tanh((max(0.0, 1.0 - _port_dd_atten) - DERISK_CONVEX_DD_ONSET) / DERISK_CONVEX_DD_SCALE)))
+                        # BRANCH step2: GATE TO LONGS ONLY (current_pos > 0). The opener (ungated)
+                        # gave bull +0.0036 BUT crashed crash -0.108 (50pct gate breached): crash
+                        # SHORTS are trend-aligned WINNERS being de-risked during deep DD, so the
+                        # cushion reduction cut them FASTER through giveback = harvested the
+                        # profitable downtrend-continuation shorts too early -> lost downtrend
+                        # capture (SAME wall as keep 249d8241's TP-attenuation: short-side trend-
+                        # continuation is persistent, cutting faster regresses crash). The keep
+                        # 249d8241 itself ATTENUATES time-pressure for latched winning shorts
+                        # (SHORT_HOLD_TP_ATTEN=0.50) to let them run; a cushion reduction for shorts
+                        # FIGHTS that keep. STRUCTURAL long/short asymmetry (documented by the keep
+                        # itself, NOT a regime label): short-side trend-continuation is more
+                        # persistent than long-side, so shorts should keep the cushion (let run)
+                        # while longs get the faster giveback lock during sharp-reversal DD. For
+                        # shorts _dr_dd_reduce=1.0 (cushion byte-identical to baseline) -> crash
+                        # restored; longs keep the DD-conditioned reduction -> bull gain preserved.
+                        if current_pos > 0:
+                            _dr_dd_reduce = 1.0 - DERISK_CONVEX_DD_MAX_REDUC * max(0.0, min(1.0, np.tanh((max(0.0, 1.0 - _port_dd_atten) - DERISK_CONVEX_DD_ONSET) / DERISK_CONVEX_DD_SCALE)))
+                        else:
+                            _dr_dd_reduce = 1.0
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * _dr_dd_reduce * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak/DD-deep, up to ~1.6 trend-aligned+profit+slope-conf+no-DD
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
