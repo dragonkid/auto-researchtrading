@@ -3297,44 +3297,7 @@ class Strategy:
                 # attenuation gate. Crash (down_persist~0.9) byte-identical (gate 0); bull
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-                # Exp1 (architectural, indep): CROSS-SYMBOL MAGNITUDE-AGREEMENT gate on
-                # _ta_winner_gate. Prior session (reverted breadth branch): the cross-symbol
-                # 96-bar ret_vlong SIGN-agreement breadth filter applied as a 6th gate here
-                # gave bull Sharpe +0.027 (0.667->0.694) with sideways/mixed byte-identical
-                # (step4, +0.000222 SUB-NOISE), proving the non-local separator breaks the
-                # reversion-symmetry wall on the PP axis. The gain was sub-noise for two
-                # reasons: (a) PP only moves a small bull giveback-harvest population, (b)
-                # bull stability DIPPED 1.0->0.998 (min_stab 0.7994 just below the 0.80 knee)
-                # -- the breadth gate (per-bar SIGN-agreement of 96-bar returns) WOBBLES
-                # under AR(1) noise (a noise-flipped close flips a ret_vlong SIGN near zero
-                # -> breadth_sum jumps -> gate wobbles -> exit timing wobbles -> stab dip).
-                # This experiment replaces the SIGN dimension with the MAGNITUDE dimension
-                # via the existing _port_trend_mag_agree (top-level line ~979: the MIN
-                # |ret_vlong| among cross-symbol agreeing symbols). The MAGNITUDE of a 96-bar
-                # return is AR(1)-STABLE under 4.5bps close noise (only the SIGN near zero
-                # flips, not the magnitude of a deep trend) -> the gate value is bar-to-bar
-                # stable -> no exit-timing wobble -> bull stability HELD at 1.0 -> the bull
-                # Sharpe gain converts to composite WITHOUT the stability discount.
-                # Separating property (the prior session's flagged untested axis): bull/rally
-                # broad trends have HIGH min-agreeing-magnitude (~0.027 -> tanh/0.02 ~0.93);
-                # sideways 2023's broad RECOVERY DRIFT is SHALLOW (~+0.005 across all 3
-                # symbols -> min ~0.005 -> tanh ~0.24, LOW); isolated single-symbol bounces
-                # have <2 agreeing symbols -> _port_trend_mag_agree=0 (gate 0). The magnitude
-                # dimension distinguishes a STRONG broad trend (bull/rally) from a SHALLOW
-                # broad recovery drift (sideways) -- exactly the cleaner HOLD-axis separator
-                # the prior session flagged as missing (breadth conflated sideways's broad
-                # drift with bull's broad trend). Direction-aligned for LONGS only: the
-                # gate fires when the broad trend direction matches the position (long ->
-                # broad uptrend _port_trend_mag_dir>0). For shorts/_port_trend_mag_dir<=0
-                # the magnitude is zeroed (gate 0 -> attenuation off -> shorts keep full
-                # pp_pressure, crash byte-identical, mirroring the _long_only_gate). New
-                # cross-component data dep: _ta_winner_gate reads the top-level cross-symbol
-                # magnitude-agreement (currently used ONLY for admission relaxation line
-                # ~1418, never on the exit/giveback axis). Byte-identical when
-                # _port_trend_mag_agree=0 (isolated bounces / disagreed / <2 symbols).
-                _broad_mag = _port_trend_mag_agree if _port_trend_mag_dir > 0.0 and current_pos > 0 else 0.0
-                _broad_mag_gate = max(0.0, min(1.0, np.tanh(_broad_mag / 0.02)))
-                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate * _broad_mag_gate
+                _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
                 # crossing +0.003 at 0.80.
