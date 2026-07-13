@@ -3091,7 +3091,35 @@ class Strategy:
                     if _loss_latch_val >= 1.0:  # not yet latched (default 1.0)
                         _mae_deep = self._mae.get(symbol, 0.0) <= -(LOSS_LATCH_MAE_ONSET * abs(STOP_LOSS_PCT))
                         _still_losing = pos_pnl < -(LOSS_LATCH_STILL_LOSS * abs(STOP_LOSS_PCT))
-                        if _mae_deep and _still_losing:
+                        # branch step2: COUNTER-TREND-AT-MULTI-DAY gate on the latch
+                        # trigger (the stability-safe separator). Step1 (ungated) gave the
+                        # REAL rally +0.052 gain (capping rally pullback LOSERS = counter-
+                        # trend shorts that keep losing) BUT crashed crash stab to 0.083.
+                        # Root cause: crash's TREND-ALIGNED shorts (short in a downtrend)
+                        # temporarily go underwater (MAE deep, still losing) before the
+                        # downtrend resumes and they PROFIT -- the ungated latch capped
+                        # these eventual WINNERS, and the LATCH BAR (when MAE first crosses
+                        # -0.8*stop + pos_pnl<-0.3*stop) wobbles under AR(1) -> exit-timing
+                        # wobble over crash's long continuous DD -> stab crash (the SAME
+                        # documented stab cliff the keep 249d8241 profit-latch hit at mag
+                        # 3.5). The separator between rally's losing shorts (cap them) and
+                        # crash's winning shorts (spare them) is TREND-ALIGNMENT at the
+                        # multi-day scale: rally pullback shorts are COUNTER-trend (short in
+                        # an uptrend, ret_vlong*pos_dir<0 -> keep losing); crash shorts are
+                        # trend-aligned (short in a downtrend, ret_vlong*pos_dir>0 ->
+                        # recover+profit). Gate the latch on COUNTER-TREND-AT-MULTI-DAY so
+                        # it fires ONLY on positions structurally destined to keep losing
+                        # (ct), sparing trend-aligned losers that recover (crash). ret_vlong
+                        # is a 96-bar OLS (smooth, noise-robust, ~1/sqrt(96) attenuation)
+                        # -> the gate is stability-safe (near-constant across noise, the
+                        # validated fast-saturating /0.01 ct gate discipline). Byte-identical
+                        # for trend-aligned losers (crash shorts); the latch still fires on
+                        # ct losers (rally pullback shorts, mixed wrong-side longs). The
+                        # still-losing gate is RETAINED (prevents latching a ct position that
+                        # already bounced off its MAE back toward breakeven).
+                        _ll_pos_dir = 1.0 if current_pos > 0 else -1.0
+                        _ll_ct_gate = max(0.0, np.tanh(-_ll_pos_dir * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day (noise-free fast-saturating)
+                        if _mae_deep and _still_losing and _ll_ct_gate > 0.50:
                             self._loss_latch[symbol] = LOSS_LATCH_CAP
                             _loss_latch_val = LOSS_LATCH_CAP
 
