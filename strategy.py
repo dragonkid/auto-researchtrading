@@ -3344,6 +3344,21 @@ class Strategy:
                 # attenuation gate. Crash (down_persist~0.9) byte-identical (gate 0); bull
                 # (down_persist~0.3) gets full attenuation. Continuous ramp.
                 _up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
+                # branch step3: NON-LOCAL BREADTH gate on _ta_winner_gate. The prior-session
+                # wall: the LOCAL up_persist gate (down_persist<0.40) leaks to sideways/mixed
+                # (mixed's rally phases can push down_persist below 0.40). The cross-symbol
+                # 96-bar trend-breadth filter (top-level _breadth_sign_sum) is the NON-LOCAL
+                # separator: HIGH when all 3 symbols trend together (broad persistent leg =
+                # bull/rally), ~0 for isolated sideways/mixed bounces. Compute the gate here
+                # (BEFORE the _ta_winner_gate multiplication) and apply it as a 6th gate:
+                # BLOCK the pp attenuation during isolated legs (sideways/mixed byte-identical,
+                # full pp_pressure -> harvested at giveback), ENABLE during broad legs (bull/
+                # rally longs ride pullback giveback -> higher Sharpe). branch step5: SOFTEN
+                # to a continuous ramp (tanh on signed breadth sum * pos_dir) so the gate is
+                # not a flip boundary under AR(1) noise. ~0 when broad trend disagrees with
+                # position, saturating to ~1 when all 3 symbols agree WITH the position.
+                _bth_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _bth_broad_gate = max(0.0, np.tanh(_breadth_sign_sum * _bth_pos_dir / 1.5))
                 _ta_winner_gate = _ta_winner_gate * _gb_mag_gate * _slope_against_gate * _long_only_gate * _up_persist_gate * _bth_broad_gate
                 # Exp1-3 (this session): magnitude 0.35 -> 0.50 -> 0.65 -> 0.80 (3 KEEPS, +0.0125 composite
                 # total; bull -0.3006->-0.2517; crash byte-identical throughout). Decelerating but still
@@ -3744,41 +3759,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-
-                # Exp1 (architectural, indep) -> BRANCH step3: the breadth filter is now
-                # applied as a GATE on the existing _ta_winner_gate (pp_pressure trend-aligned-
-                # winner attenuation, line ~3299) instead of as a standalone MAX-fusion
-                # source. The opener (standalone source) and step2 (inverted source) both
-                # LEAKED to sideways/mixed: any added pressure on in-profit trend-aligned
-                # positions hits sideways/mixed's reverting-bounce winners (their bounces
-                # ARE isolated legs). The MAX fusion can only ADD pressure, so a new source
-                # structurally cannot avoid that leak. The fix: apply the breadth filter as
-                # a NON-LOCAL GATE on the EXISTING "let long winners run" lever
-                # (_ta_winner_gate attenuates _pp_pressure for trend-aligned in-profit longs).
-                # That lever is the prior session's walled mechanism -- it leaks to
-                # sideways/mixed via its LOCAL up_persist gate (down_persist<0.40 can fire
-                # during mixed's rally phases). The breadth filter (cross-symbol 96-bar
-                # trend SIGN agreement) is the NON-LOCAL separator the prior session flagged
-                # as required: it is HIGH only when ALL THREE symbols trend together (a broad
-                # persistent leg = bull/rally), ~0 for isolated sideways/mixed bounces.
-                # Gating _ta_winner_gate by breadth BLOCKS the attenuation during isolated
-                # sideways/mixed bounces (full pp_pressure -> harvested at giveback, byte-
-                # identical to baseline) while ENABLING it during broad legs (bull/rally longs
-                # ride pullback giveback -> higher Sharpe). Compute the breadth gate here;
-                # applied at the _ta_winner_gate multiplication (line ~3347).
-                _bth_pos_dir = 1.0 if current_pos > 0 else -1.0
-                # Aligned-with-breadth-direction gate: the broad trend moves WITH the
-                # position (a long during a broad UP leg, a short during a broad DOWN leg).
-                _bth_dir_gate = 1.0 if (_breadth_dir > 0 and current_pos > 0) or (_breadth_dir < 0 and current_pos < 0) else 0.0
-                # branch step5: SOFTEN the breadth gate from a hard 0/1 to a continuous
-                # ramp so the gate is not a flip boundary under AR(1) noise (the openers
-                # used a hard dir_gate which flips when the broad sign sum crosses 0 -> the
-                # attenuation jumps -> pp_pressure jumps -> exit-timing noise -> stability).
-                # Continuous tanh on the SIGNED breadth sum * pos_dir (no boundary):
-                # ~0 when the broad trend disagrees with the position, saturating to ~1
-                # when all 3 symbols agree WITH the position. The |sum| magnitude ramps
-                # the strength (3-agreement full, 2-agreement partial).
-                _bth_broad_gate = max(0.0, np.tanh(_breadth_sign_sum * _bth_pos_dir / 1.5))
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
