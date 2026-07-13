@@ -4415,6 +4415,43 @@ class Strategy:
                 # byte-identical-ish.
                 _te_churn_boost = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
                 _te_alpha = min(0.99, _te_alpha * (1.0 + 0.60 * _te_churn_boost))  # branch step9: 0.40->0.60 (pre-EMA median makes input spike-free -> EMA can smooth harder)
+                # Exp4 (architectural, indep, this session): MTM-PATH-EFFICIENCY-CONDITIONED
+                # target-EMA alpha. The _target_ema alpha (0.99 * ct_str * (1-0.5*loss_gate) *
+                # (1+0.6*churn_boost)) smooths ct positions to damp the noise-driven position-
+                # value cascade. But under scoring k=0.3 (stability benefit discounted) with
+                # ALL regime stabilities >= 0.80 (factor 1.0, no penalty -- min_stab 0.8036),
+                # the stability benefit of full smoothing is DISCOUNTED while its RAW COST
+                # remains: the EMA lag holds ct LOSERS bigger longer -> larger realized losses
+                # -> lower Sharpe (the code comment line ~4382 flags this trade-off shift).
+                # The existing _te_loss_gate partially addresses this (cuts alpha on losing ct).
+                # NEW cross-component data dep: make the alpha ALSO depend on the position's
+                # OWN MTM-path efficiency (the proven mixed/sideways separator already used
+                # at the emission throttle, line ~4851). MTM-eff = |net|/sum|delta| over the
+                # 12-bar pos_pnl path: HIGH = the held ct position trends SMOOTHLY (rally ct
+                # bear grinding down in a smooth trend leg -- the noise-cascade is SMALL, so
+                # little smoothing needed -> the lag mostly COSTS raw by holding the loser
+                # bigger); LOW = the held ct position is CHOPPY/whipsaw (mixed dead-capital long
+                # in a down year -- the noise-cascade is LARGE, smoothing genuinely needed).
+                # REDUCE alpha for HIGH-MTM-eff (smooth-trending) ct positions (less lag ->
+                # ct losers exit sooner -> smaller losses -> rally raw up); KEEP full alpha for
+                # LOW-MTM-eff (choppy) ct positions (smoothing stays where the cascade is real
+                # -> mixed stability protected). Distinct from _te_loss_gate (pos_pnl sign)
+                # and _te_churn_boost (entry density): reads the held position's MTM trajectory
+                # SHAPE. Portfolio-invariant (position-level). The smoothing reduction is
+                # direction-agnostic and gated on smoothness (NOT a regime label). All stabilities
+                # have >=0.014 headroom above the 0.80 knee (min 0.8036) -> a modest alpha
+                # reduction on the SMOOTH (low-cascade) ct population should hold stability
+                # while recovering raw. Continuous tanh, no boundary. Byte-identical when the
+                # path is short (<4 bars, no MTM-eff) or when mtm_eff~0 (full chop, no reduction).
+                _te_pp = self._pnl_path.get(symbol, [])
+                _te_eff = 1.0
+                if len(_te_pp) >= 4:
+                    _te_pa = np.array(_te_pp)
+                    _te_net = abs(_te_pa[-1] - _te_pa[0])
+                    _te_tot = float(np.sum(np.abs(np.diff(_te_pa))))
+                    _te_eff = _te_net / max(_te_tot, 1e-10)  # [0,1] high=smooth
+                _te_smooth_gate = max(0.0, min(1.0, np.tanh((_te_eff - 0.40) / 0.20)))  # ~0 choppy, ~1 smooth-trending
+                _te_alpha = _te_alpha * (1.0 - 0.20 * _te_smooth_gate)
                 # Exp1 (architectural, indep, this session): TREND-ALIGNED-WINNER target-EMA.
                 # The keep 47cbe827 extended max_hold for long-only trend-aligned in-profit
                 # positions (the _ta_dd_hold_ext path). That hold-extension added bar-to-bar
