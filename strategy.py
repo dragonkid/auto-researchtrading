@@ -186,8 +186,8 @@ LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab
 # the loss floor 0.85 is untouched so losers still exit fast). Reduction-safe (raising the
 # floor KEEPS more size, never creates new size; the position can only stay the same or
 # de-risk less, never grow beyond its original target).
-WIN_FLOOR_RAISE = 0.15      # max raise of _de_floor for latched winning shorts (0.55 -> 0.70 floor at full ramp)
-WIN_FLOOR_RAMP_BARS = 4     # bars to ramp the floor raise from 0 -> WIN_FLOOR_RAISE after profit-latch fires (gradual = stab-safe)
+WIN_CONVEX_BOOST = 0.8      # branch step7: max ADDITIONAL convexity _dr_k boost for latched winning shorts (baseline _dr_k up to 1.6 -> +0.8 = up to 2.4 with the profit+align+slope-conf cushion, then this ADDS up to +0.8 more for latched winners -> up to ~3.0 clamped). Convex = hold near-full through giveback, then cut fast at ramp end.
+WIN_FLOOR_RAMP_BARS = 4     # bars to ramp the convexity boost from 0 -> WIN_CONVEX_BOOST after profit-latch fires (gradual = stab-safe)
 
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
@@ -4221,79 +4221,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Branch step3 (pivot): WINNER de-risk FLOOR RAISE for latched winning
-                    # trend-aligned shorts. See WIN_FLOOR_RAISE header. Raising _de_floor
-                    # keeps more size during the graduated exit ramp (the position de-risks
-                    # to a HIGHER floor) -> larger realized gain on the eventual soft-exit,
-                    # with NO new pyramid-up trades (only changes how far the de-risk ramp
-                    # reduces -- stability-safe, the lesson from the opener/step2 target-amp
-                    # failure). Gated on the profit-latch _short_hold_cache latched (sentinel
-                    # >0 = confirmed winning trend-aligned short, set at line 3466). The
-                    # existing trend-align relaxation (_ta_de_align, ret_long*pos_dir) ALREADY
-                    # lowers the floor for trend-aligned winners -- but that goes the OPPOSITE
-                    # direction (widens the ramp, de-risks MORE gradually = rides giveback).
-                    # This RAISES the floor (de-risks LESS = keeps MORE size through the
-                    # ramp). The two compose: _ta_de_align widens the ramp START (lower
-                    # floor, engage de-risk earlier but reduce slowly), this RAISES the
-                    # floor (stop the reduction higher). Net: a latched winning short keeps
-                    # more size AND reduces more gradually -> larger realized gain. Only
-                    # fires for latched shorts (the profit-confirmation gate); longs and
-                    # non-latched shorts byte-identical. GRADUAL ramp from the profit-latch
-                    # bar (_short_hold_latch_bar) so a +-1 bar latch shift -> small floor diff
-                    # -> stab preserved. Clamp _de_floor to <= 0.95 so a latched winner still
-                    # de-risks (never floors at 1.0 = never holds full size forever).
-                    if current_pos < 0:
-                        _shc_w = self._short_hold_cache.get(symbol, 0.0)
-                        if _shc_w > 0.5:  # profit-latch fired (latched winning short)
-                            _wa_bar_w = self._short_hold_latch_bar.get(symbol, -1)
-                            if _wa_bar_w >= 0 and _pnl_scale >= 0.0:  # branch step5: gate on PROFIT (step3/step4 bug: floor raise was applied on the LOSS side too -> held losers longer -> crash Sh -0.067)
-                                _wa_ramp_w = max(0.0, min(1.0, (self.bar_count - _wa_bar_w) / WIN_FLOOR_RAMP_BARS))
-                                # Branch step4: SLOPE-CONFIRMATION gate on the floor raise.
-                                # Step3 (ungated floor raise) made crash WORSE (Sh -0.067 from
-                                # -0.000016): crash's latched 'winning' shorts REVERSE often
-                                # (dead-cat bounces) -> keeping more size through the reversal
-                                # loses more. Gate the floor raise on the near-term slope STILL
-                                # CONFIRMING the short (_exit_slope<0 = downtrend ongoing) so
-                                # the floor raise (keep more size) only applies while the trend
-                                # CONTINUES; when slope weakens/reverses (bounce starting), the
-                                # gate -> 0 -> floor raise releases -> de-risk normally ->
-                                # HARVEST the winner before the reversal. This separates
-                                # trend-CONTINUING winners (keep size, the gain source) from
-                                # trend-REVERSING winners (harvest, the step3 loss source).
-                                # Uses the SAME _exit_slope (line 3222, 3-window mean, noise-
-                                # robust) and scale /0.0004 as _dr_slope_conf (line 4339). For
-                                # a short _dr_pos_dir=-1, slope-conf = tanh(-_exit_slope/0.0004)
-                                # -> ~1 when _exit_slope strongly negative (downtrend confirms
-                                # short), ~0 when flat/positive (reversal). Smooth (no
-                                # boundary); direction-agnostic principle (no regime label): a
-                                # confirmed winner keeps extra size only while the trend that
-                                # made it a winner is STILL ongoing. Byte-identical when slope
-                                # does not confirm (gate 0).
-                                _wa_slope_conf = max(0.0, np.tanh(-_exit_slope / 0.0004))
-                                # Branch step6: PIVOT direction -- LOWER the de-risk floor for
-                                # latched winning shorts (faster harvest), the OPPOSITE of step3.
-                                # Step3/step5 (raise floor = keep more size through de-risk)
-                                # made crash WORSE (Sh -0.067): crash winning shorts REVERSE
-                                # (dead-cat bounces) and bigger size gives back more before exit.
-                                # Crash winners reverse often -> HARVEST faster -> lock gains
-                                # before the reversal. Lowering _de_floor starts the de-risk
-                                # ramp EARLIER (at lower exit pressure) so a latched winning
-                                # short de-risks sooner -> smaller per-winner realized gain BUT
-                                # less giveback on the reversal -> higher Sharpe for the
-                                # reversal-prone crash population. Distinct from the existing
-                                # _de_floor lowering for LOSERS during portfolio DD (line 4187,
-                                # loss-side only): this is a PROFIT-side lowering for confirmed
-                                # winning shorts. Stability-safe (no new trades, only changes
-                                # the ramp start). Gated on profit + slope-conf (a winner whose
-                                # slope still confirms harvests a bit slower via slope-conf
-                                # gate ~1; a winner whose slope is weakening harvests faster via
-                                # gate ->0 -- exactly the reversal pattern). Direction-agnostic
-                                # principle (no regime label): a confirmed winner in a regime
-                                # where winners reverse should be harvested faster. Clamp
-                                # _de_floor >= 0.30 so the ramp still engages (never below the
-                                # point where de-risk is always-on). Byte-identical when not
-                                # latched / longs / non-trend-aligned / loss-side.
-                                _de_floor = max(0.30, _de_floor - WIN_FLOOR_RAISE * _wa_ramp_w * (1.0 - 0.5 * _wa_slope_conf))
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -4383,6 +4310,37 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Branch step7: CONVEXITY BOOST for latched winning shorts. Step3-6
+                        # showed the de-risk FLOOR change (both directions) makes crash worse
+                        # (floor RAISE -> bigger reversal giveback Sh -0.067; floor LOWER ->
+                        # cuts trend capture Sh -0.098). The opener target-amp got crash Sh
+                        # +0.040 but crashed stab (new pyramid trades). The ONE remaining
+                        # no-new-trade size lever is the de-risk ramp SHAPE via _dr_k (the
+                        # convex cushion exponent). Raising _dr_k for a latched winning short
+                        # makes the de-risk ramp MORE CONVEX: holds near-full size longer
+                        # through moderate giveback (the existing cushion) then CUTS faster
+                        # at the end of the ramp. This is a RAMP-SLOPE change (like the
+                        # profit-latch time_pressure attenuation, which is stab-safe because it
+                        # changes the ramp slope not the exit bar), NOT a floor shift (step3/6)
+                        # and NOT a target amp (opener). So: no new trades, no floor shift, just
+                        # a more-convex exit ramp for confirmed winning shorts -> the winner
+                        # rides small giveback (convex holds near full) but de-risks sharply
+                        # once the ramp engages (k>1 -> the reduction steepens at the end),
+                        # capturing the trend run AND cutting before deep reversal. Gated on
+                        # _short_hold_cache latched (confirmed winning trend-aligned short) +
+                        # the existing _dr_slope_conf (slope still confirming -- the convexity
+                        # boost only applies while the downtrend continues; slope-weak -> gate
+                        # 0 -> baseline _dr_k -> linear cut on reversal). GRADUAL ramp from
+                        # the profit-latch bar (reuses _short_hold_latch_bar state). Clamp
+                        # _dr_k <= 3.0 so the ramp stays finite. Byte-identical when not
+                        # latched / longs / non-trend-aligned / loss-side / slope-weak.
+                        if current_pos < 0:
+                            _shc_k = self._short_hold_cache.get(symbol, 0.0)
+                            if _shc_k > 0.5:  # profit-latch fired (latched winning short)
+                                _wa_bar_k = self._short_hold_latch_bar.get(symbol, -1)
+                                if _wa_bar_k >= 0:
+                                    _wa_ramp_k = max(0.0, min(1.0, (self.bar_count - _wa_bar_k) / WIN_FLOOR_RAMP_BARS))
+                                    _dr_k = min(3.0, _dr_k + WIN_CONVEX_BOOST * _wa_ramp_k * _dr_slope_conf)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
