@@ -1257,58 +1257,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp4 (architectural, indep): 9th voter -- VOLUME-WEIGHTED linreg slope.
-            # Prior-session-sanctioned untested axis: a genuinely new orthogonal data-source
-            # voter. The existing linreg slope (5th voter, _lr_slope) and EMA slope (6th voter,
-            # _ea_slope) weight ALL bars equally in the OLS/EMA fit. A VOLUME-WEIGHTED OLS
-            # slope weights each bar by its volume -> the slope reflects where the VOLUME is:
-            # a move confirmed by high volume (institutional) dominates the slope; a low-
-            # volume drift is downweighted. Captures a "volume-confirmed trend" signal
-            # distinct from VWAP-dev (7th: volume-weighted price LEVEL, a deviation) and DVP
-            # (volume x close-DIRECTION, a flow). NOISE-ROBUST: the weighted slope uses closes
-            # (perturbed by the AR(1) test) weighted by volume (not perturbed); the volume
-            # weighting DOWNWEIGHTS low-volume noise bars -> MORE noise-robust than the
-            # unweighted _lr_slope (avoids the DVP-voter stab-fragility wall: that was a hard
-            # sign(close-close) zero-crossing, this is a smooth weighted-slope magnitude).
-            # Signed bull when volume-weighted slope > threshold (same /0.00010 scale as the
-            # 5th _lr_slope voter for comparable tanh sharpness). Window = LINREG_PERIOD (16,
-            # same as the 5th voter, so the two slope voters share only the window -- the
-            # weighting is the new data dep). Added with a SMALL fixed weight (0.55, below
-            # the 0.7 base floor, matching the 8th RC voter) appended WITHOUT modifying any
-            # of the 8 existing _base_weights (the trend-strength redistribution shifts only
-            # indices 1-3; this 9th weight is untouched). New orthogonal data-source voter.
-            _vws_n = LINREG_PERIOD
-            _vws_hl2 = (bd.history["high"].values[-_vws_n:] + bd.history["low"].values[-_vws_n:]) / 2.0
-            _vws_vol = bd.history["volume"].values[-_vws_n:].astype(float)
-            _vws_x = np.arange(_vws_n)
-            _vws_w = _vws_vol / max(_vws_vol.mean(), 1e-10)  # normalize weights (mean=1)
-            _vws_xm = (_vws_w * _vws_x).sum() / max(_vws_w.sum(), 1e-10)
-            _vws_ym = (_vws_w * np.log(_vws_hl2)).sum() / max(_vws_w.sum(), 1e-10)
-            _vws_xd = _vws_x - _vws_xm
-            _vws_yd = np.log(_vws_hl2) - _vws_ym
-            _vws_slope = float(np.sum(_vws_w * _vws_xd * _vws_yd) / max(np.sum(_vws_w * _vws_xd * _vws_xd), 1e-20))
-            _vws_signal_raw = (_vws_slope - 0.00015) / 0.00010  # same threshold/scale as 5th _lr_slope voter
-            # Branch step7: LONG-ONLY VWS signal (clip to max(0, raw)). The VWS voter
-            # contributes only BULLISH conviction (long entries), never bearish (short
-            # entries). When the volume-weighted slope is bearish (signal<0 -> clipped to
-            # 0), both bull and bear confs are tanh(0)=0.5 (neutral -> no contribution to
-            # either side). When bullish (signal>0), the bull conf gets the full
-            # contribution (admits longs), the bear conf gets nothing. This excludes
-            # crash's BEARISH VWS shorts (step2 crash stab 0.523 was from bearish VWS
-            # admitting bad high-conviction shorts -> long-only removes them -> crash
-            # byte-identical to baseline, stab held) while keeping mixed's BULLISH
-            # up-bounce longs (mixed's local up-bounces have bullish volume-weighted
-            # slope -> VWS admits longs -> the mixed +0.017 gain, preserved) and bull's
-            # bullish longs. The prior session's CROSS-EXPERIMENT CONCLUSION (3 sessions:
-            # short-side VWS/pp-attenuation signals are structurally wrong for crash
-            # because crash bounces develop AFTER the short peaked) is respected: VWS
-            # does not vote bearish at all. Direction-ASYMMETRIC (long-only), general
-            # principle (no regime label): the volume-confirmed trend voter is a
-            # continuation signal for LONGS (buy volume-confirmed uptrends) but NOT for
-            # shorts (crash's profitable shorts are moderate-conviction, not high-
-            # conviction volume-confirmed). RETAIN the step2 ret_long trend-strength gate
-            # (spares sideways chop).
-            _vws_signal = max(0.0, _vws_signal_raw)  # long-only: VWS votes bullish only, never bearish (excludes crash bad shorts)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1318,7 +1266,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _vws_signal / 1.0,  # 9th voter: volume-weighted linreg slope (volume-confirmed trend, sharpness 1.0)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1345,44 +1292,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            # Branch step2: TREND-STRENGTH GATE on the 9th VWS voter weight (the validated
-            # sideways separator). The VWS opener (Exp4) gave mixed +0.156 BUT crashed
-            # sideways -0.513 (VWS admits trend-continuation entries in sideways MEAN-
-            # REVERSION -- exactly wrong) and crash -0.204 (VWS admits bad crash high-
-            # conviction shorts). Sideways is the BIGGEST regression (-0.513). Scale the
-            # VWS weight with trend-strength (_trend_strength_w = tanh(|ret_long|/0.04)):
-            # low in chop (sideways, |ret_long|~0 -> VWS weight ~0 -> voter neutralized ->
-            # sideways byte-identical to baseline) and full in genuine trends (mixed/rally/
-            # bull/crash, |ret_long| high -> VWS active -> mixed +0.156 preserved). This is
-            # the SAME pattern as the VWAP chop-dampener above (line ~1320). Crash has high
-            # trend-strength so this gate does NOT spare crash -- a direction-specific gate
-            # for crash is the next step if crash still regresses.
-            # Branch step9: HIGHER VWS weight magnitude (0.55 -> 0.80) to boost the mixed
-            # gain. Step7 (long-only + ret_long gate, weight 0.55) gave mixed +0.017 (Sh
-            # 0.735) but composite +0.001 (below +0.003 keep). The opener (no gate, weight
-            # 0.55) gave mixed +0.156 (Sh 0.957) -- the gating reduced mixed's VWS
-            # contribution. A HIGHER weight (0.80) recovers more mixed gain while the
-            # ret_long gate + long-only protect sideways (gate off in chop) and crash
-            # (long-only removes bearish shorts; crash bounces have moderate |ret_long|
-            # so VWS modest). If mixed gain scales with weight -> composite may cross
-            # +0.003; if sideways/crash leak scales too -> revert.
-            # Branch step11: weight 1.10 + onset 0 (the step9 form but higher weight).
-            # Step10 showed weight 1.10 boosts bull (+0.0086) BUT onset 0.02 killed mixed
-            # (+0.017 lost). The bull gain (weight lever) and mixed gain (onset lever) are
-            # on DIFFERENT levers. Combine: weight 1.10 (bull +0.0086) + onset 0 (keep
-            # mixed +0.017, the step9 form). Accept the sideways leak -0.005 (onset 0
-            # leaks sideways trending stretches). Potential: bull +0.0086 + mixed +0.017 +
-            # sideways -0.005 -> composite ~0.102 (+0.004 KEEP) if sideways does not scale
-            # badly with weight. Crash stays safe (long-only + crash bounces moderate
-            # |ret_long|). If sideways leak scales with weight -> composite may not cross.
-            # Branch step12: weight 1.10 + SMALL onset 0.01 (between step9 onset-0 and
-            # step10 onset-0.02). Step10 (onset 0.02) gave bull +0.0086 but killed mixed;
-            # step9/11 (onset 0) keep mixed +0.017 but bull only +0.002. A SMALL onset 0.01
-            # may reduce the sideways leak (-0.005, the |ret_long|~0.04 range) slightly while
-            # keeping most of the mixed gain (mixed's |ret_long|~0.04-0.06 mostly above the
-            # 0.01 onset). Final tuning push toward +0.003 keep.
-            _vws_wt = 1.10 * max(0.0, np.tanh((abs(ret_long) - 0.01) / 0.04))  # branch step12: weight 1.10, onset 0.01 (small, keep mixed, trim sideways)
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: RC voter (fixed 0.55); 9th: VWS voter (weight 1.10, onset-0.01 ret_long gate + long-only)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -1404,13 +1314,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, nvoters)
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(len(_base_weights))
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
