@@ -2141,19 +2141,7 @@ class Strategy:
                 _vol_mean_en = float(np.mean(_vol_arr_en))
                 _vol_std_en = max(float(np.std(_vol_arr_en)), 1e-10)
                 _vol_z_en = (float(bd.history["volume"].values[-1]) - _vol_mean_en) / _vol_std_en
-                # Exp2 (architectural simplification, indep): REMOVED the volume-SPIKE entry
-                # shrink (_vol_entry_spike, was 1 - 0.25*tanh((vol_z-2)/1.5), max 25% shrink at
-                # deep volume spike). Redundancy hypothesis: the entry-side spike shrink
-                # prevents over-committing to a capitulation/exhaustion spike, but the
-                # EXIT-side _vc_pressure (volume-climax, 0.50*tanh((vol_z-2)/1.5), the Exp4
-                # KEEP) ALREADY harvests volume-spike winners at the peak -- so a spike-chase
-                # entry that over-commits gets trimmed by _vc_pressure on the same spike bar.
-                # The entry shrink double-counts the exit harvest's job on the spike
-                # population. Removing follows the simplification-is-as-valuable-as-addition
-                # guideline; if score-neutral or positive the spike shrink was redundant (keep
-                # the simpler version for OOS generalization), if negative it was load-bearing.
-                # _vol_z_en retained (used by no other term after removal; kept to minimize diff).
-                _vol_entry_spike = 1.0
+                _vol_entry_spike = 1.0 - 0.25 * max(0.0, min(1.0, np.tanh((_vol_z_en - 2.0) / 1.5)))  # max 25% shrink at deep spike
                 # Exp3 (architectural, indep): volume-DECLINE entry shrink (volume-price
                 # divergence). Complementary to _vol_entry_spike (shrinks HIGH-volume spike
                 # entries = capitulation/exhaustion chases): this shrinks LOW-volume entries
