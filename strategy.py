@@ -1257,44 +1257,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp1 (architectural indep, this session): 9th voter -- VOLUME-WEIGHTED
-            # linreg slope (VWS). Re-introduction of the prior VWS branch's validated
-            # SAFE configuration (commit 6a029c78, sub-noise +0.0015 ceiling, reverted
-            # only for being below the +0.003 keep threshold -- NOT a walled/catastrophic
-            # direction). The prior branch PROVED (measured, verifiable): the VWS signal
-            # is REAL and STRONG on mixed (opener mixed +0.156 Sharpe ungated; safe
-            # long-only + trend-gate config mixed +0.017 Sharpe), noise-robust (volume is
-            # not perturbed by the AR(1) close-noise test, so the volume weighting
-            # downweights noise-dominated bars -> the slope is more stable than a raw
-            # close-derived slope). It is a genuinely NEW orthogonal DATA-SOURCE voter:
-            # the 8 existing voters use raw close-derived returns + VWAP level-deviation +
-            # range/close efficiency; NONE uses a VOLUME-WEIGHTED OLS SLOPE (volume-
-            # confirmed TREND VELOCITY). Weighted OLS slope of log(HL2) over LINREG_PERIOD
-            # (16) bars, weights = volume/mean (so high-volume bars anchor the fit).
-            # Signed bull when the volume-weighted slope exceeds the same /0.00010
-            # threshold as the 5th _lr_slope voter (comparable scale). Clipped to
-            # max(0, raw): LONG-ONLY VWS contribution (the validated crash-safety fix --
-            # crash's BEARISH VWS shorts caused crash stab 0.523 in the opener; clipping
-            # to long-only excludes bearish VWS, restoring crash stab to 1.0 while
-            # preserving mixed's bullish long-side gain). Weight is trend-strength-gated
-            # (0.80 * _trend_strength_w): ~0 in chop (sideways |ret_long|~0 -> VWS
-            # neutralized -> sideways byte-identical, the validated sideways separator),
-            # up to 0.80 in trend (mixed/bull/rally). Appended WITHOUT touching any
-            # existing _base_weights (the trend-strength redistribution shifts indices
-            # 1-3, leaving this 9th weight untouched). New orthogonal-ish data-source
-            # voter + new control flow (volume-weighted OLS read + long-only clip gate).
-            _vws_n = LINREG_PERIOD
-            _vws_hl2 = (bd.history["high"].values[-_vws_n:] + bd.history["low"].values[-_vws_n:]) / 2.0
-            _vws_vol = bd.history["volume"].values[-_vws_n:].astype(float)
-            _vws_x = np.arange(_vws_n)
-            _vws_w = _vws_vol / max(_vws_vol.mean(), 1e-10)  # normalize weights (mean=1)
-            _vws_xm = (_vws_w * _vws_x).sum() / max(_vws_w.sum(), 1e-10)
-            _vws_ym = (_vws_w * np.log(_vws_hl2)).sum() / max(_vws_w.sum(), 1e-10)
-            _vws_xd = _vws_x - _vws_xm
-            _vws_yd = np.log(_vws_hl2) - _vws_ym
-            _vws_slope = float(np.sum(_vws_w * _vws_xd * _vws_yd) / max(np.sum(_vws_w * _vws_xd * _vws_xd), 1e-20))
-            _vws_signal_raw = (_vws_slope - 0.00015) / 0.00010
-            _vws_signal = max(0.0, _vws_signal_raw)  # long-only: VWS votes bullish only, never bearish (crash-safety)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1304,7 +1266,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _vws_signal / 1.0,  # 9th voter: volume-weighted linreg slope (long-only, sharpness 1.0)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1331,8 +1292,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _vws_wt = 0.80 * _trend_strength_w  # 9th: VWS voter (trend-strength-gated; ~0 in chop/sideways -> neutralized, up to 0.80 in trend)
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _vws_wt)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift); 9th: VWS voter (trend-strength-gated, long-only via clip)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -1354,13 +1314,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 9)
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
