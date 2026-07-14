@@ -4366,6 +4366,39 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp1 (architectural, indep): DEEP-MAE-WINNER cushion reduction. NEW
+                        # cross-component data dep at the de-risk ramp: the convex cushion
+                        # exponent _dr_k (which holds near full size through mid-range
+                        # giveback noise for trend-aligned winners) is now READ AGAINST the
+                        # position's MAE depth. A WINNER (pos_pnl>0 -> _pnl_scale>0) whose MAE
+                        # was DEEP relative to the stop went significantly underwater before
+                        # recovering -> its foundation is FRAGILE (it already demonstrated it
+                        # can reach that depth; a re-test is plausible -> it is the population
+                        # that tends to give back the recovery then bleed). For such a fragile
+                        # winner, REDUCE the convex cushion (lower _dr_k toward 1.0 = the LINEAR
+                        # fast-cut ramp) so the de-risk ramp trims sooner through giveback
+                        # instead of riding it. A CLEAN winner (shallow MAE, never went much
+                        # underwater) keeps the FULL cushion -- it earned the let-run treatment.
+                        # This is the explicit INVERSE of the discarded MAE-cleanliness
+                        # amplifier (8f6b3c25, which BOOSTED the cushion for clean winners and
+                        # was inert/discard); the untested direction is to PENALIZE the fragile
+                        # winner, which targets the giveback-then-bleed population (mixed's
+                        # oscillating longs that re-peak after a deep dip, bull's pullback longs
+                        # that recovered from a deep MAE then give back). MAE depth is already
+                        # tracked (self._mae, used by _be_pressure/_loss_latch/_ts_supp); this
+                        # reads it on the PROFIT-side de-risk cushion (those existing paths read
+                        # it on loss-side / harvest-suppression, distinct surface). Reduction-
+                        # only (lowers _dr_k, never raises -> cushion only weakened, safe
+                        # family). Byte-identical for losers (loss-gate: _pnl_scale<=0 ->
+                        # _dr_k already 1.0 base -> no cushion to reduce) and shallow-MAE
+                        # winners (gate ~0 -> no reduction). Continuous tanh on (-mae)/(|stop|*0.5)
+                        # (fast-saturating: a MAE at -0.5*stop saturates -> full reduction; a
+                        # shallow -0.1*stop MAE -> ~0 reduction). Max reduction 0.4 to the AMP
+                        # term (so a fragile winner's cushion AMP can drop toward 0 -> _dr_k ->
+                        # 1.0 linear, the loser/ct behavior). No new boundary.
+                        _dr_mae_depth = max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (abs(STOP_LOSS_PCT) * 0.5))))
+                        _dr_fragile = _dr_mae_depth * max(0.0, _pnl_scale)  # only winners (fragile winner = deep MAE + in profit)
+                        _dr_k = 1.0 + (DERISK_CONVEX_AMP * (1.0 - 0.40 * _dr_fragile)) * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
