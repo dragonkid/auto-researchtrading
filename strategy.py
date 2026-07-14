@@ -83,7 +83,7 @@ TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 # above onset (no boundary). Bounded 48-bar lookback over smoothed_closes (noise-robust
 # argmin/argmax position). No new per-bar state -> deterministic -> stability-safe.
 LEG_DUR_LOOKBACK = 48               # bars over which to locate the current leg's start
-LEG_DUR_HARVEST_ONSET = 18.0        # leg age (bars) at which exhaustion-harvest weaken begins
+LEG_DUR_HARVEST_ONSET = 22.0        # branch step7: 18->22 sweet spot (onset 26 cliffed bull, 18 best; 22 between)
 LEG_DUR_HARVEST_MAX_RELAX = 0.40    # max fractional weakening of _ts_supp on an exhausted leg
 
 # RSI voter
