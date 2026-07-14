@@ -1589,7 +1589,25 @@ class Strategy:
             # already has multiple vol-conditioning channels (vol_ratio direct, calm_boost,
             # sideways_boost) — adding a near-constant volume multiplier added LOC without
             # orthogonal signal. Removing eliminates redundant near-constant size scaling.
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
+            # Exp3 (architectural, indep, this session): VOL-TARGETING CORE per-symbol
+            # baseline normalization, CRASH-SAFE (vol-gated) form. Exp2 (8ae73807) applied
+            # the per-symbol adaptive _target_vol_dyn unconditionally -> crash CATASTROPHIC
+            # (SOL baseline 0.022 > TARGET 0.015 -> larger SOL short size -> SOL crash shorts
+            # amplified -> Sh -1.73). The crash failure mode: SOL's structurally-higher
+            # baseline RAISES its target at ALL bars incl. crash vol-spike bars, so crash
+            # SOL shorts (the recovery edge) get blown-up size. Fix: GATE the per-symbol
+            # baseline swap on LOW vol_ratio (calm relative to own baseline). When
+            # vol_ratio is at/below 1 (price calm vs its own baseline) use _target_vol_dyn
+            # (per-symbol normalization -> correct SOL/BTC sizing, the bull/mixed +0.0019/
+            # +0.0037 gain from Exp2). When vol_ratio rises above 1 (spike incl. crash)
+            # BLEND BACK to the global TARGET_VOL -> crash vol-spike bars keep the baseline
+            # (smaller) target -> SOL crash shorts NOT amplified -> crash preserved.
+            # New cross-component data dep on the size core: target blends from global to
+            # per-symbol as a function of vol_ratio (the spike detector). Continuous tanh,
+            # no boundary; crash-safe by construction (high vol_ratio -> baseline target).
+            _target_blend = 1.0 - max(0.0, min(1.0, np.tanh((vol_ratio - 1.0) / 0.30)))
+            _size_target = TARGET_VOL * (1.0 - _target_blend) + _target_vol_dyn * _target_blend
+            combined_mult = max(0.3, min(2.5, (_size_target / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
             # Architectural simplification: removed _xa_boost (post-cap chop-only +8% boost).
             # Redundant with sideways_boost (max +50% in chop) and CROSS_ASSET_FIXED_BOOST
             # (already in combined_mult, max +15% in chop). Three chop-amplifying multipliers
