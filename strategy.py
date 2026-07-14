@@ -1277,7 +1277,7 @@ class Strategy:
             # appended WITHOUT modifying any existing _base_weights (the _wt_shift only
             # shifts indices 1-3, leaving this 9th weight untouched). New orthogonal-ish
             # data-source voter on the vol-normalized-momentum axis.
-            _am_n = 6
+            _am_n = 10
             # branch step2: SMOOTH the momentum input via smoothed_closes (already AR(1)-
             # attenuated) for noise-robustness. The opener used raw closes -> the 6-bar
             # return flipped sign under AR(1) close noise on small-return bars -> vote
@@ -1286,9 +1286,22 @@ class Strategy:
             # stable on small-return bars. AND widen sharpness 1.0->1.5 (softer tanh ->
             # small |ATR-momentum| stays closer to conf 0.5 neutral, reducing vote-flip
             # impact further). Keeps the directional signal on strong-momentum bars.
+            # branch step3: WIDEN the momentum window 6->10 bars AND soften sharpness
+            # 1.5->2.0 to reduce BULL vote-flip. step2 fixed sideways (chop-dampener muted
+            # the voter there) but bull is a TREND regime -> the voter fires at full
+            # weight on bull, and bull's pullback DIPS (3-5 bar momentum dips within the
+            # uptrend) flip the 6-bar momentum sign -> vote flips -> bull stability
+            # ~0.77 (below 0.80 knee) -> bull score capped. A LONGER 10-bar window
+            # mostly survives a 3-5 bar pullback dip (the 10-bar return stays positive
+            # through a typical bull pullback -> sign stable -> no vote-flip -> bull
+            # stability recovers), while still capturing the directional trend. Softer
+            # sharpness 2.0 (saturates at ~2 ATR) further keeps small-momentum bars near
+            # conf 0.5 neutral. 10-bar is still short enough to be a momentum signal
+            # (not a trend like the 96-bar ret_vlong). Smoothed input + longer window +
+            # softer sharpness together absorb the bull pullback-dip vote-flip.
             _am_ret = (smoothed_closes[-1] - smoothed_closes[-(_am_n + 1)]) / max(smoothed_closes[-(_am_n + 1)], 1e-10)
-            _atr_mom = _am_ret / max(_atr_pct_e, 1e-10)  # 6-bar return in ATR units
-            _atr_mom_sig = _atr_mom / 1.5  # branch step2: softened sharpness 1.0->1.5
+            _atr_mom = _am_ret / max(_atr_pct_e, 1e-10)  # 10-bar return in ATR units
+            _atr_mom_sig = _atr_mom / 2.0  # branch step3: softened sharpness 1.5->2.0
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
