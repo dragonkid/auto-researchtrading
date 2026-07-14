@@ -303,28 +303,6 @@ MAE_VEL_WINDOW = 10
 MAE_VEL_ONSET = 0.0
 MAE_VEL_MAX_FLOOR = 0.60
 
-# Exp (architectural, indep): PORTFOLIO-AGGREGATE ADVERSE-CORRELATION-RATE de-risk
-# floor amplifier. The kept MAE-velocity signal (per-symbol) detects ONE position's
-# own accelerating adverse move; this is the cross-symbol aggregate -- the fraction
-# of OPEN positions simultaneously making fresh adverse lows (a correlated regime
-# bleed). Sanctioned untested lead (prior session-summary): "other NEW portfolio
-# derivatives (e.g. portfolio-aggregate MAE-velocity, cross-symbol adverse-
-# correlation-rate) could be added at _de_floor safely" -- the gradual _de_floor
-# ramp action is stability-safe (trims smoothly over multiple bars, no single-bar
-# exit shift, no trade-selection wobble).
-#   PORT_ADV_CORR_MIN_SYMS = min open positions for the signal to be meaningful
-#                            (a single bleeding position is NOT correlated; >=2
-#                            positions bleeding together is the regime-hit signal).
-#   PORT_ADV_CORR_ONSET    = adverse-correlation fraction above which the amplifier
-#                            engages (high onset keeps single-leg bleeds inert).
-#   PORT_ADV_CORR_SCALE    = tanh saturation width of the correlation ramp.
-#   PORT_ADV_CORR_MAX_FLOOR = max additional _de_floor lowering (composes with the
-#                            per-symbol MAE_VEL_MAX_FLOOR; both gradual, reduction-only).
-PORT_ADV_CORR_MIN_SYMS = 2
-PORT_ADV_CORR_ONSET = 0.20
-PORT_ADV_CORR_SCALE = 0.20
-PORT_ADV_CORR_MAX_FLOOR = 0.50
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -1150,35 +1128,6 @@ class Strategy:
                 _alt_dvp[_asym] = float(np.sum(_adv_v * _adv_rets) / max(np.sum(_adv_v), 1e-10))
             else:
                 _alt_dvp[_asym] = 0.0
-
-        # Exp (architectural, indep): PORTFOLIO-AGGREGATE ADVERSE-CORRELATION-RATE.
-        # NEW cross-symbol data dep at the top level (computed ONCE per bar, reading
-        # the SETTLED previous-bar _mae_low_hist state -- order-independent, unlike a
-        # per-symbol-loop read which would depend on processing order). For each
-        # symbol with an OPEN position, determine whether THAT position is currently
-        # in an accelerating adverse move: it set a fresh MAE low within the last
-        # MAE_VEL_WINDOW bars AND has >=2 fresh lows in the window (its own per-symbol
-        # velocity would clear MAE_VEL_ONSET). The signal is the FRACTION of open
-        # positions currently bleeding together -- a correlated regime-hit indicator
-        # orthogonal to (a) per-symbol MAE-velocity (one position's own rate) and
-        # (b) portfolio equity DD (_port_dd_atten, the equity drawdown level). A single
-        # bleeding position (count < PORT_ADV_CORR_MIN_SYMS) is NOT correlated -> 0.
-        # Byte-identical at portfolio peak / no open positions / no fresh lows. Read
-        # at the de-risk ramp (_de_floor) below as a gradual floor lowering for
-        # trend-aligned losers (stability-safe gradual-ramp action form).
-        _port_adv_corr = 0.0
-        _open_adv_syms = [s for s in ACTIVE_SYMBOLS if s in portfolio.positions and portfolio.positions[s] != 0.0]
-        if len(_open_adv_syms) >= PORT_ADV_CORR_MIN_SYMS:
-            _adv_bleeding = 0
-            for _asym in _open_adv_syms:
-                _amlh = self._mae_low_hist.get(_asym, [])
-                if len(_amlh) >= 2 and (self.bar_count - _amlh[0]) <= MAE_VEL_WINDOW:
-                    _nv = min(len(_amlh), MAE_VEL_WINDOW)
-                    _own_vel = _nv / float(MAE_VEL_WINDOW)
-                    if _own_vel > MAE_VEL_ONSET:
-                        _adv_bleeding += 1
-            _port_adv_corr = _adv_bleeding / float(len(_open_adv_syms))
-        _port_adv_corr_gate = max(0.0, min(1.0, np.tanh((_port_adv_corr - PORT_ADV_CORR_ONSET) / PORT_ADV_CORR_SCALE)))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -4328,61 +4277,6 @@ class Strategy:
                     # branch). Continuous tanh on (velocity - onset)/scale (no boundary).
                     if _pnl_scale < 0.0:
                         _de_floor -= _mae_vel_floor
-                    # Exp (architectural, indep): PORTFOLIO-AGGREGATE ADVERSE-CORRELATION-
-                    # RATE de-risk floor lowering. NEW cross-symbol data dep at the de-risk
-                    # ramp: the fraction of OPEN positions simultaneously making fresh
-                    # adverse lows (_port_adv_corr_gate, computed at the top level from the
-                    # settled previous-bar _mae_low_hist state). Distinct from the per-symbol
-                    # MAE-velocity amplifier above (one position's OWN adverse rate): this
-                    # fires when MULTIPLE positions bleed TOGETHER -- a correlated regime hit
-                    # where a trend-aligned loser is more likely to EXTEND. Lower the de-risk
-                    # floor -> trim sooner -> smaller realized losses -> higher Sharpe.
-                    # CRASH-SAFETY: gated on (a) LOSING (_pnl_scale<0): crash's trend-aligned
-                    # shorts are WINNERS (pos_pnl>0 -> excluded), byte-identical; (b) TREND-
-                    # ALIGNED-AT-MULTI-DAY (_mae_v_align, reused): crash's LOSING bounce longs
-                    # are COUNTER-TREND (bull entry in downtrend -> _mae_v_align 0) -> also
-                    # excluded -> crash byte-identical on BOTH populations. This is the SAME
-                    # double-gate that made the per-symbol MAE-velocity amplifier crash-safe
-                    # in the prior keep (verified crash byte-identical). REDUCTION-ONLY
-                    # (lowering _de_floor trims sooner, never delays exit); composes with the
-                    # per-symbol MAE-velocity and the Exp3/Exp4 portfolio-DD floor lowerings
-                    # (all gradual, all lower the floor for distinct loser populations).
-                    # STABILITY-SAFE: gradual _de_floor ramp action (the kept property --
-                    # trims smoothly over multiple bars, no single-bar exit-bar shift, no
-                    # trade-selection wobble). Byte-identical for winners, counter-trend,
-                    # single-leg bleeds (<PORT_ADV_CORR_MIN_SYMS open), low-correlation
-                    # holds (onset gate 0), and fresh entries (bars_held>=2 exemption below).
-                    # Continuous tanh on (correlation - onset)/scale (no boundary).
-                    # branch step5: WIDEN THE POPULATION at the safe magnitude. Step3's
-                    # conjunction (add *_mae_vel_gate) restored crash-safety but RESTRICTED
-                    # the rally population -> smaller rally gain (+0.0039 vs opener +0.0064)
-                    # -> composite WORSE than the opener. Step4's high-magnitude amplify
-                    # triggered crash-coupling (the _mae_vel_gate is a soft tanh -> partial
-                    # values leak high-magnitude trims onto crash moderate-velocity bounce
-                    # shorts) + mixed stab crash. The opener config (NO conjunction, onset
-                    # 0.40, mag 0.30) was the BEST composite (+0.000799) because the trend-
-                    # align-at-multi-day gate (_mae_v_align) ALONE already excludes crash's
-                    # losing ct bounce longs (counter-trend -> _mae_v_align 0); the only
-                    # crash leak was transient bounce-loss TREND-ALIGNED shorts, which the
-                    # opener's small magnitude trimmed negligibly. Keep the opener's
-                    # application form (no conjunction) and WIDEN the firing population by
-                    # LOWERING the onset (0.40 -> 0.20): more bars qualify for the SAME safe
-                    # magnitude -> larger rally gain without magnitude-amplification wobble.
-                    # Crash's trend-aligned bounce-loss shorts still get only the small
-                    # 0.30 magnitude trim -> negligible recovery interference -> crash-safe.
-                    # branch step6: re-add the per-symbol velocity CONJUNCTION (step3's
-                    # crash-coupling separator) AND raise magnitude moderately (0.30->0.50,
-                    # between the safe 0.30 and the catastrophic 0.90 of step4). Step3
-                    # (conjunction + mag 0.30) was crash-safe + stab-safe but small rally
-                    # (+0.0039). Step4 (conjunction + mag 0.90) crashed: the velocity gate
-                    # is a soft tanh so partial-velocity crash bounce-loss shorts leaked
-                    # high-magnitude trims + mixed stab wobble. The 0.50 middle tests
-                    # whether a MODERATE magnitude with the conjunction can exceed +0.003:
-                    # the conjunction excludes most crash positions (only sustained-plunge
-                    # trend-aligned losers fire), and 0.50 is gentle enough to avoid the
-                    # mixed exit-timing wobble that crashed stab at 0.90.
-                    if _pnl_scale < 0.0:
-                        _de_floor -= PORT_ADV_CORR_MAX_FLOOR * _mae_v_align * _mae_vel_gate * _port_adv_corr_gate
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
