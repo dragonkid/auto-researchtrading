@@ -3938,6 +3938,41 @@ class Strategy:
                 _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
                 self._voter_bias_ema[symbol] = _voter_bias
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
+                # Exp3 (architectural, indep): ADDITIVE trend-aligned-multi-day-LOSER portfolio-DD
+                # exit pressure. NEW additive exit-pressure source (bypasses the MAX-fusion
+                # absorption wall that made Exp2's _w_slope weight amplification byte-identical:
+                # a weight change on a dominant MAX term does not change the max; an ADDITIVE
+                # term directly raises _exit_pressure so it crosses _exit_thresh sooner).
+                # Mechanism: bull_2021's DD (10.79pct, deep in the dd_gate exp-penalty zone)
+                # comes from trend-aligned longs bought into a correction that keeps falling.
+                # Exp2 gated on 20-bar ret_long which goes NEGATIVE during corrections (gate
+                # off exactly when help is needed). This uses the 96-bar ret_vlong which stays
+                # POSITIVE through bull's pullbacks (uptrend intact at multi-day) -> the loser
+                # IS trend-aligned-at-multi-day during the local correction. Add a bounded
+                # ADDITIVE pressure for this population so the exit triggers SOONER at the
+                # slope-reversal stage (before the stop) -> smaller realized loss -> lower bull
+                # DD -> higher bull score (dd_gate ~0.05 at 10.79pct is the ~20x crush; DD
+                # relief is the dominant bull lever). CRASH-SAFE: (a) LOSS-gated
+                # (max(0,-_pnl_scale)=0 for crash's WINNING shorts -> byte-identical); (b) the
+                # trend-align gate is tanh(ret_vlong*pos_dir/0.04) -> crash's LOSING positions
+                # are counter-trend-at-multi-day crash-bounce longs (ret_vlong<0, pos_dir +1
+                # -> product<0 -> gate 0 -> no add -> byte-identical; handled by ct paths).
+                # SIDEWAYS-SAFE: sideways ret_vlong~0 (flat year) -> gate ~0 -> byte-identical
+                # (avoids the Exp1 sideways mean-reversion wall: this only fires for trend-
+                # aligned-at-multi-day losers, which sideways is not). RALLY-SAFE: rally's
+                # losing positions are counter-trend pullback shorts (ret_vlong>0, pos_dir -1
+                # -> product<0 -> gate 0) and its trend-aligned longs are winners (loss-gate
+                # off). DD-gated (1-_port_dd_atten -> 0 at portfolio peak, byte-identical).
+                # Continuous tanh (no boundary), additive (the validated noise-robust action
+                # path -- the additive _voter_bias is stab-safe; this mirrors its structure),
+                # reduction-only (raises exit pressure, never lowers it; max 0.25 magnitude
+                # so it cannot force an exit on its own -- only shifts the crossing sooner).
+                # Direction-agnostic general principle (no regime label): a losing position
+                # that trades WITH the multi-day trend while the portfolio is in drawdown is a
+                # correlated-regime-hit extending loser -> add exit pressure to cut it sooner.
+                _ta_dd_loss_align = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                _ta_dd_loss_pressure = 0.25 * max(0.0, -_pnl_scale) * _ta_dd_loss_align * (1.0 - _port_dd_atten)
+                _exit_pressure = _exit_pressure + _ta_dd_loss_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
