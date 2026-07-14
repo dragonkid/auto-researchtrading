@@ -1332,9 +1332,20 @@ class Strategy:
             # Lower ONLY the floor: conf = _conf_floor + (0.9 - _conf_floor)*0.5*(1+tanh(s)).
             # Ceiling stays 0.9 -> aligned-voter conf byte-identical -> quintic strong-sum
             # byte-identical -> admission preserved; only the opp-side flip-count floor lowers.
-            _conf_floor = CONF_FLOOR_BASE - (CONF_FLOOR_BASE - CONF_FLOOR_TREND) * max(
+            # branch step3: GATE the floor-lowering to STRONG UPTREND ONLY (ret_long>0.04,
+            # a NEW conjunction with rsi_trend_str). Step2 showed the floor feeds the
+            # opp-gate reversal-exit vote count which is LOAD-BEARING for sideways (mean-
+            # reversion needs reversal exits) and crash (shorts exit on bounces). The
+            # rsi_trend_str-only gate fired in sideways recovery-drift and crash downtrend
+            # (both have high rsi_trend_str stretches) -> catastrophic. Adding the ret_long>0.04
+            # uptrend conjunction excludes both (crash ret_long<0, sideways |ret_long|<0.04)
+            # so the floor lowers ONLY in bull/rally strong uptrend -- the regime where
+            # trend-aligned LONG winners might suffer whipsaw opp-gate exits. If bull/rally
+            # are byte-identical there is no whipsaw-flip problem to fix -> branch dead.
+            _conf_floor_trend_gate = max(
                 0.0, min(1.0, np.tanh(rsi_trend_str / CONF_FLOOR_TREND_DECAY))
-            )
+            ) * max(0.0, min(1.0, np.tanh((ret_long - 0.04) / 0.02)))  # uptrend-only conjunction
+            _conf_floor = CONF_FLOOR_BASE - (CONF_FLOOR_BASE - CONF_FLOOR_TREND) * _conf_floor_trend_gate
             _conf_span = 0.9 - _conf_floor  # ceiling fixed at 0.9; only the floor lowers
             _bull_confs = [_conf_floor + _conf_span * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
             _bear_confs = [_conf_floor + _conf_span * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
