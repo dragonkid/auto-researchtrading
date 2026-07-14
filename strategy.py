@@ -1326,10 +1326,16 @@ class Strategy:
             # the opposite-side flip count -> fewer whipsaw flips on trend-aligned winners.
             # Chop (rsi_trend_str~0) keeps the baseline 0.10 floor -> byte-identical flip
             # count for sideways. The quintic strong-sum is unaffected (it zeros c<=0.5).
+            # branch step2: ASYMMETRIC clip -- keep the CEILING FIXED at 0.9 (the opener's
+            # symmetric span=1-2*floor raised the ceiling 0.9->0.98 in trends, amplifying
+            # aligned-voter (c-0.5)^5 by 2.75x in the quintic -> crash-coupling catastrophe).
+            # Lower ONLY the floor: conf = _conf_floor + (0.9 - _conf_floor)*0.5*(1+tanh(s)).
+            # Ceiling stays 0.9 -> aligned-voter conf byte-identical -> quintic strong-sum
+            # byte-identical -> admission preserved; only the opp-side flip-count floor lowers.
             _conf_floor = CONF_FLOOR_BASE - (CONF_FLOOR_BASE - CONF_FLOOR_TREND) * max(
                 0.0, min(1.0, np.tanh(rsi_trend_str / CONF_FLOOR_TREND_DECAY))
             )
-            _conf_span = 1.0 - 2.0 * _conf_floor
+            _conf_span = 0.9 - _conf_floor  # ceiling fixed at 0.9; only the floor lowers
             _bull_confs = [_conf_floor + _conf_span * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
             _bear_confs = [_conf_floor + _conf_span * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
