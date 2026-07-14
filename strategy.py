@@ -5052,6 +5052,32 @@ class Strategy:
                         _ll_ramp = max(0.0, min(1.0, (self.bar_count - _ll_bar) / LOSS_LATCH_RAMP_BARS))
                         _ll_cap_now = 1.0 - (1.0 - LOSS_LATCH_CAP) * _ll_ramp
                         target = target * _ll_cap_now
+                # BRANCH step2: extend the portfolio-DD target ceiling to ESTABLISHED
+                # full-size held positions (Exp1 opener capped only the scale-in
+                # destination, which left bull DD byte-identical-to-near-zero because
+                # the DD source is established RIDE positions at full size). Apply the
+                # SAME long-only + multi-day-trend-align + raw-dd_frac-deep-DD cap as a
+                # CEILING on the emitted held target relative to the position's natural
+                # full size `size`: target is trimmed toward sign(target)*size*cap_factor
+                # when |target| exceeds the capped level. This reaches the RIDE population
+                # (established winners at full size during deep portfolio DD) -> smaller
+                # position at the sharp-reversal bar -> smaller DD peak. NOT a forced
+                # exit/loss-cut (position stays same-sign at the capped level, still
+                # participates in recovery); NOT a giveback peak-harvest (DD-proportional
+                # ceiling, not giveback-magnitude). Byte-identical for shorts (long-only
+                # gate 0), ct/bounce longs (align 0), and sideways/rally/mixed (dd_frac <
+                # onset). Gradual: the cap factor is continuous in _port_dd_frac so a
+                # +-1 bar DD wobble shifts the ceiling by a small amount (stability-safe,
+                # same discipline as the loss-latch gradual ramp). Same-sign only (full
+                # exits/flips exempt via the enclosing if).
+                _pd_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _pd_long_only = 1.0 if current_pos > 0 else 0.0
+                _pd_align = max(0.0, np.tanh(ret_vlong * _pd_pos_dir / 0.01))
+                _pd_dd_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - (PORT_DD_TARGET_CAP_ONSET)) / (PORT_DD_TARGET_CAP_SCALE * LEVERAGE_K))))
+                _pd_cap_factor = 1.0 - PORT_DD_TARGET_CAP * _pd_long_only * _pd_align * _pd_dd_gate
+                _pd_ceiling = (size if current_pos > 0 else -size) * _pd_cap_factor
+                if (current_pos > 0 and target > _pd_ceiling) or (current_pos < 0 and target < _pd_ceiling):
+                    target = _pd_ceiling
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
