@@ -3977,94 +3977,7 @@ class Strategy:
                 # if _sl_pressure dominant (full exit will follow). New control flow:
                 # exit subsystem now has THREE size-decision paths: full exit, de-risk
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
-                # Exp1 (architectural, indep): STREAK-BREAKING winning-partial-harvest.
-                # The prior session's NEW DIAGNOSTIC INSIGHT: the consecutive-LOSS
-                # streak_gate = exp(-max_consecutive_losses/30) is the LARGEST unrecognized
-                # score lever at this baseline -- rally 0.674 (~12 consec losses, a 33pct
-                # score CUT), bull 0.798 (~7, 20pct), mixed 0.879 (~4). max_consecutive_losses
-                # counts CHRONOLOGICAL realized losing trades across all symbols. The prior
-                # session confirmed entry-BLOCKING is crash-coupled and walled (the
-                # profitable crash shorts come IMMEDIATELY AFTER the losing-long streak;
-                # blocking post-streak entries removes the recovery trades). It explicitly
-                # suggested "a NON-streak-gated path to reduce max_consecutive_losses --
-                # improving the QUALITY of the trades that BECOME the streak-extend losers
-                # via exit-timing rather than blocking them." THIS experiment realizes
-                # that path by INSERTING WINNING trades into the chronological sequence:
-                # during a portfolio loss-streak, LOWER the profit-target harvest onset
-                # for currently-WINNING positions (peak >= ~1.0*_pp_min, not 1.6) so a
-                # small WINNING partial-reduce is realized. A realized winning trade
-                # BREAKS the consecutive-loss streak (resets the chron counter) WITHOUT
-                # blocking any entry (avoids the crash-coupling wall -- entries are
-                # untouched) and WITHOUT cutting losers (avoids the sideways mean-reversion
-                # wall -- only paper PROFIT is harvested, losers run their normal exit
-                # path). Distinct from the dd-adaptive _ts_supp relaxation (line ~4017:
-                # weakens trend-extension SUPPRESSION during DD to harvest clean winners
-                # at deep peaks for DD-reduction): that fires at PORTFOLIO-DD level and
-                # lowers the SUPPRESSION on the existing >=1.6*_pp_min path; this lowers
-                # the ONSET THRESHOLD itself gated on the LOSS-STREAK sequence, firing at
-                # shallower peaks (>=1.0*_pp_min) so it activates on positions that the
-                # >=1.6 onset would NOT reach. Byte-identical when _loss_streak < 2 (no
-                # streak -> onset stays 1.6 -> the existing path unchanged). Smooth tanh
-                # ramp on the streak (no boundary), shrink-only (harvest reduces target
-                # magnitude, never amplifies). New cross-component data dep: the tp-harvest
-                # onset reads the portfolio loss-streak sequence (a trade-sequence signal
-                # distinct from the DD-level signal _port_dd_frac and the DD-derivative
-                # _port_eq_mom). Direction-agnostic general principle (no regime label):
-                # a portfolio in a losing streak should lock in any available winning
-                # partial-gain to break the sequence. Targets rally/bull (the streak_gate
-                # cuts them 33pct/20pct); a single inserted win anywhere in their longest
-                # streak cuts max_consecutive_losses by ~1 (gate rally 0.674->0.696, bull
-                # 0.798->0.832). Conservative: onset floor 1.0 (only harvest positions
-                # already in profit), magnitude 0.30 cap (same family as the base harvest).
-                # branch step2: LOW-DD-FRACTION gate on the streak-harvest onset
-                # lowering. The opener regressed crash catastrophically (-0.076) for
-                # the SAME root cause the prior session confirmed walled entry-block:
-                # the portfolio loss_streak is HIGH throughout crash's SUSTAINED bear
-                # (high mostly during the long crash drawdown) so the lowered onset
-                # fired crash's WINNING SHORTS at shallow peaks -> realized them early
-                # -> crash winners shrank -> Sh collapsed. The streak is REAL but
-                # CRASH-COUPLED: a streak during crash's sustained deep-bear is NOT a
-                # transient pullback sequence to break -- the winning shorts are the
-                # profitable trades that offset the bear's losing longs, and harvesting
-                # them early destroys crash's near-zero edge. Gate the onset-lowering
-                # on LOW dd_frac (the validated _mom_dd_gate separator, line ~786):
-                # full at dd_frac<2pct = a FRESH/TRANSIENT streak (rally/bull pullback
-                # sequences where inserting a winning harvest genuinely breaks a
-                # transient pullback streak), fading to 0 by 6pct = SUSTAINED deep DD
-                # (crash bear, where the streak is structural not transient). Crash
-                # dd_frac is sustained high -> gate ~0 -> onset stays 1.6 -> crash
-                # byte-identical. rally/bull pullback streaks are dd_frac<2pct -> gate
-                # ~1 -> onset lowers -> winning harvests break the transient streak.
-                _streak_dd_gate = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.02) / 0.04))  # ~1 fresh/transient (dd<2pct), ~0 sustained (dd>6pct)
-                # branch step5: COUNTER-TREND-AT-MULTI-DAY gate (replaces step3/4's
-                # rsi_trend_str trend-strength gate). step4 confirmed the trend-strength
-                # gate CANNOT separate sideways from rally -- both are "trending" in
-                # their directional legs by rsi_trend_str, so any onset low enough to
-                # fire in rally fires in sideways directional legs too -> sideways stab
-                # crash. The MULTI-DAY counter-trend signal is the correct separator:
-                # gate on (ret_vlong * pos_dir < 0) -- the position is COUNTER-TREND at
-                # the 96-bar scale. rally's streak-extend losers are PULLBACK SHORTS
-                # (ret_vlong>0 uptrend, pos_dir=-1 short -> product<0 -> counter-trend):
-                # their winning harvests are NOT the rally ride-edge (rally edge = ride
-                # longs, product>0 -> gate 0 -> longs byte-identical, NOT harvested).
-                # sideways has NO multi-day trend (ret_vlong~0 oscillating) -> product~0
-                # -> gate ~0 -> sideways byte-identical regardless of directional legs.
-                # crash's winning shorts (ret_vlong<0, pos_dir=-1 -> product>0) are
-                # trend-aligned -> gate 0 -> crash byte-identical (the crash-coupling wall
-                # avoided: crash shorts are NOT counter-trend). This is the separator the
-                # trend-strength gate could not provide: multi-day counter-trend-ness
-                # cleanly separates rally pullback shorts (fire) from rally longs + crash
-                # shorts + sideways (byte-identical). Fast-saturating /0.04 (the validated
-                # ret_vlong ct scale). Continuous tanh, no boundary.
-                _ct_md_streak = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
-                # branch step5: restore the FULL onset-lowering depth 0.30 (step2/3/4 had
-                # 0.30) AND raise the streak-magnitude band 0.12->0.25 -- the counter-trend
-                # gate now targets ONLY pullback shorts / wrong-side longs (whose rides are
-                # NOT the edge), so a larger magnitude breaks the streak harder WITHOUT
-                # cutting the trend-aligned rides (gate 0 for longs/crash-shorts/sideways).
-                _streak_shift = 0.30 * max(0.0, min(1.0, np.tanh((self._loss_streak - 2) / 2.0))) * _streak_dd_gate * _ct_md_streak
-                _streak_harvest_onset = 1.6 - _streak_shift
-                if target != 0 and self.peak_pnl[symbol] > _streak_harvest_onset * _pp_min and _sl_pressure < 0.5:
+                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     # Trend-gated activation: in chop (low |ret_long|), peaks are
                     # rare AND likely mean-reverting — disable harvest to let small
@@ -4134,22 +4047,7 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    # branch step3: split the activation so the streak-induced SHALLOWER
-                    # harvest (peak between onset 1.3 and 1.6) uses a SMALL magnitude (the
-                    # base 0.45 would over-harvest rally longs at the shallower onset --
-                    # step2's rally -0.049). The base path (onset 1.6, magnitude 0.45) is
-                    # unchanged; the streak-shifted region adds a SMALL extra harvest
-                    # (magnitude 0.12) only across the streak-shift band [onset, 1.6]. This
-                    # realizes a SMALL winning partial (enough to break the chron streak)
-                    # without cutting the rally ride. When _streak_shift=0 the band is empty
-                    # and the activation reduces to the base tanh((_tp_ratio-1.6)/0.6) ->
-                    # byte-identical to baseline.
-                    _tp_scale_base = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
-                    _tp_scale_streak = 0.0
-                    if _streak_shift > 0.0:
-                        _streak_band = max(0.0, min(1.0, np.tanh((_tp_ratio - _streak_harvest_onset) / 0.3))) - max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.3)))
-                        _tp_scale_streak = 0.25 * _streak_band * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)  # branch step5: 0.12->0.25 (counter-trend gate targets only non-edge rides)
-                    _tp_scale = _tp_scale_base + _tp_scale_streak
+                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
