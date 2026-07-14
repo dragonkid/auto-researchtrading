@@ -1209,10 +1209,10 @@ class Strategy:
                 _leg_arg = int(np.argmax(_ld_sc))  # last local max = down-leg start
             _leg_dur_raw = float(_ld_n - 1 - _leg_arg)  # bars since the leg start
             # branch step3/4: EMA-smooth the scalar to dampen the +-1 argmin wobble.
-            # step4: slow to alpha 0.33 (span 5) to push bull stability above 0.80 knee
-            # (step3 alpha 0.5 recovered to 0.793, still below knee).
+            # step4 alpha 0.33 was WORSE (more lag dropped bull Sharpe 0.743->0.721,
+            # stability 0.793->0.785). Revert to step3 alpha 0.5 (span 3, best).
             _leg_dur_prev = self._leg_dur_ema.get(symbol, _leg_dur_raw)
-            _leg_dur = 0.33 * _leg_dur_raw + 0.67 * _leg_dur_prev  # alpha 0.33 (span 5)
+            _leg_dur = 0.5 * _leg_dur_raw + 0.5 * _leg_dur_prev  # alpha 0.5 (span 3)
             self._leg_dur_ema[symbol] = _leg_dur
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
@@ -4109,7 +4109,21 @@ class Strategy:
                     # harvest-weaken to LONG positions only -> crash shorts byte-identical
                     # (gate 0). Sideways byte-identical (already via ret_vlong*pos_dir~0).
                     _leg_long_gate = 1.0 if current_pos > 0 else 0.0
-                    _ts_supp = _ts_supp * (1.0 - (1.0 - _leg_harvest_relax) * _leg_long_gate)
+                    # branch step5: UPTREND-PERSISTENCE gate. step2 still regressed mixed
+                    # -0.002575: mixed's RALLY-PHASE longs have ret_vlong>0 transiently (a
+                    # bounce in its overall downtrend) -> _ts_supp's ret_vlong*pos_dir factor
+                    # >0 -> suppression active -> leg-dur weaken fires -> harvests the bounce
+                    # longs early -> loses mixed's rally-phase gains (mixed is NOT DD-limited
+                    # so no DD offset). The separator between bull/rally (PERSISTENT up) and
+                    # mixed's transient rally-phase (bounce in a persistent bear) is the
+                    # DURATION of ret_vlong negativity, the validated _down_persist separator
+                    # (same as _ta_winner_gate _up_persist_gate). Require LOW _down_persist
+                    # (persistent uptrend) for the harvest-weaken -> mixed (high down_persist
+                    # = persistent bear underneath the bounce) excluded; bull/rally (low
+                    # down_persist = persistent up) kept. Continuous ramp; crash (down_persist
+                    # ~0.9) already excluded by the long-only gate. Byte-identical for mixed.
+                    _leg_up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
+                    _ts_supp = _ts_supp * (1.0 - (1.0 - _leg_harvest_relax) * _leg_long_gate * _leg_up_persist_gate)
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
                     # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
