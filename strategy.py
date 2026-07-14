@@ -3979,13 +3979,23 @@ class Strategy:
                     # losing streak and an entry-block removes them): this changes the
                     # EXIT threshold for an already-open LOSING position, never blocking
                     # new entries -> crash's winning post-streak shorts enter freely and
-                    # are spared by the _pnl_scale<0 gate (winners byte-identical). Spares
-                    # sideways via the same _sustained_loss_trend_gate (sideways mean-
-                    # reverters oscillate, not extend). Smooth tanh ramp on streak;
-                    # byte-identical at streak<=1 (gate 0). Max lowering 0.10 (modest,
-                    # complementary to the 0.12 DD path -- total max 0.22, capped by the
-                    # de-risk ramp). Direction-agnostic; no regime label.
-                    _streak_exit_gate = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _sustained_loss * _sustained_loss_trend_gate
+                    # are spared by the _pnl_scale<0 gate (winners byte-identical).
+                    # branch step2: SEPARATOR FIX. Opener used rsi_trend_str (20-bar) as the
+                    # trend gate and regressed sideways -0.0258 -- sideways 2023 has LOCAL
+                    # trending stretches where rsi_trend_str>0 so the gate fired on mean-
+                    # reverters that oscillate and recover (the same mean-reversion wall).
+                    # Replace with the MULTI-DAY |ret_vlong| (96-bar ~4d slope) separator:
+                    # sideways 2023 oscillates over DAYS so its 96-bar slope ~0 even during
+                    # local trending stretches (a multi-day trend does not develop in chop),
+                    # while rally/crash/bull/mixed have genuine multi-day trends -> large
+                    # |ret_vlong|. This separates "local trending stretch within chop"
+                    # (sideways, gate ~0) from "genuine multi-day trending regime" (the
+                    # losers that genuinely EXTEND). Continuous tanh on |ret_vlong|/0.03;
+                    # byte-identical in sideways (|ret_vlong|~0 -> gate ~0). Smooth tanh
+                    # ramp on streak; byte-identical at streak<=1. Max lowering 0.10
+                    # (complementary to the 0.12 DD path). Direction-agnostic; no regime label.
+                    _streak_multiday_gate = max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.03)))
+                    _streak_exit_gate = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _sustained_loss * _streak_multiday_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.10 * _streak_exit_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
