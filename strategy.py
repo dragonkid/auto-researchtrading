@@ -770,26 +770,6 @@ class Strategy:
             self._equity_ema_atten = 0.05 * equity + 0.95 * _prev_eq_atten  # step7: slow-rise 0.1->0.05 (test if more smoothing improves margin)
         _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(_port_dd_frac / (0.008 * LEVERAGE_K)))
-        # Exp5 (architectural, indep): DIRECTION-ASYMMETRIC portfolio-DD circuit-breaker
-        # for LONG entries. The baseline _port_dd_atten shrinks ALL entries symmetrically
-        # during portfolio DD. A portfolio drawdown PRIMARILY reflects a long-side
-        # drawdown in the trend regimes (bull 2021 pullbacks, rally 2024 pullbacks = the
-        # documented DD sources; both are LONG books giving back gains). Crash's DD is a
-        # SHORT-book loss (winning shorts bounce-then-resume, the recovery edge), and crash's
-        # entries during DD are the winning bounce SHORTS -- the symmetric breaker shrinks
-        # them too, trimming crash's recovery edge (a mild crash-coupling). A direction-
-        # asymmetric breaker ADDS a DD-proportional shrink to LONG entries only (the DD-
-        # source direction) while leaving SHORT entries at the symmetric baseline (spares
-        # crash's winning shorts -> crash byte-identical). NEW control flow: long entries
-        # read a direction-asymmetric DD factor the baseline did not have. Crash-safe by
-        # construction (shorts untouched). Byte-identical for shorts and at portfolio peak
-        # (dd_frac=0 -> both factors 1.0). The additional long shrink is modest (max 0.12,
-        # on top of the symmetric breaker which already shrinks longs; this is the marginal
-        # EXTRA long-side de-risk during DD). Continuous tanh on the same DD fraction (no
-        # new boundary, no new scale -- reuses the validated leverage-coupled 0.008*LEVERAGE_K
-        # scale). Targets bull DD (the 20x dd_gate crush): smaller long entries during the
-        # long-side drawdown -> smaller realized losses on the pullback longs -> lower bull DD.
-        _port_dd_long_extra = 1.0 - 0.12 * (1.0 - _port_dd_atten)
 
         # Exp3 (architectural, indep): PORTFOLIO EQUITY-MOMENTUM (trajectory DERIVATIVE)
         # entry-size shrink. NEW portfolio-STATE data dep distinct from every existing
@@ -2571,7 +2551,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _port_dd_long_extra * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
