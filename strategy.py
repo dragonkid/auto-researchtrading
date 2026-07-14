@@ -3984,18 +3984,24 @@ class Strategy:
                     # trend gate and regressed sideways -0.0258 -- sideways 2023 has LOCAL
                     # trending stretches where rsi_trend_str>0 so the gate fired on mean-
                     # reverters that oscillate and recover (the same mean-reversion wall).
-                    # Replace with the MULTI-DAY |ret_vlong| (96-bar ~4d slope) separator:
-                    # sideways 2023 oscillates over DAYS so its 96-bar slope ~0 even during
-                    # local trending stretches (a multi-day trend does not develop in chop),
-                    # while rally/crash/bull/mixed have genuine multi-day trends -> large
-                    # |ret_vlong|. This separates "local trending stretch within chop"
-                    # (sideways, gate ~0) from "genuine multi-day trending regime" (the
-                    # losers that genuinely EXTEND). Continuous tanh on |ret_vlong|/0.03;
-                    # byte-identical in sideways (|ret_vlong|~0 -> gate ~0). Smooth tanh
-                    # ramp on streak; byte-identical at streak<=1. Max lowering 0.10
-                    # (complementary to the 0.12 DD path). Direction-agnostic; no regime label.
-                    _streak_multiday_gate = max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.03)))
-                    _streak_exit_gate = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _sustained_loss * _streak_multiday_gate
+                    # step2a: the |ret_vlong| (96-bar) gate alone ALSO leaked sideways
+                    # (-0.0285) -- sideways 2023 is a RECOVERY year with multi-day
+                    # directional legs, so |ret_vlong| exceeds the onset during recovery
+                    # legs the same way rally does. Neither local-trend (rsi_trend_str)
+                    # NOR multi-day-trend (|ret_vlong|) ALONE cleanly separates sideways.
+                    # step3 fix: REQUIRE BOTH via product. The streak->exit fires only when
+                    # BOTH a local trending stretch (rsi_trend_str high) AND a multi-day
+                    # directional leg (|ret_vlong| deadzone) coincide -- a genuine STRONG
+                    # trend (rally/crash/bull/mixed), not a sideways recovery leg (which has
+                    # one but rarely both simultaneously). The product is ~0 unless both
+                    # axes fire, so sideways (low on at least one axis most bars) is byte-
+                    # identical while strong trends (high on both) keep the gain. The
+                    # multi-day deadzone is smooth (tanh of offset -> 0 below 0.03, smooth
+                    # ramp above): no hard boundary. Keep rsi_trend_str (validated Exp4
+                    # separator) x |ret_vlong| deadzone x streak x sustained_loss. Max
+                    # lowering 0.10. Direction-agnostic; no regime label.
+                    _streak_multiday_gate = max(0.0, np.tanh((abs(ret_vlong) - 0.03) / 0.02))
+                    _streak_exit_gate = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _sustained_loss * _sustained_loss_trend_gate * _streak_multiday_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.10 * _streak_exit_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
