@@ -4038,7 +4038,7 @@ class Strategy:
                     # keep equity near peak -> _port_dd_atten~1 -> Exp3 inert, but the
                     # streak count is high). Same _streak_exit_gate (sideways/streak<=1/
                     # non-trend byte-identical). Max 0.10 (0.85 -> 0.75 floor).
-                    _streak_de_floor_drop = 0.10 * _streak_exit_gate
+                    _streak_de_floor_drop = 0.20 * _streak_exit_gate
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
