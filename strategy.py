@@ -180,68 +180,6 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
 
-# Exp1 (architectural, indep): PORTFOLIO-DD-CONDITIONED SCALE-IN / HELD-TARGET CEILING
-# for LONG-ONLY trend-aligned positions. The largest score lever per decomposition is
-# bull_2021 DD (10.79pct, dd_gate=0.050 -- bull score 0.021436 is ~20x-crushed by DD;
-# a bull DD reduction 10.79->9.0pct = +0.0076 composite, 9x more score-efficient than a
-# bull Sharpe gain at this operating point, since dd_gate sits deep in the exp tail past
-# the 5pct knee where the general Sharpe-dominates-DD rule inverts). ALL prior bull-DD-
-# reduction paths were documented walled across 5+ sessions: entry-SIZE (size-
-# insensitive -- DD accumulates on RIDE bars not the entry bar; sharp-reversal exit is
-# already full-pressure), held-position de-risk at a LOSS (row-1015 reversion-miss --
-# cuts underwater positions that recover), de-risk cushion exponent (Sharpe-only, DD
-# byte-identical -- cut timing is post-DD-peak), giveback-tightening (maxed 0.50 stab
-# cliff), tp-harvest relax (maxed 0.60 cliff), time-pressure intensification (rally-DD-
-# breach). The untested axis per the prior session-summary: a cut BEFORE the giveback
-# band starts that is still rally-safe, NOT the walled held-position-loss-cut.
-#
-# This implements that axis on a NEW subsystem -- the scale-in / held-target SIZE
-# ceiling (line ~3043 full_target; line ~3044 target = full_target * scale_frac) -- which
-# has NEVER read portfolio-DD state (all existing full_target factors -- _conc_held,
-# _vol_held, _cv_held, _avgvol_held, _fade_held, _persist_sustain -- are cached-at-entry
-# or directional, none key on live portfolio DD). NEW cross-component data dep + new
-# control flow: the held-position target ceiling depends on live portfolio DD state.
-#
-# MECHANISM (distinct from every walled path):
-#  - NOT a loss-cut (row-1015 wall): the ceiling limits the position's MAX SIZE during
-#    deep portfolio DD, applied as a multiplicative cap on the held/scale-in target. It
-#    never forces an exit; the position stays open and participates if the trend
-#    continues (just at a proportionally smaller size). No reversion-miss -- a recovery
-#    still profits, only the magnitude above the ceiling is foregone.
-#  - NOT a peak-harvest (tp-harvest wall): it limits size BEFORE/at the climb, not
-#    harvests realized gains at a giveback peak. No giveback interaction.
-#  - Targets the RIDE bars (the confirmed bull DD source): a bull long scales to full
-#    size, RIDES the trend up accruing position-value, then a sharp reversal makes the
-#    full-size position the DD peak. Capping the held ceiling during deep portfolio DD
-#    keeps the winner proportionally smaller THROUGH the RIDE -> smaller position at
-#    the sharp-reversal bar -> smaller DD peak. The cap fires at _port_dd_frac>~0.06
-#    (DURING DD accumulation, BEFORE the 10.79pct peak) -> cuts before the peak.
-#
-# GATES (the validated clean bull/crash separator from the prior 249d8241 branch, which
-# proved long-only + raw _port_dd_frac onset ~0.06 cleanly isolates bull trend longs):
-#  - LONG-ONLY (current_pos>0): crash's winning trend-aligned SHORTS are byte-identical
-#    (the crash-coupling wall -- crash winners are shorts; capping them cuts crash
-#    Sharpe). Same _ta_long_gate / _long_only_gate structural property used at pp_pressure
-#    attenuation (line ~2629) and _ta_dd_hold_ext (line ~2693).
-#  - MULTI-DAY TREND-ALIGN (ret_vlong*pos_dir>0, fast-saturating /0.01 near-constant
-#    noise-free): excludes crash BOUNCE longs (counter-trend at multi-day: ret_vlong<0,
-#    pos_dir=+1 -> product<0) -- crash bounce longs are losers, capping them helped crash
-#    in the prior branch, but here we want to isolate bull's trend-CONTINUATION longs
-#    (ret_vlong>0, +1 -> product>0). This gate keeps the cap on bull uptrend longs only.
-#  - RAW _port_dd_frac onset ~0.06 (NOT the saturated (1-_port_dd_atten) intensity): the
-#    prior branch proved the raw fraction retains resolution at deep DD (the saturated
-#    tanh intensity reads ~0.86-1.0 for ALL regimes past 4pct DD -> no separation); the
-#    raw fraction cleanly separates sideways/rally/mixed (dd_frac 4.18/5.19/4.91 < 0.06
-#    -> byte-identical) from bull (0.108) and crash (0.177). Leverage-coupled scale
-#    (same discipline as PORT_DD_GIVEBACK_SCALE) keeps activation DD-LEVEL invariant.
-# Continuous tanh, no decision boundary; reduction-only (cap <= 1.0); byte-identical at
-# portfolio peak (dd_frac=0), for shorts (long gate 0), for ct/bounce longs (align 0),
-# and for sideways/rally/mixed (dd_frac < onset). Modest magnitude (PORT_DD_TARGET_CAP
-# 0.20 max ceiling reduction at saturation) -- a first working point.
-PORT_DD_TARGET_CAP = 0.20     # max fractional reduction of the held/scale-in target ceiling at deep portfolio DD
-PORT_DD_TARGET_CAP_ONSET = 0.06   # raw _port_dd_frac at which the cap begins (sideways/rally/mixed 0.042-0.052 byte-identical; bull 0.108 fires)
-PORT_DD_TARGET_CAP_SCALE = 0.05    # raw _port_dd_frac span over which the cap ramps to full (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
-
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
 # Exp1 (naive 2x BASE_POSITION_SIZE, discarded fcae6004) proved the strategy is
@@ -3103,24 +3041,6 @@ class Strategy:
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _fade_held * _persist_sustain
-                    # Exp1 (architectural, indep): PORTFOLIO-DD-CONDITIONED TARGET CEILING
-                    # (long-only + multi-day-trend-align). See PORT_DD_TARGET_CAP header.
-                    # Applied to full_target (the scale-in DESTINATION) so a fresh entry
-                    # scaling in during deep portfolio DD ramps toward a proportionally
-                    # smaller ceiling -> the RIDE-bar position that becomes the bull DD peak
-                    # is smaller from the start of the climb. Composed multiplicatively
-                    # (reduction-only, cap <= 1.0). Uses the validated raw _port_dd_frac
-                    # deep-DD separator (onset 0.06, LEVERAGE_K-scaled) + long-only gate
-                    # (current_pos>0, spares crash winning shorts) + multi-day-trend-align
-                    # gate (ret_vlong*pos_dir>0 fast-saturating /0.01, spares crash bounce
-                    # longs). Byte-identical for shorts, ct/bounce longs, and
-                    # sideways/rally/mixed (dd_frac < onset).
-                    _dd_cap_pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _dd_cap_long_only = 1.0 if current_pos > 0 else 0.0  # spares crash winning shorts (the crash-coupling wall)
-                    _dd_cap_align = max(0.0, np.tanh(ret_vlong * _dd_cap_pos_dir / 0.01))
-                    _dd_cap_dd_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - (PORT_DD_TARGET_CAP_ONSET)) / (PORT_DD_TARGET_CAP_SCALE * LEVERAGE_K))))
-                    _dd_target_cap = 1.0 - PORT_DD_TARGET_CAP * _dd_cap_long_only * _dd_cap_align * _dd_cap_dd_gate
-                    full_target = full_target * _dd_target_cap
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -5052,41 +4972,6 @@ class Strategy:
                         _ll_ramp = max(0.0, min(1.0, (self.bar_count - _ll_bar) / LOSS_LATCH_RAMP_BARS))
                         _ll_cap_now = 1.0 - (1.0 - LOSS_LATCH_CAP) * _ll_ramp
                         target = target * _ll_cap_now
-                # BRANCH step2: extend the portfolio-DD target ceiling to ESTABLISHED
-                # full-size held positions (Exp1 opener capped only the scale-in
-                # destination, which left bull DD byte-identical-to-near-zero because
-                # the DD source is established RIDE positions at full size). Apply the
-                # SAME long-only + multi-day-trend-align + raw-dd_frac-deep-DD cap as a
-                # CEILING on the emitted held target relative to the position's natural
-                # full size `size`: target is trimmed toward sign(target)*size*cap_factor
-                # when |target| exceeds the capped level. This reaches the RIDE population
-                # (established winners at full size during deep portfolio DD) -> smaller
-                # position at the sharp-reversal bar -> smaller DD peak. NOT a forced
-                # exit/loss-cut (position stays same-sign at the capped level, still
-                # participates in recovery); NOT a giveback peak-harvest (DD-proportional
-                # ceiling, not giveback-magnitude). Byte-identical for shorts (long-only
-                # gate 0), ct/bounce longs (align 0), and sideways/rally/mixed (dd_frac <
-                # onset). Gradual: the cap factor is continuous in _port_dd_frac so a
-                # +-1 bar DD wobble shifts the ceiling by a small amount (stability-safe,
-                # same discipline as the loss-latch gradual ramp). Same-sign only (full
-                # exits/flips exempt via the enclosing if).
-                _pd_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _pd_long_only = 1.0 if current_pos > 0 else 0.0
-                _pd_align = max(0.0, np.tanh(ret_vlong * _pd_pos_dir / 0.01))
-                _pd_dd_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - (PORT_DD_TARGET_CAP_ONSET)) / (PORT_DD_TARGET_CAP_SCALE * LEVERAGE_K))))
-                _pd_cap_factor = 1.0 - PORT_DD_TARGET_CAP * _pd_long_only * _pd_align * _pd_dd_gate
-                _pd_ceiling = (size if current_pos > 0 else -size) * _pd_cap_factor
-                # Only trim when the DD cap is ACTIVE (cap_factor<1.0, i.e. long-only AND
-                # multi-day-align AND deep-DD all positive). When cap_factor==1.0 (align 0
-                # for ct/bounce longs, OR long-only 0 for shorts, OR dd_gate 0 for
-                # sideways/rally/mixed) the ceiling equals `size` but `size` can be below
-                # an established position (entered at higher equity) -> trimming to
-                # current `size` would be a size-recalibration, NOT a DD cap, biting
-                # crash bounce longs (align 0 but dd_gate>0) and sideways. Gate the trim
-                # on cap_factor<1.0 so only the intended DD-capped population is trimmed;
-                # all other populations BYTE-IDENTICAL (no ceiling applied).
-                if _pd_cap_factor < 1.0 and ((current_pos > 0 and target > _pd_ceiling) or (current_pos < 0 and target < _pd_ceiling)):
-                    target = _pd_ceiling
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
