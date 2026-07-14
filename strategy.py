@@ -3213,32 +3213,6 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
-                # Exp5 (architectural, indep): TREND-ALIGNED-MULTI-DAY-LOSER portfolio-DD
-                # slope-against VALUE amplification. NEW cross-component data dep on the
-                # DOMINANT loss-side soft term: scale the _sl_slope_pressure VALUE (not its
-                # weight -- Exp2 showed weight-amp is absorbed by inner MAX-fusion; not via
-                # additive -- Exp3 additive landed on strong regimes with bull byte-identical)
-                # for the trend-aligned-at-multi-day LOSING-during-portfolio-DD population.
-                # Mechanism: raising the VALUE of the dominant soft term raises _soft_max
-                # directly (not absorbed, unlike a weight on a term already at the max) ->
-                # raises _exit_pressure -> crosses _exit_thresh sooner -> cuts the trend-aligned
-                # DD loser at the slope-reversal stage before the stop -> smaller realized loss
-                # -> lower bull DD (10.79pct, deep in dd_gate penalty). CRASH-SAFE: loss-gated
-                # (max(0,-_pnl_scale)=0 for crash's WINNING shorts); crash's LOSERS are ct-at-
-                # multi-day (ret_vlong<0, pos_dir +1 -> product<0 -> trend-align gate 0 -> no
-                # amp). SIDEWAYS-SAFE: ret_vlong~0 -> trend-align gate ~0 -> byte-identical
-                # (avoids Exp1 sideways wall). RALLY-SAFE: rally losers are ct pullback shorts
-                # (ret_vlong>0, pos_dir -1 -> product<0 -> gate 0); rally trend-aligned longs
-                # are winners (loss-gate off). DD-gated (1-_port_dd_atten -> 0 at peak).
-                # min(1.0, ...) CAP so the amplified value cannot exceed the ramp ceiling
-                # (preserves the calibrated soft-pressure ceiling); max amp 1.30x. Continuous
-                # tanh (no boundary). Direction-agnostic general principle (no regime label):
-                # a losing position trading WITH the multi-day trend during a portfolio
-                # drawdown is a correlated-regime-hit extending loser -> amplify the slope-
-                # against signal so it cuts sooner.
-                _slope_dd_align = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
-                _slope_dd_amp = 1.0 + 0.30 * max(0.0, -_pnl_scale) * _slope_dd_align * (1.0 - _port_dd_atten)
-                _sl_slope_pressure = max(0.0, min(1.0, _sl_slope_pressure * _slope_dd_amp))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
