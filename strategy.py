@@ -283,6 +283,21 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+# Exp4 (architectural, indep, this session): COUNTER-TREND-LOSS-AWARE cooldown
+# stretch. The post-loss cooldown treats all losses equally (window stretch +
+# size recovery window are functions of _loss_only, agnostic to WHY the loss
+# happened). A trend-aligned loss (long in uptrend stopped on a pullback, then
+# the trend resumed) is a TIMING error -- the directional signal is still valid,
+# so re-entering promptly is correct (keep the cooldown SHORT). A counter-trend
+# loss (long in a multi-day downtrend = dead-cat-bounce entry, or short in a
+# multi-day uptrend = rally pullback short) is a SIGNAL error -- the directional
+# bet itself was wrong, so staying out LONGER (cooler) avoids re-entering the
+# same wrong-side bet. Stretch BOTH the cooldown window (delay before size
+# recovers) and the size-recovery window for counter-trend losses. New per-symbol
+# state (_last_exit_ct_loss) read by the cooldown ramp. Continuous tanh, no
+# boundary; direction-symmetric (ct_loss is a direction x trend product).
+CT_LOSS_CD_AMP = 0.80        # max cooldown-window stretch for a full counter-trend loss (factor 1->1.8)
+CT_LOSS_OUTCOME_AMP = 0.80   # max size-recovery-window stretch for a full counter-trend loss (8->14.4 bars)
 
 # Exp1 (architectural, indep, this session): ADVERSE-EXCURSION-VELOCITY de-risk
 # amplifier parameters. The de-risk graduation ramp's lower bound (_de_floor) is
@@ -524,6 +539,15 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
+        # Exp4: per-symbol counter-trend-loss indicator captured at the most recent
+        # LOSS exit. _ct_loss in [0,1]: 1 when the exiting position was AGAINST the
+        # multi-day trend (ret_vlong) at exit -- a genuine signal error (counter-trend
+        # entry that stopped out); 0 when the loss was trend-aligned (correct direction,
+        # bad timing). Feeds the cooldown stretch: counter-trend losses get a LONGER
+        # cooldown (stay out longer -- the signal was wrong), trend-aligned losses a
+        # SHORTER one (the trend is still valid, re-enter faster). Set on loss exits;
+        # read by the cooldown ramp. NOT cleared on new entry (persists as last-exit ctx).
+        self._last_exit_ct_loss = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -1568,9 +1592,17 @@ class Strategy:
             # loss-only outcome-conditioned stretch & first-bar size attenuator.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
             _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
-            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
+            # Exp4: counter-trend-loss stretch. _ct_loss is 1 when the last loss was a
+            # counter-trend entry (signal error), 0 when trend-aligned (timing error).
+            # Stretch the cooldown AND size-recovery windows for counter-trend losses
+            # (stay out longer + recover size slower -> less re-exposure to a wrong-side
+            # bet). Trend-aligned losses keep the baseline cooldown (re-enter faster -- the
+            # signal is still valid). _ct_loss is gated by _loss_only (only fires on losses).
+            _ct_loss = _loss_only * self._last_exit_ct_loss.get(symbol, 0.0)
+            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only) * (1.0 + CT_LOSS_CD_AMP * _ct_loss)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
-            _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
+            _outcome_window = 8.0 * (1.0 + CT_LOSS_OUTCOME_AMP * _ct_loss)
+            _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / _outcome_window) * _loss_only
             in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
@@ -5098,6 +5130,16 @@ class Strategy:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         _exit_pnl_signed = -_ep if current_pos < 0 else _ep
                         self._last_exit_pnl[symbol] = _exit_pnl_signed
+                        # Exp4: record the trend-alignment of a LOSS exit. The exiting
+                        # position's direction vs the multi-day trend (ret_vlong, in scope
+                        # here in the per-symbol loop body). entry_dir = sign(current_pos).
+                        # Counter-trend loss (entry_dir opposes ret_vlong) -> ct_loss~1
+                        # (signal was wrong); trend-aligned loss -> ct_loss~0 (correct dir).
+                        # /0.01 scale matches the validated fast-saturating ret_vlong ct
+                        # indicator used by _ct_vlong/_streak_ct (near-constant, noise-free).
+                        if _exit_pnl_signed < 0.0:
+                            _entry_dir = 1.0 if current_pos > 0 else -1.0
+                            self._last_exit_ct_loss[symbol] = max(0.0, min(1.0, np.tanh(-_entry_dir * ret_vlong / 0.01)))
                         # Exp3: update portfolio consecutive-loss streak (mirrors
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
