@@ -1277,7 +1277,7 @@ class Strategy:
             # appended WITHOUT modifying any existing _base_weights (the _wt_shift only
             # shifts indices 1-3, leaving this 9th weight untouched). New orthogonal-ish
             # data-source voter on the vol-normalized-momentum axis.
-            _am_n = 10
+            _am_n = 6
             # branch step2: SMOOTH the momentum input via smoothed_closes (already AR(1)-
             # attenuated) for noise-robustness. The opener used raw closes -> the 6-bar
             # return flipped sign under AR(1) close noise on small-return bars -> vote
@@ -1286,22 +1286,25 @@ class Strategy:
             # stable on small-return bars. AND widen sharpness 1.0->1.5 (softer tanh ->
             # small |ATR-momentum| stays closer to conf 0.5 neutral, reducing vote-flip
             # impact further). Keeps the directional signal on strong-momentum bars.
-            # branch step3: WIDEN the momentum window 6->10 bars AND soften sharpness
-            # 1.5->2.0 to reduce BULL vote-flip. step2 fixed sideways (chop-dampener muted
-            # the voter there) but bull is a TREND regime -> the voter fires at full
-            # weight on bull, and bull's pullback DIPS (3-5 bar momentum dips within the
-            # uptrend) flip the 6-bar momentum sign -> vote flips -> bull stability
-            # ~0.77 (below 0.80 knee) -> bull score capped. A LONGER 10-bar window
-            # mostly survives a 3-5 bar pullback dip (the 10-bar return stays positive
-            # through a typical bull pullback -> sign stable -> no vote-flip -> bull
-            # stability recovers), while still capturing the directional trend. Softer
-            # sharpness 2.0 (saturates at ~2 ATR) further keeps small-momentum bars near
-            # conf 0.5 neutral. 10-bar is still short enough to be a momentum signal
-            # (not a trend like the 96-bar ret_vlong). Smoothed input + longer window +
-            # softer sharpness together absorb the bull pullback-dip vote-flip.
+            # branch step4: REVERT window to 6-bar (step3's 10-bar killed the bull
+            # signal -- byte-id to baseline) + add a small-momentum DEADZONE to kill
+            # the pullback-dip vote-flip WITHOUT flattening the strong-bar signal.
+            # step2 (6-bar, sharpness 1.5) had the real bull Sh +0.114 gain but bull
+            # stab below 0.80 knee from 3-5 bar pullback-dip momentum sign-flips. The
+            # flips come from SMALL |ATR-momentum| bars (pullback dips move the 6-bar
+            # return by a tiny fraction of an ATR -> near-zero momentum -> sign
+            # wobbles under noise). A deadzone maps |ATR-momentum| < 0.25 ATR to EXACT
+            # neutral (sig 0 -> conf 0.5, no vote): the small-momentum pullback-dip
+            # bars emit NO conviction either way -> no flip source -> sign stable ->
+            # bull stab recovers, while the STRONG bars (|ATR-momentum| > 0.25, the
+            # real trend signal) pass through the deadzone untouched -> bull signal
+            # preserved. Orthogonal to step3's window lever: gate the small-magnitude
+            # bars to neutral, do NOT flatten via window length.
             _am_ret = (smoothed_closes[-1] - smoothed_closes[-(_am_n + 1)]) / max(smoothed_closes[-(_am_n + 1)], 1e-10)
-            _atr_mom = _am_ret / max(_atr_pct_e, 1e-10)  # 10-bar return in ATR units
-            _atr_mom_sig = _atr_mom / 2.0  # branch step3: softened sharpness 1.5->2.0
+            _atr_mom = _am_ret / max(_atr_pct_e, 1e-10)  # 6-bar return in ATR units
+            _am_deadzone = 0.25
+            _atr_mom_gated = _atr_mom if abs(_atr_mom) >= _am_deadzone else 0.0
+            _atr_mom_sig = _atr_mom_gated / 1.5  # step2 sharpness 1.5 (saturates ~1.5 ATR)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1311,7 +1314,7 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _atr_mom_sig,  # 9th voter: ATR-normalized 6-bar momentum (smoothed input, sharpness 1.5)
+                _atr_mom_sig,  # 9th voter: ATR-normalized 6-bar momentum (smoothed, deadzone-gated, sharpness 1.5)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
