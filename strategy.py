@@ -4018,30 +4018,24 @@ class Strategy:
                     if len(_mlh) >= 2 and self.bar_count - _mlh[0] <= MAE_VEL_WINDOW:
                         _mae_vel = min(len(_mlh), MAE_VEL_WINDOW) / float(MAE_VEL_WINDOW)
                     _mae_vel_gate = max(0.0, min(1.0, np.tanh((_mae_vel - MAE_VEL_ONSET) / 0.15)))
-                    # branch step1: CLEAN-PLUNGE path-efficiency gate. The opener (onset 0)
-                    # helped rally +0.019 BUT collapsed mixed (stability 1.0->0.006): the
-                    # velocity amplifier fired on mixed's trend-aligned RALLY-PHASE longs
-                    # (ret_vlong>0 during mixed's rally phases -> _mae_v_align>0) which make
-                    # fresh lows in the rally-phase pullbacks, and cutting them wobbled
-                    # mixed's trade selection -> stability 0. mixed's rally-phase pullbacks
-                    # are CHOPPY (down-up-down-up, low |net|/sum|deltas|); rally's pullback
-                    # longs and bull's plunge are CLEAN (monotone-ish decline, high |net|/
-                    # sum|deltas|). Gate the amplifier on HIGH path-efficiency of the recent
-                    # pos_pnl trajectory (the SAME _pnl_path the MTM-chop emission trim uses,
-                    # computed inline here since _mtm_chop is not yet available at this point).
-                    # High efficiency (clean plunge) -> gate ~1 -> amplifier fires (rally/bull);
-                    # low efficiency (choppy decline) -> gate ~0 -> mixed spared. Continuous
-                    # tanh on the efficiency (no boundary); crash-safe (loss-gate still holds).
-                    _pp_mv = self._pnl_path.get(symbol, [])
-                    _mae_v_clean = 1.0
-                    if len(_pp_mv) >= 6:
-                        _pp_arr = np.array(_pp_mv[-8:])
-                        _net_mv = abs(_pp_arr[-1] - _pp_arr[0])
-                        _tot_mv = float(np.sum(np.abs(np.diff(_pp_arr))))
-                        _mv_eff = _net_mv / max(_tot_mv, 1e-10)
-                        _mae_v_clean = max(0.0, min(1.0, np.tanh((_mv_eff - 0.30) / 0.20)))
-                    _mae_vel_gate = _mae_vel_gate * _mae_v_clean
-                    _exit_thresh = _exit_thresh * (1.0 - MAE_VEL_MAX_FLOOR * _mae_v_align * _mae_vel_gate)
+                    # branch step2: GRADUAL-ONLY action. Step1's clean-plunge gate spared
+                    # mixed's stability BUT zeroed the rally gain (rally pullbacks are
+                    # choppy too -> excluded). The opener used BOTH the _exit_thresh BINARY
+                    # full-exit action (wobbles the exit BAR -> trade selection wobble ->
+                    # mixed stability crash) AND the _de_floor GRADUAL ramp (trims smoothly
+                    # -> stability-safe). Test the hypothesis that the GRADUAL _de_floor
+                    # action ALONE is stability-safe for mixed while preserving rally's
+                    # gain: remove the _exit_thresh binary action (the selection-wobbler)
+                    # and the clean-plunge gate (which killed the rally gain). The gradual
+                    # ramp lowers the de-risk start floor -> trims the accelerating loser
+                    # smoothly over multiple bars -> no single-bar exit-bar shift -> no
+                    # trade-selection wobble -> stability preserved (the same noise-robust
+                    # property that makes _de_floor lowering stable for the Exp3/Exp4
+                    # portfolio-DD losers). The velocity signal still fires on rally's
+                    # pullback longs (no clean-plunge filter) -> rally gain restored; if
+                    # the gradual action does not wobble mixed's selection, mixed holds.
+                    _mae_vel_floor = MAE_VEL_MAX_FLOOR * _mae_v_align * _mae_vel_gate
+                    # (action applied to _de_floor below; _exit_thresh left at Exp4's value)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -4282,7 +4276,7 @@ class Strategy:
                     # entries (the bars_held>=2 de-risk exemption below gates the whole
                     # branch). Continuous tanh on (velocity - onset)/scale (no boundary).
                     if _pnl_scale < 0.0:
-                        _de_floor -= MAE_VEL_MAX_FLOOR * _mae_v_align * _mae_vel_gate
+                        _de_floor -= _mae_vel_floor
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
