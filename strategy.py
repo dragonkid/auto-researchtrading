@@ -284,6 +284,25 @@ MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# Exp1 (architectural, indep, this session): ADVERSE-EXCURSION-VELOCITY de-risk
+# amplifier parameters. The de-risk graduation ramp's lower bound (_de_floor) is
+# lowered for a TREND-ALIGNED-AT-MULTI-DAY LOSING position whose MAE is still making
+# fresh lows at a high RATE (accelerating adverse move). See _mae_low_hist.
+#   MAE_VEL_WINDOW  = rolling window (bars) over which to count fresh-MAE-low bars.
+#                     A LONGER window separates a SUSTAINED plunge (bull 2021's multi-
+#                     week correction sets new lows for many consecutive bars -> velocity
+#                     ~1.0) from a TRANSIENT V-pullback (rally's 3-5 bar dips -> velocity
+#                     decays as the position recovers -> ~0.4-0.6 over 8 bars). 8 bars
+#                     is long enough that a transient pullback does not saturate while
+#                     a sustained leg does.
+#   MAE_VEL_ONSET   = velocity above which the amplifier engages (high onset keeps
+#                     transient pullbacks byte-identical -> rally/rally-recovery spared).
+#   MAE_VEL_MAX_FLOOR = max _de_floor lowering (start the graduated de-risk ramp this
+#                     much earlier) for an accelerating trend-aligned loser.
+MAE_VEL_WINDOW = 8
+MAE_VEL_ONSET = 0.65
+MAE_VEL_MAX_FLOOR = 0.12
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -637,6 +656,19 @@ class Strategy:
         # (mixed_2025's 100pct-long-in-a-down-year book, eq-autocorr -0.427).
         # Drives the emission-layer reduction throttle. Reset on full exit.
         self._pnl_path = {}
+        # Exp1 (architectural, indep, this session): per-symbol rolling history of bar
+        # counts at which a NEW adverse excursion low was set (pos_pnl strictly below the
+        # prior running minimum _mae). Used to compute ADVERSE-EXCURSION-VELOCITY = the
+        # rate at which a held position is making fresh underwater lows (fraction of the
+        # last MAE_VEL_WINDOW bars that set a new MAE low). Orthogonal to the MAE LEVEL
+        # already used by _be_pressure/_loss_latch/_ts_supp: a position can have a DEEP
+        # but STABLE MAE (already absorbed the adverse move and is holding -- crash's
+        # winning shorts that bounced, a fresh pullback long that found its level) vs a
+        # SHALLOW-but-PLUNGING MAE (accelerating adverse move, still making fresh lows --
+        # the deepening pullback that becomes bull_2021's DD). The velocity is the
+        # derivative of the adverse excursion; the existing mechanisms read only its level.
+        # Reset on full exit (alongside _mae). See MAE_VEL_* constants.
+        self._mae_low_hist = {}
         # Exp1 (architectural): per-symbol rolling history of the multi-day weak-
         # trend BOOLEAN (|ret_vlong| < PERSIST_WEAK_THRESH). Used to compute a
         # PERSISTENCE-COUNT weak-trend separator: the fraction of the last
@@ -3066,6 +3098,23 @@ class Strategy:
                 # Tracks lowest pos_pnl observed since entry; only updates downward.
                 _curr_mae = self._mae.get(symbol, 0.0)
                 self._mae[symbol] = min(_curr_mae, pos_pnl)
+                # Exp1 (architectural, indep, this session): ADVERSE-EXCURSION-VELOCITY
+                # tracking. When THIS bar sets a STRICTLY NEW MAE low (pos_pnl below the
+                # prior running minimum), stamp the bar_count into _mae_low_hist. The
+                # rolling window of fresh-low bars feeds the velocity signal read at the
+                # de-risk ramp below. Prune to MAE_VEL_WINDOW bars so the count is a rate
+                # (fresh lows per last K bars). Deterministic: the bar_count is an
+                # integer (noise-immune), and a +-1 bar shift in WHICH bar sets a fresh
+                # low shifts the window membership by 1 -> the count changes by at most 1
+                # -> the velocity (and thus the _de_floor lowering) is bar-stable under
+                # AR(1) -> stability preserved (same noise-robustness discipline as the
+                # churn-count and bar-count gates).
+                if pos_pnl < _curr_mae:
+                    _mlh = self._mae_low_hist.get(symbol, [])
+                    _mlh.append(self.bar_count)
+                    if len(_mlh) > MAE_VEL_WINDOW:
+                        _mlh = _mlh[-MAE_VEL_WINDOW:]
+                    self._mae_low_hist[symbol] = _mlh
 
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
@@ -4158,6 +4207,52 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # Exp1 (architectural, indep, this session): ADVERSE-EXCURSION-VELOCITY
+                    # de-risk floor lowering. A NEW exit-pressure derivative the de-risk ramp
+                    # did not read: the RATE at which a held position is making fresh adverse
+                    # lows (_mae_vel, computed above from _mae_low_hist). Orthogonal to the MAE
+                    # LEVEL already used by _be_pressure/_loss_latch/_ts_supp (those fire on a
+                    # DEEP/stale-MAE position; this fires on a PLUNGING-MAE position regardless
+                    # of absolute depth). Mechanism: a trend-aligned-at-multi-day LOSER whose
+                    # MAE is still making fresh lows at a high rate is in an ACCELERATING
+                    # adverse move (the deepening pullback that becomes bull_2021's DD source:
+                    # trend-aligned longs bought into a correction that keeps falling, setting
+                    # new underwater lows bar after bar). Start the graduated de-risk ramp
+                    # EARLIER (lower _de_floor) so the position trims sooner -> smaller
+                    # realized loss -> lower DD -> higher bull Sharpe/score (bull dd_gate
+                    # 0.050 is the 20x crush on bull score; DD relief is the dominant bull
+                    # lever per the score decomposition).
+                    # CRASH-SAFETY: gated on (a) LOSING (_pnl_scale<0): crash's trend-aligned
+                    # shorts are WINNERS (pos_pnl>0 -> _pnl_scale>0 -> gate off -> byte-
+                    # identical), so crash is NOT touched by the velocity amplifier even though
+                    # crash shorts are trend-aligned-at-multi-day (ret_vlong<0, pos_dir=-1).
+                    # (b) TREND-ALIGNED-AT-MULTI-DAY (ret_vlong*pos_dir>0): a counter-trend
+                    # loser (rally pullback short, mixed wrong-side long) is excluded -- those
+                    # are handled by the ct exit paths and have different recovery dynamics.
+                    # (c) HIGH VELOCITY above MAE_VEL_ONSET: the 8-bar window with a high onset
+                    # separates a SUSTAINED plunge (bull's multi-week correction -> velocity
+                    # ~1.0 -> fires) from a TRANSIENT V-pullback (rally's 3-5 bar dips -> the
+                    # position recovers, fresh-low count decays -> velocity ~0.4-0.6 over 8
+                    # bars -> below onset -> byte-identical -> rally's pullback-recovery longs
+                    # spared). This is the same DURATION-vs-TRANSIENT separator the validated
+                    # _down_persist/_persist_sustain gates use, applied to the ADVERSE-
+                    # EXCURSION rate (a new axis).
+                    # The amplifier is REDUCTION-ONLY (lowering _de_floor trims sooner, never
+                    # delays exit) and composes with the existing Exp3/Exp4 floor-lowerings
+                    # (multiplicative in effect -- all lower the floor for distinct loser
+                    # populations). Byte-identical for winners (loss-gate off), counter-trend
+                    # (trend-align gate 0), low-velocity holds (onset gate 0), and fresh
+                    # entries (the bars_held>=2 de-risk exemption below gates the whole
+                    # branch). Continuous tanh on (velocity - onset)/scale (no boundary).
+                    if _pnl_scale < 0.0:
+                        _mae_v_dir = 1.0 if current_pos > 0 else -1.0
+                        _mae_v_align = max(0.0, np.tanh(ret_vlong * _mae_v_dir / 0.04))
+                        _mlh = self._mae_low_hist.get(symbol, [])
+                        _mae_vel = 0.0
+                        if len(_mlh) >= 2 and self.bar_count - _mlh[0] <= MAE_VEL_WINDOW:
+                            _mae_vel = min(len(_mlh), MAE_VEL_WINDOW) / float(MAE_VEL_WINDOW)
+                        _mae_vel_gate = max(0.0, min(1.0, np.tanh((_mae_vel - MAE_VEL_ONSET) / 0.15)))
+                        _de_floor -= MAE_VEL_MAX_FLOOR * _mae_v_align * _mae_vel_gate
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -4985,7 +5080,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -4997,6 +5092,10 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    # Exp1 (this session): clear the MAE-velocity history on new entry/flip
+                    # so the fresh position starts with an empty fresh-low window (the
+                    # velocity is THIS position's own adverse trajectory, not inherited).
+                    self._mae_low_hist.pop(symbol, None)
                     # Exp1: clear the loss-latch on any new entry / flip so the new
                     # position starts unlatched (the latch is set by the trigger on
                     # THIS position's own MAE, not inherited from the prior position).
