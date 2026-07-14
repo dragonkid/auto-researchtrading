@@ -1141,41 +1141,40 @@ class Strategy:
         # step2 (down_persist gate) failed: bounces dip down_persist -> gate open at bounce
         # bars. step3 (long-losing fraction) backfired: crash's bounce LONGS that lose
         # raised the long-losing fraction -> shrunk the subsequent profitable SHORT even
-        # harder (crash -1.634). The structural fix: apply the cap ONLY to COUNTER-TREND
-        # entries (the per-symbol _bull_ctmd_streak/_bear_ctmd_streak indicator, tanh on
-        # ret_vlong/0.01). A trend-aligned entry (crash short in downtrend, bull long in
-        # uptrend) has ct indicator 0 -> cap not applied -> byte-identical -> crash's
-        # profitable trend-aligned shorts PROTECTED regardless of the open-book state.
-        # A counter-trend entry (crash bounce long, rally pullback short, mixed ct entry)
-        # gets the cap when the open book is correlated-adverse -> shrinks the ct losers
-        # (the documented losing population) while the trend-aligned winners are excluded.
-        # This is the SAME ct-gate family as _streak_ct_shrink / _vd_ct_shrink; the adverse
-        # fraction is the NEW data dep (open-book PnL state those ct-shrinks lack).
-        # Compute the TOTAL losing fraction (both directions) here; gate at application.
-        _open_count = 0
-        _open_losing = 0
+        # harder (crash -1.634). step4 (ct-gate) made the mechanism INERT: the ct indicator
+        # excludes the very mixed trend-aligned entries the cap was helping (mixed's
+        # ret_vlong~0 chop -> ct~0 -> no cap), so the cap became byte-identical to baseline.
+        # STRUCTURAL CONCLUSION: the adverse cap's mixed benefit comes from shrinking
+        # TREND-ALIGNED LOSING LONGS (mixed's correlated long-bleed in decline/rally), and
+        # the crash harm comes from shrinking trend-aligned SHORTS. The two are separable
+        # ONLY on the DIRECTION of the entry being shrunk: a LONG-ONLY cap never touches
+        # shorts -> crash's profitable shorts PROTECTED by construction; mixed's losing
+        # longs shrunk (the gain source); crash's ct bounce longs (losers) shrunk (good);
+        # rally longs in pullbacks may be shrunk (watch rally). Apply the cap ONLY to LONG
+        # entries, driven by the LONG-losing fraction (correlated open-long bleed). This
+        # is step3's long-losing signal but applied to LONG ENTRIES ONLY (step3 applied it
+        # to BOTH long and short targets via the top-level size -> the long-losing fraction
+        # from crash bounce longs shrunk the subsequent SHORT, the bug). Compute the LONG
+        # losing fraction here; apply only at the bull (long) target line (bear/short line
+        # untouched -> shorts byte-identical -> crash protected).
+        _open_long = 0
+        _open_long_losing = 0
         for _osym in ACTIVE_SYMBOLS:
             _opos = portfolio.positions.get(_osym, 0.0)
-            if _opos == 0.0 or _osym not in bar_data:
+            if _opos <= 0.0 or _osym not in bar_data:
                 continue
-            _open_count += 1
+            _open_long += 1
             _ep_sym = self.entry_prices.get(_osym)
             if _ep_sym is None:
                 continue
             _om = bar_data[_osym].close
-            _opnl = (_om - _ep_sym) / _ep_sym
-            if _opos < 0:
-                _opnl = -_opnl
+            _opnl = (_om - _ep_sym) / _ep_sym  # long: pnl positive in profit
             if _opnl < 0.0:
-                _open_losing += 1
-        _port_adverse_frac = (_open_losing / _open_count) if _open_count >= 2 else 0.0
-        # Raw cap (direction-agnostic losing fraction); applied per-symbol gated on ct.
-        _port_adverse_open_raw = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
-            0.0, min(1.0, np.tanh((_port_adverse_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
+                _open_long_losing += 1
+        _port_adverse_long_frac = (_open_long_losing / _open_long) if _open_long >= 2 else 0.0
+        _port_adverse_open_long = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
+            0.0, min(1.0, np.tanh((_port_adverse_long_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
         )
-        # _port_adverse_open_cap (default 1.0) is set per-symbol at the target lines where
-        # the ct indicator is available; defaulted here for non-entry (held) bars.
-        _port_adverse_open_cap = 1.0
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -1814,17 +1813,13 @@ class Strategy:
                 _bear_ctmd_streak = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
                 _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct * _bull_ctmd_streak
                 _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct * _bear_ctmd_streak
-                # branch step4: PER-SYMBOL ct-gated adverse-open cap. The raw cap
-                # (_port_adverse_open_raw, direction-agnostic open-book losing fraction) is
-                # applied ONLY to COUNTER-TREND entries via the SAME _bull_ctmd_streak /
-                # _bear_ctmd_streak ct indicator used by _streak_ct_shrink. A trend-aligned
-                # entry (ct indicator 0) -> cap = 1.0 (byte-identical, crash's profitable
-                # trend-aligned shorts protected). A ct entry (indicator ~1) -> full raw
-                # cap applied when the open book is correlated-adverse. Continuous linear
-                # interpolation from 1.0 (no ct) to the raw cap (full ct): the shrink amount
-                # scales with BOTH the open-book adverse fraction AND the entry's ct degree.
-                _adverse_open_bull = 1.0 + (_port_adverse_open_raw - 1.0) * _bull_ctmd_streak
-                _adverse_open_bear = 1.0 + (_port_adverse_open_raw - 1.0) * _bear_ctmd_streak
+                # branch step5: LONG-ONLY adverse-open cap. The cap (_port_adverse_open_long,
+                # driven by the open LONG losing fraction) applies ONLY to LONG entries.
+                # Shorts are NEVER shrunk by this cap -> crash's profitable shorts byte-
+                # identical (the structural crash-coupling fix). _adverse_open_bull reuses
+                # the top-level long cap; _adverse_open_bear = 1.0 (shorts untouched).
+                _adverse_open_bull = _port_adverse_open_long
+                _adverse_open_bear = 1.0
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
