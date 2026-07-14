@@ -2400,8 +2400,20 @@ class Strategy:
                 _dvp_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
                 _dvp_bull_conv = max(0.0, np.tanh(_dvp / 0.15))   # buy-side volume pressure
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
-                _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
-                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp5 (architectural simplification, indep): REMOVED the own-DVP entry boost
+                # (_dvp_boost_bull/bear was 1 + 0.05*trend_w*er_w*vlong*conv, +0.05 max). It is
+                # one of several entry boosts on overlapping gated-trend populations:
+                # close_conv_boost (close-loc bar-shape), vol_rise_boost (volume slope),
+                # and the cross-symbol DVP conjunction boosts (_btcdvp_boost, _partnerdvp_boost)
+                # that ALREADY read directional volume pressure. The own-DVP (12-bar close-
+                # sign-weighted volume balance) is correlated with the cross-symbol DVP boosts
+                # and with the volume-rise boost (all fire on trend-aligned volume-confirmed
+                # entries). Removing tests whether own-DVP is redundant with the overlapping
+                # boosts; if score-neutral/positive the boost was redundant (keep simpler for
+                # OOS generalization), if negative it was load-bearing. The _dvp/_dvp_*conv
+                # computations are retained (minimize diff; _dvp may be read elsewhere).
+                _dvp_boost_bull = 1.0
+                _dvp_boost_bear = 1.0
                 # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
                 # bar size boost. The DURATION-fraction _weak_persist (sanctioned
                 # untested separator, results.tsv line 1476) gates a small first-bar
