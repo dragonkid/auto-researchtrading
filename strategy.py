@@ -3826,27 +3826,6 @@ class Strategy:
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
-                # Exp4 (architectural, indep): HIGH-CHURN suppression of break-even pressure.
-                # _be_pressure fires in TRENDING regimes (the _be_trend_gate saturates to 1.0
-                # in trends; the MAE path covers chop). rally's pullback BURSTS are BOTH
-                # trending (high rsi_trend_str -> trend gate ON) AND high-churn (entry density
-                # len(_eh)>=3 from the choppy-pullback re-entries). A fresh rally burst entry
-                # that hovers near breakeven in its first post-scale-in bars is NOT dead
-                # capital -- it is a fresh pullback-recovery entry that needs a few bars to
-                # develop -- but the trend-gated _be_pressure fires on it (trend gate ON) ->
-                # cuts it at BE before it develops -> loses rally's burst-recovery winners.
-                # Suppress _be_pressure during HIGH churn (the noise-IMMUNE integer len(_eh)
-                # gate, the validated rally-stab family) so fresh burst entries past scale-in
-                # get a grace window before BE pressure engages. Byte-identical in LOW-churn
-                # regimes (bull/crash/sideways + rally quiet stretches: len(_eh)<=1 -> gate
-                # ~0 -> suppression factor 1.0 -> _be_pressure unchanged -> byte-identical), so
-                # the BE-trimming benefit in low-churn trending regimes (mixed's dead-capital
-                # stalls, bull's stuck longs) is preserved. Continuous tanh on churn; max 50%
-                # suppression at deep churn. Reduction-only (caps at 1.0, safe family). New
-                # cross-component data dep: _be_pressure depends on the symbol's own recent
-                # entry density (was trend/MAE/hold-duration only).
-                _be_churn_supp = 1.0 - 0.50 * max(0.0, np.tanh((len(_eh) - 2.5) / 0.6))  # ~1 low churn, ~0.5 bursting
-                _be_pressure = _be_pressure * _be_churn_supp
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
