@@ -1128,50 +1128,54 @@ class Strategy:
         # via shrinking mixed's oscillating chop losers, BUT crashed crash (-0.529) via
         # crash-coupling: crash's trend-aligned shorts are intrabar-adverse during bounces.
         # branch step2: GATE the cap to FADE OUT in PERSISTENT MULTI-DAY DOWNTREND (the
-        # _port_down_persist signal). In a sustained downtrend (crash), transient adverse
-        # on trend-aligned shorts is the NORMAL bounce-then-resume pattern, NOT a
-        # correlated regime hit -> the cap must NOT fire there. Continuous tanh fade:
-        # full effect at down_persist < 0.55 (non-bear regimes: mixed chop, rally pullbacks,
-        # bull corrections where correlated adverse IS a real signal), fading to 0 by
-        # down_persist 0.75 (persistent bear = crash -> byte-identical, crash shorts
-        # protected). This is a structural trend-PROPERTY gate (continuous, no regime
-        # label), not a discrete regime switch. Byte-identical in persistent bear AND when
-        # <2 open positions losing (the common case). Reduction-only, direction-agnostic.
-        # branch step3: DIRECTION-CONDITIONAL adverse signal (replaces the down_persist
-        # gate which failed -- crash's profitable shorts are intrabar-adverse during
-        # BOUNCES, and bounces are exactly when _port_down_persist DIPS, so the bear gate
-        # was open at the bounce bars = the cap fired on the shorts = crash still -0.529).
-        # The structural distinction: crash's LOSING open positions are SHORTS (trend-
-        # aligned shorts bleeding during bounces); the non-bear correlated-adverse cases
-        # (bull/mixed pullbacks) have LOSING LONGS (longs bleeding together in a market-
-        # wide pullback). Track losing LONGS and losing SHORTS separately, and drive the
-        # cap from the LONG losing fraction: a correlated LONG pile-up bleeding (2+ long
-        # positions losing together) is the bull/mixed pullback signature that the opener's
-        # mixed +0.026 captured. Crash's shorts bleeding do NOT raise the long-losing
-        # fraction -> crash byte-identical (shorts protected) regardless of the bounce's
-        # down_persist dip. The next entry is shrunk when the open LONG book is
-        # simultaneously adverse -- a market-wide long pullback. Direction-conditional:
-        # the cap fires on correlated LONG adverse, the crash-coupled SHORT adverse is
-        # excluded by construction. (A future step may mirror a SHORT-losing cap gated to
-        # exclude bull if needed; this step isolates the long-bleeding signal first.)
-        _open_long = 0
-        _open_long_losing = 0
+        # _port_down_persist signal). [step2 down_persist gate and step3 direction-
+        # conditional gate BOTH failed to protect crash -- replaced by step4 per-symbol
+        # COUNTER-TREND application gate below. This block now computes the direction-
+        # AGNOSTIC total losing fraction; the application is gated per-symbol on the
+        # entry being counter-trend at the target lines, which structurally excludes
+        # crash's trend-aligned profitable shorts.]
+        # branch step4: PER-SYMBOL COUNTER-TREND application gate. The crash-coupling
+        # root cause: crash's profitable TREND-ALIGNED SHORTS follow losing positions
+        # (bounce longs / bleeding shorts), so any "open positions losing -> shrink next
+        # entry" that reaches a trend-aligned entry removes crash's recovery shorts.
+        # step2 (down_persist gate) failed: bounces dip down_persist -> gate open at bounce
+        # bars. step3 (long-losing fraction) backfired: crash's bounce LONGS that lose
+        # raised the long-losing fraction -> shrunk the subsequent profitable SHORT even
+        # harder (crash -1.634). The structural fix: apply the cap ONLY to COUNTER-TREND
+        # entries (the per-symbol _bull_ctmd_streak/_bear_ctmd_streak indicator, tanh on
+        # ret_vlong/0.01). A trend-aligned entry (crash short in downtrend, bull long in
+        # uptrend) has ct indicator 0 -> cap not applied -> byte-identical -> crash's
+        # profitable trend-aligned shorts PROTECTED regardless of the open-book state.
+        # A counter-trend entry (crash bounce long, rally pullback short, mixed ct entry)
+        # gets the cap when the open book is correlated-adverse -> shrinks the ct losers
+        # (the documented losing population) while the trend-aligned winners are excluded.
+        # This is the SAME ct-gate family as _streak_ct_shrink / _vd_ct_shrink; the adverse
+        # fraction is the NEW data dep (open-book PnL state those ct-shrinks lack).
+        # Compute the TOTAL losing fraction (both directions) here; gate at application.
+        _open_count = 0
+        _open_losing = 0
         for _osym in ACTIVE_SYMBOLS:
             _opos = portfolio.positions.get(_osym, 0.0)
-            if _opos <= 0.0 or _osym not in bar_data:
+            if _opos == 0.0 or _osym not in bar_data:
                 continue
-            _open_long += 1
+            _open_count += 1
             _ep_sym = self.entry_prices.get(_osym)
             if _ep_sym is None:
                 continue
             _om = bar_data[_osym].close
-            _opnl = (_om - _ep_sym) / _ep_sym  # long: positive pnl
+            _opnl = (_om - _ep_sym) / _ep_sym
+            if _opos < 0:
+                _opnl = -_opnl
             if _opnl < 0.0:
-                _open_long_losing += 1
-        _port_adverse_long_frac = (_open_long_losing / _open_long) if _open_long >= 2 else 0.0
-        _port_adverse_open_cap = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
-            0.0, min(1.0, np.tanh((_port_adverse_long_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
+                _open_losing += 1
+        _port_adverse_frac = (_open_losing / _open_count) if _open_count >= 2 else 0.0
+        # Raw cap (direction-agnostic losing fraction); applied per-symbol gated on ct.
+        _port_adverse_open_raw = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
+            0.0, min(1.0, np.tanh((_port_adverse_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
         )
+        # _port_adverse_open_cap (default 1.0) is set per-symbol at the target lines where
+        # the ct indicator is available; defaulted here for non-entry (held) bars.
+        _port_adverse_open_cap = 1.0
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -1658,7 +1662,7 @@ class Strategy:
             # when any symbol has persistent weak multi-day trend (mixed's consolidation).
             # Exp3: apply portfolio equity-MOMENTUM (trajectory-derivative) shrink, computed
             # at top level. Composes with the deep-bear/weak-trend caps (all shrink-only).
-            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink * _port_adverse_open_cap
+            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
@@ -1810,6 +1814,17 @@ class Strategy:
                 _bear_ctmd_streak = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
                 _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct * _bull_ctmd_streak
                 _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct * _bear_ctmd_streak
+                # branch step4: PER-SYMBOL ct-gated adverse-open cap. The raw cap
+                # (_port_adverse_open_raw, direction-agnostic open-book losing fraction) is
+                # applied ONLY to COUNTER-TREND entries via the SAME _bull_ctmd_streak /
+                # _bear_ctmd_streak ct indicator used by _streak_ct_shrink. A trend-aligned
+                # entry (ct indicator 0) -> cap = 1.0 (byte-identical, crash's profitable
+                # trend-aligned shorts protected). A ct entry (indicator ~1) -> full raw
+                # cap applied when the open book is correlated-adverse. Continuous linear
+                # interpolation from 1.0 (no ct) to the raw cap (full ct): the shrink amount
+                # scales with BOTH the open-book adverse fraction AND the entry's ct degree.
+                _adverse_open_bull = 1.0 + (_port_adverse_open_raw - 1.0) * _bull_ctmd_streak
+                _adverse_open_bear = 1.0 + (_port_adverse_open_raw - 1.0) * _bear_ctmd_streak
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
@@ -2595,7 +2610,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _adverse_open_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2614,7 +2629,7 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _adverse_open_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
