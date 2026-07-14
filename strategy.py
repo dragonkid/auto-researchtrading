@@ -3929,6 +3929,7 @@ class Strategy:
                 # agnostic general principle (no regime label): a losing position during a
                 # portfolio drawdown is at correlated-regime-hit risk -> exit sooner.
                 _streak_binary_thresh = 1.0  # default (winners/non-streak); lowered for losers below
+                _streak_de_floor_drop = 0.0   # default (winners/non-streak); lowered for losers below
                 if _pnl_scale < 0.0:
                     # branch step5: REPLACE ct-gate with SUSTAINED-LOSS gate. The ct-gate
                     # (step1) excluded all trend-aligned losers (the main bull/crash problem).
@@ -4022,6 +4023,22 @@ class Strategy:
                     # streak<=1. Losers NOT in a streak / not sustained / not in a strong
                     # trend keep thresh 1.0. Max lowering 0.10 (binary fires at 0.90).
                     _streak_binary_thresh = 1.0 - 0.10 * _streak_exit_gate
+                    # branch step6: STREAK-gated DE-RISK FLOOR lowering (the complementary
+                    # lower bound). step5's binary-ceiling lowering was byte-identical
+                    # (the worst losers hit the full stop, _sl_pressure saturates -> binary
+                    # fires at the stop regardless of the 1.0->0.90 threshold). But step3's
+                    # DE-RISK ceiling lowering DID move rally Sharpe +0.0022 (some losers
+                    # ARE ramp-path) -- so the ramp IS a binding path for a subset. Lower
+                    # the ramp's START (the _de_floor lower bound) during a streak too so
+                    # the gradual shrink begins at lower pressure -> those ramp-path
+                    # losers start shrinking sooner -> even smaller realized loss ->
+                    # amplified Sharpe gain. The Exp3 keep already lowers _de_floor via
+                    # _port_dd_atten (DD-driven); this is an ADDITIONAL streak-driven
+                    # lowering (streak is a distinct signal: a streak of small losers can
+                    # keep equity near peak -> _port_dd_atten~1 -> Exp3 inert, but the
+                    # streak count is high). Same _streak_exit_gate (sideways/streak<=1/
+                    # non-trend byte-identical). Max 0.10 (0.85 -> 0.75 floor).
+                    _streak_de_floor_drop = 0.10 * _streak_exit_gate
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -4212,6 +4229,14 @@ class Strategy:
                         # boundary). Byte-identical at portfolio peak (both terms 0).
                         _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
                         _de_floor -= (0.13 * (1.0 - _port_dd_atten) + 0.07 * _port_dd_active) * _exit_dd_gate
+                    # branch step6: STREAK-driven _de_floor lowering (step6). Applied to
+                    # ALL losers (the streak gate is itself gated on sustained_loss x
+                    # trend x multiday, so it's ~0 for sideways / non-trend / streak<=1).
+                    # _streak_de_floor_drop is 0 by default (winners) and for non-streak
+                    # losers; max 0.10 for streak-extend trend losers. Complements the
+                    # DD-driven Exp3 lowering above (distinct signal: streak count, not
+                    # equity drawdown).
+                    _de_floor -= _streak_de_floor_drop
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
