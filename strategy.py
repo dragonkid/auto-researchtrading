@@ -65,6 +65,27 @@ DYN_THRESHOLD_CEIL = 0.012
 TREND_THRESHOLD_SCALE = 0.25       # max threshold reduction in trends (reduced from 0.32 for wider buffer in rally)
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 
+# Exp2 (architectural, indep this session): TREND-LEG-DURATION harvest-timing on the
+# trend-extension-suppression path. A NON-LOCAL exit data source (prior-session-named
+# untested non-local axis, applied here on the EXIT/profit side to avoid the Exp1
+# admission-side sideways leak). _leg_dur = bars since the most recent opposite-direction
+# local extremum of smoothed_closes over a bounded lookback = age of the current
+# directional market leg. A trend-aligned WINNER riding an EXHAUSTED leg (large _leg_dur,
+# no pullback) is nearer the final top -> weaken _ts_supp (the trend-extension harvest
+# SUPPRESSION) so the deep-peak tp-harvest fires -> lock the realized gain before the
+# pullback that creates the DD. A winner on a FRESH leg (small _leg_dur) keeps full
+# suppression (let it run). SAFETY: _ts_supp is gated by ret_vlong*pos_dir (multi-day
+# trend-alignment), which is ~0 in sideways (ret_vlong~0 = weak multi-day drift) and ~0
+# for mixed's COUNTER-TREND longs (ret_vlong<0 * pos_dir+1 <0) -> _ts_supp is ALREADY ~0
+# there -> the leg-dur factor multiplies a near-zero -> byte-identical for sideways and
+# mixed-ct-long populations (the Exp1 leak paths). Fires only where _ts_supp is already
+# suppressing (bull/rally trend longs, crash trend shorts). Continuous tanh on leg age
+# above onset (no boundary). Bounded 48-bar lookback over smoothed_closes (noise-robust
+# argmin/argmax position). No new per-bar state -> deterministic -> stability-safe.
+LEG_DUR_LOOKBACK = 48               # bars over which to locate the current leg's start
+LEG_DUR_HARVEST_ONSET = 18.0        # leg age (bars) at which exhaustion-harvest weaken begins
+LEG_DUR_HARVEST_MAX_RELAX = 0.40    # max fractional weakening of _ts_supp on an exhausted leg
+
 # RSI voter
 RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
@@ -1160,6 +1181,26 @@ class Strategy:
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
+
+            # Exp2 (architectural, indep this session): TREND-LEG-DURATION non-local
+            # separator (EXIT-side application). Age of the current directional market
+            # leg = bars since the most recent opposite-direction local extremum of
+            # smoothed_closes over a bounded lookback. smoothed_closes is an EMA of closes
+            # (computed below, line ~1124); reading its tail here is safe (same tail the
+            # rest of the bar uses). The leg direction follows the current 20-bar trend
+            # sign (ret_long): an uptrend leg started at the most recent local MIN; a
+            # downtrend leg at the most recent local MAX. _leg_dur in [0, LEG_DUR_LOOKBACK];
+            # near LEG_DUR_LOOKBACK = a long unbroken leg (exhaustion). Pure lookback (no
+            # per-bar state) -> deterministic under AR(1) -> stability-safe. Used only on
+            # the _ts_supp harvest-suppression path (line ~4016), gated to ~byte-identical
+            # in sideways / mixed-ct-long by the existing ret_vlong*pos_dir _ts_supp gate.
+            _ld_n = min(LEG_DUR_LOOKBACK, len(closes) - 1)
+            _ld_sc = smoothed_closes[-_ld_n:]
+            if ret_long >= 0.0:
+                _leg_arg = int(np.argmin(_ld_sc))  # last local min = up-leg start
+            else:
+                _leg_arg = int(np.argmax(_ld_sc))  # last local max = down-leg start
+            _leg_dur = float(_ld_n - 1 - _leg_arg)  # bars since the leg start
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
             # rolling boolean (|ret_vlong| < PERSIST_WEAK_THRESH) over PERSIST_WINDOW
@@ -4027,6 +4068,22 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
+                    # Exp2 (architectural, indep this session): LEG-DURATION weakening of
+                    # the trend-extension harvest suppression. A trend-aligned winner on
+                    # an EXHAUSTED directional leg (large _leg_dur = the market leg has run
+                    # far without an opposite-direction extremum) is nearer the final top ->
+                    # weaken _ts_supp so the deep-peak tp-harvest fires -> lock realized gains
+                    # before the pullback that creates the DD (bull/rally trend longs, crash
+                    # trend shorts). A winner on a FRESH leg (small _leg_dur) keeps full
+                    # suppression (let it run). SAFETY: _ts_supp is already gated by
+                    # ret_vlong*pos_dir (multi-day trend-alignment), which is ~0 in sideways
+                    # (weak multi-day drift) and for mixed's counter-trend longs -> the
+                    # leg-dur factor multiplies a near-zero base there -> byte-identical for
+                    # the Exp1 leak paths (sideways drift, mixed ct longs). Fires only where
+                    # _ts_supp is already suppressing (genuine multi-day trend-aligned
+                    # winners). Continuous tanh on leg age above onset (no boundary).
+                    _leg_harvest_relax = 1.0 - LEG_DUR_HARVEST_MAX_RELAX * max(0.0, np.tanh((_leg_dur - LEG_DUR_HARVEST_ONSET) / 14.0))
+                    _ts_supp = _ts_supp * _leg_harvest_relax
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
                     # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
