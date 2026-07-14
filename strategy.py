@@ -1278,8 +1278,17 @@ class Strategy:
             # shifts indices 1-3, leaving this 9th weight untouched). New orthogonal-ish
             # data-source voter on the vol-normalized-momentum axis.
             _am_n = 6
-            _am_ret = (closes[-1] - closes[-(_am_n + 1)]) / max(closes[-(_am_n + 1)], 1e-10)
+            # branch step2: SMOOTH the momentum input via smoothed_closes (already AR(1)-
+            # attenuated) for noise-robustness. The opener used raw closes -> the 6-bar
+            # return flipped sign under AR(1) close noise on small-return bars -> vote
+            # flips -> sideways stability crashed to 0.0. smoothed_closes damps the
+            # single-bar perturbation before the 6-bar return is computed -> the sign is
+            # stable on small-return bars. AND widen sharpness 1.0->1.5 (softer tanh ->
+            # small |ATR-momentum| stays closer to conf 0.5 neutral, reducing vote-flip
+            # impact further). Keeps the directional signal on strong-momentum bars.
+            _am_ret = (smoothed_closes[-1] - smoothed_closes[-(_am_n + 1)]) / max(smoothed_closes[-(_am_n + 1)], 1e-10)
             _atr_mom = _am_ret / max(_atr_pct_e, 1e-10)  # 6-bar return in ATR units
+            _atr_mom_sig = _atr_mom / 1.5  # branch step2: softened sharpness 1.0->1.5
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1289,7 +1298,7 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _atr_mom / 1.0,  # 9th voter: ATR-normalized 6-bar momentum (sharpness 1.0)
+                _atr_mom_sig,  # 9th voter: ATR-normalized 6-bar momentum (smoothed input, sharpness 1.5)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1316,7 +1325,18 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency, 9th: ATR-normalized momentum (both small fixed weights, untouched by _wt_shift)
+            # branch step2: chop-dampener on the 9th voter weight (mirrors the VWAP
+            # chop-dampener). The opener's fixed 0.55 weight fired equally in chop
+            # (sideways) -> the noise-sensitive momentum voter flipped votes there ->
+            # sideways stability crashed to 0.0. Scale the 9th weight by trend-strength
+            # so it is SMALL in chop (sideways _trend_strength_w~0 -> weight 0.40, small
+            # voter impact -> fewer/no vote-flips -> sideways byte-identical-ish) and
+            # FULL in trends (bull _trend_strength_w~1 -> weight 0.90, keeps the bull
+            # Sharpe +0.239 gain from the opener). Smooth (continuous via tanh, no
+            # boundary); direction-agnostic general principle (no regime label): the
+            # momentum voter is meaningful in directional regimes, muted in chop.
+            _atr_mom_wt = 0.40 + 0.50 * _trend_strength_w  # in [0.40, ~0.90]
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _atr_mom_wt)  # 8th: range/close efficiency (fixed), 9th: ATR-normalized momentum (trend-strength-scaled, chop-dampened)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
