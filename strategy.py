@@ -302,6 +302,19 @@ COOLDOWN_TREND_DECAY = 0.06
 MAE_VEL_WINDOW = 10
 MAE_VEL_ONSET = 0.0
 MAE_VEL_MAX_FLOOR = 0.60
+# Exp4 (architectural, indep): PORTFOLIO rolling WIN-RATE admission tightener params.
+# PORT_WR_WINDOW = rolling window of closed-trade outcomes (win/loss) across all symbols.
+#   20 trades captures the recent regime-health (~2-3 weeks of trading) without lagging so
+#   long it spans regime transitions. The win rate is the SMOOTH regime-health signal
+#   (vs the binary _loss_streak sequence signal); a 20-trade window averages single-trade
+#   noise yet responds to a regime shift within ~1 week of trades.
+# PORT_WR_ONSET = win rate below which admission tightens (a hostile regime). 0.55 is below
+#   the regime-average WR (~70pct across regimes); 0.55 = a clearly-hostile stretch (more
+#   losses than wins over 20 trades), distinct from normal WR variance.
+# PORT_WR_MAX_TIGHTEN = max admission threshold raise at deep low win rate.
+PORT_WR_WINDOW = 20
+PORT_WR_ONSET = 0.55
+PORT_WR_MAX_TIGHTEN = 0.12
 
 
 def ema(values, span):
@@ -648,6 +661,19 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
+        # Exp4 (architectural, indep): PORTFOLIO rolling trade-outcome history (the
+        # smoothed counterpart to the binary _loss_streak counter). A rolling window of
+        # the last N closed-trade outcomes (1 win, 0 loss) across ALL symbols, used to
+        # compute a PORTFOLIO WIN-RATE = fraction of recent trades that were winners. A
+        # genuinely different signal from _loss_streak (which counts CONSECUTIVE losses and
+        # resets on a single win): a hostile regime with a 30pct win rate over 20 trades but
+        # no long consecutive streak (intermittent wins) reads as _loss_streak~1 (hostile
+        # but low streak) but win-rate 0.30 (clearly hostile). The win rate is the SMOOTH
+        # regime-health signal; the streak is the SHARP sequence signal. Used to tighten
+        # admission when recent portfolio win rate is low (hostile regime -> filter marginal
+        # entries -> fewer losing trades -> higher Sharpe in negative-Sharpe regimes).
+        # Reset never (rolls forward); default empty -> win rate 0.5 (neutral).
+        self._port_outcomes = []
         # Exp1 (this session): per-symbol rolling pos_pnl PATH history (the MTM
         # trajectory since entry). Used to compute MTM-path-efficiency =
         # |net pos_pnl| / sum(|bar-to-bar pos_pnl change|) over the window, in [0,1].
@@ -981,6 +1007,26 @@ class Strategy:
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
         # when no symbol has |ret_vlong| > ONSET (bull/rally/sideways).
         _port_deep_bear_admit_tighten = 1.0 + PORT_DEEP_BEAR_ADMIT_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_DEEP_BEAR_ADMIT_ONSET) / PORT_DEEP_BEAR_ADMIT_SCALE)))
+        # Exp4 (architectural, indep): PORTFOLIO rolling WIN-RATE admission tightener.
+        # NEW portfolio-TRADE-SEQUENCE data dep (distinct from every existing portfolio
+        # signal: _port_dd_atten reads the equity LEVEL, _loss_streak reads CONSECUTIVE
+        # losses [binary, resets on one win], the cross-symbol caps read PRICE-derived series).
+        # This reads the rolling FRACTION of recent closed trades that were WINNERS (a smooth
+        # regime-health signal). A hostile regime with a low win rate over 20 trades but no
+        # long consecutive streak (intermittent wins) reads as _loss_streak~1 (low) but win
+        # rate 0.30 (clearly hostile) -> the win rate catches hostile regimes the streak misses.
+        # Tighten the admission threshold (cuts TRADE COUNT, not size) when recent portfolio
+        # win rate is below ONSET -> filter marginal entries in a hostile regime -> fewer
+        # losing trades -> higher Sharpe in negative-Sharpe regimes. Composes with the
+        # existing admission tighteners (weak_persist avg, deep_bear max, all multiplicative).
+        # Byte-identical when <PORT_WR_WINDOW trades recorded (warmup -> neutral 1.0) OR when
+        # win rate >= ONSET (hostile regime only). Continuous tanh ramp on (ONSET - wr)/scale.
+        # Direction-agnostic general principle (no regime label): a portfolio whose recent
+        # trades are mostly losers is in a hostile regime -> take fewer marginal entries.
+        _port_wr = 0.5
+        if len(self._port_outcomes) >= min(PORT_WR_WINDOW, 10):
+            _port_wr = float(sum(self._port_outcomes)) / float(len(self._port_outcomes))
+        _port_wr_tighten = 1.0 + PORT_WR_MAX_TIGHTEN * max(0.0, min(1.0, np.tanh((PORT_WR_ONSET - _port_wr) / 0.15)))
         # Exp3 (architectural, indep): CROSS-SYMBOL 96-bar TREND-MAGNITUDE-AGREEMENT
         # admission relaxation. Sanctioned untested lead (prior session): "cross-symbol
         # MAGNITUDE/PERSIST signals (NOT direction) remain untested for admission -- Exp1
@@ -1379,6 +1425,11 @@ class Strategy:
             # (crash). Composes with Exp2's weak avg tighten (independent signals). Byte-
             # identical when _port_deep_bear_admit_tighten=1.0 (bull/rally/sideways).
             _strong_min = _strong_min * _port_deep_bear_admit_tighten
+            # Exp4: apply the portfolio rolling WIN-RATE admission tightener (computed
+            # at top level). Tightens admission when recent portfolio win rate is low
+            # (hostile regime with intermittent wins the _loss_streak misses). Byte-
+            # identical when _port_wr_tighten=1.0 (warmup <window trades OR wr>=ONSET).
+            _strong_min = _strong_min * _port_wr_tighten
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
@@ -5104,6 +5155,11 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
+                        # Exp4: append to the rolling portfolio trade-outcome history
+                        # (the smooth win-rate counterpart to the binary _loss_streak).
+                        self._port_outcomes.append(1 if _exit_pnl_signed > 0 else 0)
+                        if len(self._port_outcomes) > PORT_WR_WINDOW:
+                            self._port_outcomes = self._port_outcomes[-PORT_WR_WINDOW:]
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
