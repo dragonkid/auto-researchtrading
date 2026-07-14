@@ -1589,7 +1589,22 @@ class Strategy:
             # already has multiple vol-conditioning channels (vol_ratio direct, calm_boost,
             # sideways_boost) — adding a near-constant volume multiplier added LOC without
             # orthogonal signal. Removing eliminates redundant near-constant size scaling.
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
+            # Exp2 (architectural, indep, this session): VOL-TARGETING CORE base rewrite.
+            # Replaced the global constant TARGET_VOL with the per-symbol adaptive
+            # _target_vol_dyn (0.7*TARGET_VOL + 0.3*200-bar baseline vol) in the core
+            # inverse-vol sizing term. NEW cross-component data dep: the size core's
+            # vol target now reads each symbol's OWN structural baseline (already computed
+            # for vol_ratio) rather than a single global 0.015 anchor. This normalizes
+            # size per-symbol: SOL (baseline ~0.022, structurally higher vol) gets a
+            # larger target -> larger size for the same realized_vol (correct: SOL's
+            # higher vol is its structural norm, not a risk spike); BTC (baseline ~0.012)
+            # gets a smaller target -> smaller size. The (1/vol_ratio)^0.85 form: when
+            # realized_vol == its own baseline, size is at the 1.0 base (was 1.0 at the
+            # global TARGET_VOL anchor before). Continuous, smooth, no boundary. General
+            # per-symbol vol-normalization (not regime-targeting); regime effects fall
+            # out of the backtest. Touches the vol-targeting CORE (the prior-session
+            # sanctioned untested structural axis b).
+            combined_mult = max(0.3, min(2.5, (_target_vol_dyn / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
             # Architectural simplification: removed _xa_boost (post-cap chop-only +8% boost).
             # Redundant with sideways_boost (max +50% in chop) and CROSS_ASSET_FIXED_BOOST
             # (already in combined_mult, max +15% in chop). Three chop-amplifying multipliers
