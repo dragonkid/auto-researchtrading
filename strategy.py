@@ -3826,39 +3826,6 @@ class Strategy:
                 _be_mae_gate = max(_be_trend_gate, _be_mae_depth)
                 # step12: split hold-gate by path (trend 4-bar ramp, mae 2-bar faster ramp)
                 _be_pressure = 0.45 * _be_near_zero * max(_be_hold_gate_trend * _be_trend_gate, _be_hold_gate_mae * _be_mae_depth)
-                # Exp1 (architectural, indep): DRIFT-AWARE break-even exit. NEW position-
-                # life-cycle data dep the break-even pressure did not read: the DIRECTION of
-                # recent pos_pnl drift while stuck near breakeven. The baseline _be_pressure
-                # is symmetric (fires equally on a stuck position regardless of whether it is
-                # about to recover or bleed). A position hovering near BE whose recent pos_pnl
-                # is DRIFTING TOWARD LOSS (slope negative) is structurally more likely to
-                # re-test its MAE and bleed to the stop (the crash/sideways dead-capital
-                # pattern: PF~1.0, positions hover then bleed). One DRIFTING TOWARD PROFIT
-                # (slope positive) is finding its level and more likely to recover -> spare it.
-                # Mechanism: multiply _be_pressure by a drift modulator in (0.5, 1.5): full
-                # amplification (1.5x) when drifting strongly toward loss, full attenuation
-                # (0.5x) when drifting strongly toward profit, neutral (1.0) when flat.
-                # Drift = (pos_pnl - pos_pnl_4_bars_ago)/4, normalized by |stop|, clamped via
-                # tanh. Position-level signal (reads self._pnl_path, not a regime classifier)
-                # -> generalizes to any chop/stagnation regime. CRASH-SAFE: crash's winning
-                # shorts have pos_pnl>0 well outside the _be_pnl_band -> _be_near_zero=0 ->
-                # _be_pressure=0 -> drift modulator multiplies 0 -> byte-identical. The
-                # modulator only acts WITHIN the BE band where _be_pressure is already live.
-                # Continuous tanh (no boundary), direction-agnostic (drift sign, not position
-                # direction), reduction-or-amplification bounded (0.5x..1.5x) so it cannot
-                # create a cliff. Targets crash/sideways (the ~0-Sharpe regimes whose score
-                # equals bare Sharpe; cutting bleeders faster raises Sharpe, sparing
-                # recoverers avoids realizing noise losses that mean-revert away).
-                _be_drift_mod = 1.0
-                _pp_be = self._pnl_path.get(symbol, [])
-                if len(_pp_be) >= 5:
-                    # Per-bar pos_pnl slope over the last 5 bars, normalized by |stop|.
-                    _be_drift = (pos_pnl - _pp_be[-5]) / 5.0 / abs(STOP_LOSS_PCT)
-                    # Drift TOWARD LOSS (negative slope) -> amplify pressure (cut the bleeder);
-                    # drift TOWARD PROFIT (positive slope) -> attenuate (spare the recoverer).
-                    # 1 - 0.5*tanh: loss-drift (tanh<0) -> mod>1 amplify; profit-drift -> mod<1 spare.
-                    _be_drift_mod = 1.0 - 0.5 * np.tanh(_be_drift * 4.0)  # in (0.5, 1.5)
-                _be_pressure = _be_pressure * _be_drift_mod
                 _w_be = 1.0  # profit-sign-neutral: fires on stuck winners AND losers alike
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
