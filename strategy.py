@@ -65,27 +65,6 @@ DYN_THRESHOLD_CEIL = 0.012
 TREND_THRESHOLD_SCALE = 0.25       # max threshold reduction in trends (reduced from 0.32 for wider buffer in rally)
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 
-# Exp1 (architectural, indep this session): TREND-LEG-DURATION admission quality
-# attenuator. A NON-LOCAL separator (prior-session-named untested axis): the AGE of
-# the current directional leg = bars since the most recent opposite-direction local
-# extremum of the smoothed close over a bounded lookback. All existing trend signals
-# at admission (smoothed_trend magnitude/direction, ret_long/ret_vlong window returns)
-# are LOCAL magnitude measures -- none reads how LONG the current up-leg/down-leg has
-# run without a pullback. A leg that has run far without a pullback (long duration) is
-# exhaustion-prone (lower continuation odds for a fresh trend-aligned entry); a fresh
-# breakout leg (short duration) is more likely to continue. Distinct from the
-# PERSISTENCE-COUNT weak-trend separator (that counts bars of WEAK multi-day trend --
-# a chop/consolidation duration; this counts bars of the current DIRECTIONAL leg -- a
-# trend-extension duration). Bounded 48-bar lookback over smoothed_closes (already
-# noise-attenuated -> argmin/argmax position is stable under AR(1) noise, unlike a
-# raw-close extremum). Used as a trend-aligned ADMISSION tighten (not size -- avoids
-# the size-wobble stability cliff, validated safe family), gated on rsi_trend_str so
-# it is byte-identical in sideways (low rsi_trend_str ~0 -> gate 0 -> mean-reversion
-# chop untouched, the sideways-safety lesson). Continuous tanh, no boundary.
-LEG_DUR_LOOKBACK = 48               # bars over which to locate the current leg's start
-LEG_DUR_ONSET = 16.0                # leg age (bars) at which exhaustion tighten begins
-LEG_DUR_MAX_TIGHTEN = 0.06          # max admission tighten (6%) for a very long leg
-
 # RSI voter
 RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
@@ -1182,29 +1161,6 @@ class Strategy:
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            # Exp1 (architectural, indep this session): TREND-LEG-DURATION non-local
-            # separator. Age of the current directional leg = bars since the most recent
-            # opposite-direction local extremum of smoothed_closes over a bounded
-            # lookback. smoothed_closes is computed below (line ~1124) but its leading
-            # values depend only on closes already in bd.history (an EMA of closes), so
-            # reading the tail here is safe -- we use the same tail the rest of the bar
-            # uses. The leg direction follows the current 20-bar trend sign (ret_long):
-            # an uptrend leg started at the most recent local MIN; a downtrend leg at the
-            # most recent local MAX. Use a short 5-bar argmin/argmax neighborhood so the
-            # extremum is a genuine swing low/high (not a 1-bar spike). _leg_dur is in
-            # [0, LEG_DUR_LOOKBACK]; near LEG_DUR_LOOKBACK means no opposite extremum in
-            # the window = a long unbroken leg. Byte-identical for the application when
-            # the trend gate (rsi_trend_str) is ~0 (sideways) since the tighten is gated
-            # to 0 there. No new per-bar state (pure lookback, deterministic given the
-            # bar's history) -> no flip boundary, no wobble accumulation.
-            _ld_n = min(LEG_DUR_LOOKBACK, len(closes) - 1)
-            _ld_sc = smoothed_closes[-_ld_n:]
-            if ret_long >= 0.0:
-                _leg_arg = int(np.argmin(_ld_sc))  # last local min = up-leg start
-            else:
-                _leg_arg = int(np.argmax(_ld_sc))  # last local max = down-leg start
-            _leg_dur = float(_ld_n - 1 - _leg_arg)  # bars since the leg start
-
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
             # rolling boolean (|ret_vlong| < PERSIST_WEAK_THRESH) over PERSIST_WINDOW
             # bars; the FRACTION of weak bars is a DURATION measure of how long the
@@ -1439,26 +1395,6 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
-            # Exp1 (architectural, indep this session): TREND-LEG-DURATION admission
-            # tighten on the TREND-ALIGNED side. A trend-aligned entry taken after a long
-            # unbroken directional leg (large _leg_dur) is exhaustion-prone -> raise its
-            # admission bar slightly so only higher-conviction entries pass on a stretched
-            # leg; a fresh-leg entry (small _leg_dur) is unchanged. Direction-conditional:
-            # bull tighten only in uptrend (ret_long>0, where _leg_dur counts the up-leg),
-            # bear tighten only in downtrend (ret_long<0). Gated on rsi_trend_str (the
-            # validated LOCAL-trend separator) so sideways (rsi_trend_str~0 -> gate 0) is
-            # BYTE-IDENTICAL (the sideways mean-reversion safety lesson: any directional
-            # admission bias collapses sideways stability). Continuous tanh on the leg
-            # age above LEG_DUR_ONSET (no boundary -> no flip under AR(1)). Composes
-            # multiplicatively with the existing tighteners (all shrink-only / <=1.0 entry
-            # factors are at least admission-neutral). Max LEG_DUR_MAX_TIGHTEN tighten.
-            _leg_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-            _leg_exhaust = max(0.0, np.tanh((_leg_dur - LEG_DUR_ONSET) / 12.0))
-            _leg_tighten = 1.0 + LEG_DUR_MAX_TIGHTEN * _leg_trend_gate * _leg_exhaust
-            if ret_long > 0.0:
-                _bull_strong_min *= _leg_tighten
-            elif ret_long < 0.0:
-                _bear_strong_min *= _leg_tighten
             # Exp3 (architectural, indep): apply CROSS-SYMBOL 96-bar TREND-MAGNITUDE-AGREEMENT
             # admission RELAXATION (computed at top level). Lowers the admission threshold for
             # the entry aligned with the confirmed broad-trend direction (entry sign ==
