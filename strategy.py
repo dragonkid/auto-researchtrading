@@ -4016,7 +4016,27 @@ class Strategy:
                 # streak cuts max_consecutive_losses by ~1 (gate rally 0.674->0.696, bull
                 # 0.798->0.832). Conservative: onset floor 1.0 (only harvest positions
                 # already in profit), magnitude 0.30 cap (same family as the base harvest).
-                _streak_harvest_onset = 1.6 - 0.60 * max(0.0, min(1.0, np.tanh((self._loss_streak - 2) / 2.0)))
+                # branch step2: LOW-DD-FRACTION gate on the streak-harvest onset
+                # lowering. The opener regressed crash catastrophically (-0.076) for
+                # the SAME root cause the prior session confirmed walled entry-block:
+                # the portfolio loss_streak is HIGH throughout crash's SUSTAINED bear
+                # (high mostly during the long crash drawdown) so the lowered onset
+                # fired crash's WINNING SHORTS at shallow peaks -> realized them early
+                # -> crash winners shrank -> Sh collapsed. The streak is REAL but
+                # CRASH-COUPLED: a streak during crash's sustained deep-bear is NOT a
+                # transient pullback sequence to break -- the winning shorts are the
+                # profitable trades that offset the bear's losing longs, and harvesting
+                # them early destroys crash's near-zero edge. Gate the onset-lowering
+                # on LOW dd_frac (the validated _mom_dd_gate separator, line ~786):
+                # full at dd_frac<2pct = a FRESH/TRANSIENT streak (rally/bull pullback
+                # sequences where inserting a winning harvest genuinely breaks a
+                # transient pullback streak), fading to 0 by 6pct = SUSTAINED deep DD
+                # (crash bear, where the streak is structural not transient). Crash
+                # dd_frac is sustained high -> gate ~0 -> onset stays 1.6 -> crash
+                # byte-identical. rally/bull pullback streaks are dd_frac<2pct -> gate
+                # ~1 -> onset lowers -> winning harvests break the transient streak.
+                _streak_dd_gate = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.02) / 0.04))  # ~1 fresh/transient (dd<2pct), ~0 sustained (dd>6pct)
+                _streak_harvest_onset = 1.6 - 0.60 * max(0.0, min(1.0, np.tanh((self._loss_streak - 2) / 2.0))) * _streak_dd_gate
                 if target != 0 and self.peak_pnl[symbol] > _streak_harvest_onset * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     # Trend-gated activation: in chop (low |ret_long|), peaks are
