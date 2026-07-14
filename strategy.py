@@ -3132,7 +3132,35 @@ class Strategy:
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
-                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
+                _sl_lin = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
+                # Exp4 (architectural, indep): TREND-STRENGTH-MODULATED SL ramp CURVATURE.
+                # NEW control-flow data dep on the stop-loss subsystem core: the SL pressure
+                # ramp is currently a SYMMETRIC LINEAR ramp from (_stop_abs - band_half) to
+                # (_stop_abs + band_half). Rewrite the ramp SHAPE to be CONCAVE (faster-early
+                # cut) for LOSERS in strong TRENDS, symmetric in chop. Mechanism: in a trending
+                # regime (high rsi_trend_str), a position that is LOSING and approaching its
+                # stop is more likely a confirmed wrong-call / dead capital than a position
+                # mean-reverting in chop -- a trend that fails to support its aligned entry is
+                # structurally broken. A concave ramp (pressure rises fast early in the band)
+                # triggers the soft-exit / de-risk at a SMALLER loss for trend losers -> smaller
+                # realized loss -> lower DD in the trending-but-loss regimes (bull_2021 DD
+                # 10.79pct deep in the dd_gate exp-penalty zone where DD reduction is high-
+                # leverage, NOT the 5pct knee). Chop (sideways, rsi_trend_str~0) keeps the
+                # symmetric linear ramp (byte-identical -> avoids the sideways mean-reversion
+                # wall: mean-reverters legitimately touch the band edge then recover). The
+                # ramp SHAPE (not the stop WIDTH) changes -- _stop_abs and _band_half are
+                # unchanged, so the hard stop level is preserved (the concave ramp only moves
+                # the SOFT-pressure onset earlier WITHIN the existing band, not the stop
+                # itself). Continuous: curvature = 1 + 0.6*_trend_strength_w_ramp (1.0 = linear
+                # in chop, 1.6 = concave in strong trend), applied as _sl_lin^curvature (a
+                # power >1 on a value already in [0,1] is CONCAVE-up = slower rise near 0,
+                # faster near 1 -- WRONG direction). Use the COMPLEMENT: a concave-fast-early
+                # ramp is 1 - (1-x)^k, which for x in [0,1] and k>1 rises FAST near 0 (early
+                # cut) and saturates near 1. That is the desired "cut early in the band".
+                # k=1 -> 1-(1-x)^1 = x = linear (chop byte-identical). k>1 -> concave (trend).
+                _sl_trend_curv = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))  # 0 chop, 1 strong trend
+                _sl_k = 1.0 + 0.8 * _sl_trend_curv  # 1.0 chop (linear), 1.8 strong trend (concave)
+                _sl_pressure = 1.0 - (1.0 - _sl_lin) ** _sl_k
                 # Exp1 (architectural, indep): LOSS-LATCH trigger. The position's MAE
                 # (low-water mark of pos_pnl since entry) is already updated above. If this
                 # is the FIRST bar the position CONFIRMS as a deep loser -- MAE has reached a
