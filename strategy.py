@@ -1035,6 +1035,47 @@ class Strategy:
         # per-symbol rsi_trend_str is the LOCAL-trend gate -- two distinct timescales.
         _port_trend_admit_relax = max(0.0, min(1.0, np.tanh(_port_trend_mag_agree / 0.02)))
 
+        # Exp2 (architectural, indep): CROSS-SYMBOL LONG-SIDE ADVERSE-CORRELATION-RATE.
+        # Prior-session-sanctioned UNTESTED lever (prior branch-revert-summary: "future
+        # cross-symbol portfolio exit signals should AVOID firing on trend-aligned losing
+        # shorts [the crash-hostile population] and target trend-aligned losing LONGS only
+        # [long-only gate] -- like the validated leg-dur crash-safety separator"). The prior
+        # adverse-correlation-rate branch was DIRECTION-AGNOSTIC: it trimmed ANY trend-aligned
+        # losing position when multiple positions made fresh MAE lows together -> crash-coupling
+        # wall (crash's trend-aligned LOSING SHORTS during bounces are the recovery edge; trimming
+        # them removes it). The long-only gate is the structural separator that excludes crash's
+        # crash-hostile population (crash trend-aligned losers are SHORTS -> long-only gate 0 ->
+        # crash byte-identical), targeting LONGS only (bull pullback longs that go underwater
+        # together during a correlated broad-market long drawdown = exactly bull's DD pattern).
+        # NEW cross-symbol x position-direction data dep: fraction of OPEN LONG positions (across
+        # symbols) simultaneously making fresh MAE lows this bar (settled prev-bar
+        # self._mae_low_hist, order-independent, requires >=2 open longs so a single idiosyncratic
+        # long dip does not fire). A correlated long-side drawdown (multiple longs underwater
+        # together) is a portfolio-level risk-off for LONGS specifically -> lower the de-risk
+        # floor for trend-aligned LOSING LONGS (gradual _de_floor action, the validated stability-
+        # safe form) so they trim sooner -> smaller realized losses on the correlated long
+        # drawdown -> lower bull DD (dd_gate 0.050 at 10.79pct is the 20x bull-score crush).
+        # Computed at the top level from portfolio.positions (cross-symbol open-long set) and
+        # the per-symbol self._mae_low_hist (prev-bar settled, deterministic). The
+        # self._mae_low_hist is updated LATER in the per-symbol loop, so the top-level read
+        # sees the previous bar's state -- deterministic and stable (the prior branch used the
+        # same prev-bar settled read). Stores self._port_long_adverse for the per-symbol de-risk
+        # application (where ret_vlong/pos_pnl/pos_dir are available for the trend-align + loss +
+        # long gates). Byte-identical when <2 open longs (the common case: single long, or
+        # short-dominated crash). Crash-safe: crash's open positions are SHORTS -> never counted
+        # -> _port_long_adverse=0 throughout crash -> crash byte-identical.
+        _n_open_long = 0
+        _n_long_fresh_low = 0
+        for _asym, _apos in portfolio.positions.items():
+            if _apos > 0:
+                _n_open_long += 1
+                _mlh_top = self._mae_low_hist.get(_asym, [])
+                if _mlh_top and (self.bar_count - _mlh_top[-1]) <= 1:
+                    _n_long_fresh_low += 1
+        self._port_long_adverse = 0.0
+        if _n_open_long >= 2:
+            self._port_long_adverse = float(_n_long_fresh_low) / float(_n_open_long)
+
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
         # (96-bar trend) feeding alt sizing; this uses BTC VOLUME (6/18-bar mean ratio), a
@@ -4277,6 +4318,35 @@ class Strategy:
                     # branch). Continuous tanh on (velocity - onset)/scale (no boundary).
                     if _pnl_scale < 0.0:
                         _de_floor -= _mae_vel_floor
+                        # Exp2 (architectural, indep): CROSS-SYMBOL LONG-SIDE ADVERSE-CORRELATION
+                        # de-risk floor lowering. Apply the top-level self._port_long_adverse
+                        # (fraction of open LONGS making fresh MAE lows together, computed at top
+                        # level from prev-bar settled state) as an ADDITIONAL gradual _de_floor
+                        # lowering for TREND-ALIGNED-AT-MULTI-DAY LOSING LONGS only. The
+                        # long-only gate (current_pos>0) is the crash-safety separator: crash's
+                        # trend-aligned losers are SHORTS -> gate 0 -> crash byte-identical (the
+                        # prior direction-agnostic adverse-correlation branch trimmed crash's
+                        # bounce-loss shorts -> crash-coupling wall). The trend-aligned-at-
+                        # multi-day gate (_mae_v_align, ret_vlong*pos_dir>0) excludes counter-
+                        # trend longs (mixed wrong-side longs, rally pullback longs that are ct)
+                        # -- those have different recovery dynamics and are handled by the ct
+                        # exit paths. A correlated long-side drawdown (multiple longs underwater
+                        # together = bull's pullback pattern) lowering the de-risk start floor
+                        # trims the trend-aligned losing longs sooner -> smaller realized losses
+                        # -> lower bull DD. Gradual _de_floor action (the validated stability-
+                        # safe form; NOT a binary exit -> no exit-bar selection wobble). Composes
+                        # with the MAE-velocity floor (distinct populations: this fires on
+                        # correlated-across-symbols longs, the velocity fires on single-symbol
+                        # accelerating plunges). Reduction-only. Byte-identical when
+                        # self._port_long_adverse=0 (<2 open longs, or no long fresh-low -> crash,
+                        # sideways, single-long bars), when current_pos<0 (shorts), or when
+                        # _mae_v_align=0 (ct longs). Continuous tanh on the adverse rate (no
+                        # boundary). Max lowering 0.12 (modest, gradual-action scale; the prior
+                        # direction-agnostic branch's safe magnitude was 0.30 but fired on a
+                        # broader population -- long-only is a tighter, safer population so a
+                        # comparable per-position magnitude is warranted, conservatively 0.12).
+                        if current_pos > 0 and _mae_v_align > 0.0:
+                            _de_floor -= 0.12 * max(0.0, min(1.0, np.tanh((self._port_long_adverse - 0.40) / 0.20))) * _mae_v_align
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
