@@ -3928,6 +3928,7 @@ class Strategy:
                 # leverage-coupled 0.008*LEVERAGE_K scale). Smooth (no boundary), direction-
                 # agnostic general principle (no regime label): a losing position during a
                 # portfolio drawdown is at correlated-regime-hit risk -> exit sooner.
+                _streak_binary_thresh = 1.0  # default (winners/non-streak); lowered for losers below
                 if _pnl_scale < 0.0:
                     # branch step5: REPLACE ct-gate with SUSTAINED-LOSS gate. The ct-gate
                     # (step1) excluded all trend-aligned losers (the main bull/crash problem).
@@ -4002,7 +4003,25 @@ class Strategy:
                     # lowering 0.10. Direction-agnostic; no regime label.
                     _streak_multiday_gate = max(0.0, np.tanh((abs(ret_vlong) - 0.03) / 0.02))
                     _streak_exit_gate = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _sustained_loss * _sustained_loss_trend_gate * _streak_multiday_gate
-                    _exit_thresh = _exit_thresh * (1.0 - 0.20 * _streak_exit_gate)
+                    _exit_thresh = _exit_thresh * (1.0 - 0.10 * _streak_exit_gate)
+                    # branch step5: STREAK-gated BINARY exit threshold lowering. The
+                    # de-risk ramp threshold lowering above (step3) was byte-identical
+                    # at magnitude 0.10 vs 0.20 -- the streak-extend LOSERS exit via the
+                    # BINARY path (line ~4108: _sl_pressure>=0.95 AND _exit_pressure>=1.0,
+                    # the stop-adjacent hard exit), NOT the de-risk ramp, so lowering the
+                    # ramp ceiling barely binds. The binary path's fixed 1.0 exit-pressure
+                    # requirement is what gates those worst losers. Lower it during a
+                    # streak (same _streak_exit_gate) so the binary exit fires when soft
+                    # pressure is still building (0.90) but the stop is near (sl>=0.95)
+                    # -> cuts the streak-extend loser ~1 bar before the stop -> smaller
+                    # realized loss -> lower DD (the streak-extend losers ARE the DD
+                    # drivers). Distinct variable from _exit_thresh (de-risk) so it does
+                    # NOT interact with the load-bearing Exp4 DD-gated _exit_thresh
+                    # lowering. Byte-identical: winners (_sl_pressure<0.95, binary path
+                    # never fires), sideways (_streak_exit_gate~0 -> thresh 1.0), and at
+                    # streak<=1. Losers NOT in a streak / not sustained / not in a strong
+                    # trend keep thresh 1.0. Max lowering 0.10 (binary fires at 0.90).
+                    _streak_binary_thresh = 1.0 - 0.10 * _streak_exit_gate
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -4105,7 +4124,7 @@ class Strategy:
                 # Removing it: fresh entries (bars 0-1) become protected from soft-
                 # pressure noise (only SL or opp_gate can close them); bars>=2 keep
                 # identical exit behavior via de-risk ramp (de_risk=0 at pressure=thresh).
-                if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
+                if _sl_pressure >= 0.95 and _exit_pressure >= _streak_binary_thresh and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: PnL-conditioned partial-exit floor (replaces
