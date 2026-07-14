@@ -1294,7 +1294,22 @@ class Strategy:
             _vws_yd = np.log(_vws_hl2) - _vws_ym
             _vws_slope = float(np.sum(_vws_w * _vws_xd * _vws_yd) / max(np.sum(_vws_w * _vws_xd * _vws_xd), 1e-20))
             _vws_signal_raw = (_vws_slope - 0.00015) / 0.00010
-            _vws_signal = max(0.0, _vws_signal_raw)  # long-only: VWS votes bullish only, never bearish (crash-safety)
+            # Branch step3: SIGNAL-ONSET DEADZONE on the long-only VWS clip to fix the
+            # sideways leak. The opener's sideways -0.005 leak comes from VWS firing on
+            # sideways's moderate up-legs (20-bar trend-strength gate passes them). Those
+            # sideways up-legs have SMALLER volume-weighted slopes (the up-legs are short
+            # choppy stretches, not sustained volume-confirmed trends) than mixed's bounce
+            # up-legs (sustained multi-day bounces in a down year, volume-confirmed). A
+            # deeper signal onset (slope must exceed 0.00025, not 0.00015, to contribute)
+            # gates out the SMALL-signal sideways up-legs while keeping the LARGE-signal
+            # mixed/bull bars. Distinct from the prior VWS branch's onset tuning (which was
+            # on the ret_long WEIGHT gate, not the VWS SIGNAL onset -- the prior onset was
+            # mutually exclusive bull-vs-mixed on the weight axis; here the signal onset
+            # gates on VWS-SIGNAL MAGNITUDE, a different axis). The long-only clip + 20-bar
+            # trend-strength weight gate (crash-safe per step2 revert) are RETAINED.
+            # Deadzone 0.00010 in slope units (1x the /0.00010 sharpness scale): gates out
+            # signals in [0, 1.0) on the raw scale (small slopes), keeps [1.0, inf).
+            _vws_signal = max(0.0, (_vws_slope - 0.00025) / 0.00010)  # long-only + signal-onset deadzone (crash-safety + sideways-leak fix)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
