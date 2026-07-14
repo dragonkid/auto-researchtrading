@@ -4036,7 +4036,25 @@ class Strategy:
                 # byte-identical. rally/bull pullback streaks are dd_frac<2pct -> gate
                 # ~1 -> onset lowers -> winning harvests break the transient streak.
                 _streak_dd_gate = max(0.0, 1.0 - max(0.0, (_port_dd_frac - 0.02) / 0.04))  # ~1 fresh/transient (dd<2pct), ~0 sustained (dd>6pct)
-                _streak_harvest_onset = 1.6 - 0.60 * max(0.0, min(1.0, np.tanh((self._loss_streak - 2) / 2.0))) * _streak_dd_gate
+                # branch step3: TREND-STRENGTH gate to spare sideways chop (step2 crashed
+                # sideways stability to 0.0: the streak-harvest fired in sideways because
+                # sideways HAS losing streaks AND dd_frac<2pct -> the dd-gate alone did not
+                # spare it). Use the validated rsi_trend_str LOCAL-trend separator (the
+                # same one that gates _exit_dd_gate / _be_mae_gate / the trend-mag relax):
+                # fires ONLY in trending regimes (high rsi_trend_str = bull/crash/rally
+                # trending), ~0 in chop (rsi_trend_str~0 = sideways oscillating) -> sideways
+                # byte-identical. This is the multi-session-validated sideways/chop separator.
+                _streak_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                # branch step3: streak-shift amount (how far the onset lowers). Halved from
+                # step2's 0.60 to 0.30 so the onset floor is 1.30 (not 1.0) -- step2 rally
+                # regressed -0.049 because harvesting rally winning longs at shallow peaks
+                # (onset 1.0) cuts the long ride (rally edge = ride longs). A shallower onset
+                # (1.30) touches only SMALLER winning peaks minimally while still inserting
+                # a small winning realized trade to break the streak. The streak-breaking
+                # needs only ONE realized winning partial in the sequence -- a small harvest
+                # suffices; a deep one cuts the ride unnecessarily.
+                _streak_shift = 0.30 * max(0.0, min(1.0, np.tanh((self._loss_streak - 2) / 2.0))) * _streak_dd_gate * _streak_trend_gate
+                _streak_harvest_onset = 1.6 - _streak_shift
                 if target != 0 and self.peak_pnl[symbol] > _streak_harvest_onset * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     # Trend-gated activation: in chop (low |ret_long|), peaks are
@@ -4107,7 +4125,22 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - _streak_harvest_onset) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # branch step3: split the activation so the streak-induced SHALLOWER
+                    # harvest (peak between onset 1.3 and 1.6) uses a SMALL magnitude (the
+                    # base 0.45 would over-harvest rally longs at the shallower onset --
+                    # step2's rally -0.049). The base path (onset 1.6, magnitude 0.45) is
+                    # unchanged; the streak-shifted region adds a SMALL extra harvest
+                    # (magnitude 0.12) only across the streak-shift band [onset, 1.6]. This
+                    # realizes a SMALL winning partial (enough to break the chron streak)
+                    # without cutting the rally ride. When _streak_shift=0 the band is empty
+                    # and the activation reduces to the base tanh((_tp_ratio-1.6)/0.6) ->
+                    # byte-identical to baseline.
+                    _tp_scale_base = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    _tp_scale_streak = 0.0
+                    if _streak_shift > 0.0:
+                        _streak_band = max(0.0, min(1.0, np.tanh((_tp_ratio - _streak_harvest_onset) / 0.3))) - max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.3)))
+                        _tp_scale_streak = 0.12 * _streak_band * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    _tp_scale = _tp_scale_base + _tp_scale_streak
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
