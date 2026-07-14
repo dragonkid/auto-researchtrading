@@ -283,6 +283,25 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+# Exp1 (architectural, indep, this session): VOL-REGIME-CONDITIONED cooldown recovery
+# window. The post-loss re-entry size attenuator _outcome_size_mult ramps the
+# first-bar size back from 0.55x (just after a loss) up to 1.0x over a FIXED
+# 8-bar window. This fixes the recovery horizon to wall-clock bars regardless of
+# the volatility environment the exit occurred in. A stop hit DURING a vol
+# spike (vol_ratio > 1) is more likely a chop-whipsaw stop (noise-driven) than a
+# clean signal failure -- re-entering the same noisy environment at recovering
+# size risks re-stopping on more chop. STRETCH the recovery window with the
+# exit-bar vol_ratio so the post-loss re-entry stays SMALLER LONGER after a vol-
+# spike stop (less exposure to the whipsaw that just stopped it out), and
+# recovers at the baseline 8-bar rate after a calm (vol_ratio <= 1) stop. New
+# per-symbol state: cache vol_ratio at exit, read it in the cooldown ramp.
+# Vol-calm floor keeps it byte-identical to baseline when exit vol_ratio <= 1
+# (calm exits unchanged); the stretch is shrink-only (longer window = slower
+# size recovery = factor <= baseline at every post-loss bar). Continuous tanh,
+# no boundary, direction-symmetric (exit vol_ratio is direction-agnostic).
+OUTCOME_VOL_AMP = 0.80        # max window stretch factor (8 -> 14.4 bars at full vol spike)
+OUTCOME_VOL_ONSET = 1.0       # vol_ratio below which the stretch is 0 (baseline, byte-identical)
+OUTCOME_VOL_SCALE = 0.5       # tanh saturation scale of the vol-stretch ramp
 
 # Exp1 (architectural, indep, this session): ADVERSE-EXCURSION-VELOCITY de-risk
 # amplifier parameters. The de-risk graduation ramp's lower bound (_de_floor) is
@@ -524,6 +543,11 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
+        # Exp1: per-symbol vol_ratio captured at the most recent EXIT bar. Feeds the
+        # vol-regime-conditioned cooldown recovery window (_outcome_size_mult stretch).
+        # Set on every full exit (loss or win); read by the cooldown ramp on the next
+        # entry attempt. NOT cleared on new entry (persists as the last-exit context).
+        self._exit_vol_ratio = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -1570,7 +1594,18 @@ class Strategy:
             _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
-            _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
+            # Exp1: vol-regime-conditioned recovery window. The post-loss size
+            # attenuator ramps first-bar size back from 0.55x to 1.0x over a window
+            # stretched by the exit-bar vol_ratio. vol-spike exits (vol_ratio>1) get
+            # a LONGER window (up to 8*(1+OUTCOME_VOL_AMP) bars) so the post-loss
+            # re-entry stays smaller longer -- less re-exposure to the whipsaw that
+            # just stopped it out. Calm exits (vol_ratio<=1) keep the baseline 8-bar
+            # window (byte-identical). Shrink-only (longer window => slower recovery
+            # => factor <= baseline at every post-loss bar). Continuous tanh.
+            _exit_vol = self._exit_vol_ratio.get(symbol, 0.0)
+            _vol_stretch = 1.0 + OUTCOME_VOL_AMP * max(0.0, min(1.0, np.tanh((_exit_vol - OUTCOME_VOL_ONSET) / OUTCOME_VOL_SCALE)))
+            _outcome_window = 8.0 * _vol_stretch
+            _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / _outcome_window) * _loss_only
             in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
@@ -5098,6 +5133,9 @@ class Strategy:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         _exit_pnl_signed = -_ep if current_pos < 0 else _ep
                         self._last_exit_pnl[symbol] = _exit_pnl_signed
+                        # Exp1: cache the exit-bar vol_ratio for the cooldown recovery
+                        # window stretch. vol_ratio is in scope (per-symbol loop body).
+                        self._exit_vol_ratio[symbol] = vol_ratio
                         # Exp3: update portfolio consecutive-loss streak (mirrors
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
