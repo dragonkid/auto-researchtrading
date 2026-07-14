@@ -4064,6 +4064,39 @@ class Strategy:
                     # sideways wins run. In trending regimes (high |ret_long|), peaks
                     # are real and worth locking. Continuous tanh on |ret_long|/0.04.
                     _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
+                    # Exp3 (architectural, indep): MULTI-DAY trend-magnitude term on the
+                    # tp-harvest activation gate. The 20-bar _tp_trend_gate above gates the
+                    # harvest OFF in chop (low |ret_long|) -- "in chop, peaks are rare AND
+                    # likely mean-reverting, disable harvest to let small sideways wins run."
+                    # But this gates the harvest OFF for mixed_2025's oscillating LONGS during
+                    # their local choppy down-phases (|ret_long| small locally) exactly when the
+                    # harvest SHOULD fire: mixed is a multi-day DOWN year (|ret_vlong| large for
+                    # held longs) whose long book oscillates -- the deep peaks form during local
+                    # bounces (|ret_long| modest) then give back in the local chop. The 20-bar
+                    # gate kills the harvest on those peaks -> the paper PnL rides the giveback ->
+                    # re-peak churn -> high return_vol -> mixed Sharpe 0.70 despite PF 4.3 (the
+                    # highest of any regime; the oscillation, not the win/loss ratio, is the drag).
+                    # The _ts_supp suppression (Exp4 keep, ret_vlong*pos_dir) already correctly
+                    # turns OFF for mixed's ct-at-multi-day longs (ret_vlong<0, pos_dir=+1 ->
+                    # product<0 -> _ts_supp~0 -> suppression OFF -> harvest would fire) -- but the
+                    # _tp_trend_gate then blocks it. NEW cross-timescale data dep: the tp-harvest
+                    # activation reads the 96-bar |ret_vlong| (multi-day trend MAGNITUDE) jointly
+                    # with the 20-bar |ret_long| via OR-composition (max): the harvest activates
+                    # when EITHER a local 20-bar trend OR a multi-day 96-bar trend is underway.
+                    # A multi-day trend's deep peaks are real (worth locking) even if the local
+                    # 20-bar window is momentarily choppy. CRASH-SAFE: _ts_supp independently
+                    # suppresses the harvest for trend-aligned winners (crash shorts: ret_vlong*
+                    # pos_dir = neg*neg > 0 -> _ts_supp high -> harvest OFF regardless of the gate;
+                    # rally/bull trend-aligned longs: product > 0 -> suppressed). The multi-day
+                    # gate term ONLY reaches positions where _ts_supp~0 (counter-trend-at-multi-
+                    # day) AND |ret_vlong| large = exactly mixed's oscillating ct longs. So crash/
+                    # rally/bull trend-aligned winners stay suppressed (byte-identical via _ts_supp);
+                    # sideways (|ret_vlong|~0 -> multi-day term ~0 -> gate unchanged -> byte-
+                    # identical). Continuous tanh on |ret_vlong|/0.03 (fast-saturating so mixed's
+                    # solid multi-day trend saturates to 1.0, near-constant/noise-free; sideways
+                    # |ret_vlong|~0 stays ~0). New control flow: tp-harvest gate reads two
+                    # timescales (was one). Targets mixed Sharpe (the return_vol drag).
+                    _tp_trend_gate = max(_tp_trend_gate, max(0.0, np.tanh(abs(ret_vlong) / 0.03)))
                     # MAE-cleanliness × trend-align × deep-peak gate suppresses harvest
                     # when peak is a confirmed trend extension. Counter-trend or rally
                     # pullback peaks get full harvest (mean-reverting by structure).
