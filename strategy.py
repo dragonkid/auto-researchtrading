@@ -299,9 +299,9 @@ COOLDOWN_TREND_DECAY = 0.06
 #                     transient pullbacks byte-identical -> rally/rally-recovery spared).
 #   MAE_VEL_MAX_FLOOR = max _de_floor lowering (start the graduated de-risk ramp this
 #                     much earlier) for an accelerating trend-aligned loser.
-MAE_VEL_WINDOW = 8
-MAE_VEL_ONSET = 0.65
-MAE_VEL_MAX_FLOOR = 0.12
+MAE_VEL_WINDOW = 10
+MAE_VEL_ONSET = 0.0
+MAE_VEL_MAX_FLOOR = 0.30
 
 
 def ema(values, span):
@@ -4005,6 +4005,20 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # Exp1 (this session): ADVERSE-EXCURSION-VELOCITY full-exit threshold
+                    # lowering (diagnostic companion to the _de_floor amplifier). Same
+                    # gated population (losing + trend-aligned-at-multi-day + high MAE
+                    # velocity) -- lower the FULL-EXIT threshold so the binary exit triggers
+                    # sooner on an accelerating adverse move. Crash-safe (loss-gate;
+                    # crash trend-aligned shorts are winners -> excluded).
+                    _mae_v_dir = 1.0 if current_pos > 0 else -1.0
+                    _mae_v_align = max(0.0, np.tanh(ret_vlong * _mae_v_dir / 0.04))
+                    _mlh = self._mae_low_hist.get(symbol, [])
+                    _mae_vel = 0.0
+                    if len(_mlh) >= 2 and self.bar_count - _mlh[0] <= MAE_VEL_WINDOW:
+                        _mae_vel = min(len(_mlh), MAE_VEL_WINDOW) / float(MAE_VEL_WINDOW)
+                    _mae_vel_gate = max(0.0, min(1.0, np.tanh((_mae_vel - MAE_VEL_ONSET) / 0.15)))
+                    _exit_thresh = _exit_thresh * (1.0 - MAE_VEL_MAX_FLOOR * _mae_v_align * _mae_vel_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -4245,13 +4259,6 @@ class Strategy:
                     # entries (the bars_held>=2 de-risk exemption below gates the whole
                     # branch). Continuous tanh on (velocity - onset)/scale (no boundary).
                     if _pnl_scale < 0.0:
-                        _mae_v_dir = 1.0 if current_pos > 0 else -1.0
-                        _mae_v_align = max(0.0, np.tanh(ret_vlong * _mae_v_dir / 0.04))
-                        _mlh = self._mae_low_hist.get(symbol, [])
-                        _mae_vel = 0.0
-                        if len(_mlh) >= 2 and self.bar_count - _mlh[0] <= MAE_VEL_WINDOW:
-                            _mae_vel = min(len(_mlh), MAE_VEL_WINDOW) / float(MAE_VEL_WINDOW)
-                        _mae_vel_gate = max(0.0, min(1.0, np.tanh((_mae_vel - MAE_VEL_ONSET) / 0.15)))
                         _de_floor -= MAE_VEL_MAX_FLOOR * _mae_v_align * _mae_vel_gate
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
