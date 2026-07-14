@@ -1137,28 +1137,41 @@ class Strategy:
         # protected). This is a structural trend-PROPERTY gate (continuous, no regime
         # label), not a discrete regime switch. Byte-identical in persistent bear AND when
         # <2 open positions losing (the common case). Reduction-only, direction-agnostic.
-        _open_count = 0
-        _open_losing = 0
+        # branch step3: DIRECTION-CONDITIONAL adverse signal (replaces the down_persist
+        # gate which failed -- crash's profitable shorts are intrabar-adverse during
+        # BOUNCES, and bounces are exactly when _port_down_persist DIPS, so the bear gate
+        # was open at the bounce bars = the cap fired on the shorts = crash still -0.529).
+        # The structural distinction: crash's LOSING open positions are SHORTS (trend-
+        # aligned shorts bleeding during bounces); the non-bear correlated-adverse cases
+        # (bull/mixed pullbacks) have LOSING LONGS (longs bleeding together in a market-
+        # wide pullback). Track losing LONGS and losing SHORTS separately, and drive the
+        # cap from the LONG losing fraction: a correlated LONG pile-up bleeding (2+ long
+        # positions losing together) is the bull/mixed pullback signature that the opener's
+        # mixed +0.026 captured. Crash's shorts bleeding do NOT raise the long-losing
+        # fraction -> crash byte-identical (shorts protected) regardless of the bounce's
+        # down_persist dip. The next entry is shrunk when the open LONG book is
+        # simultaneously adverse -- a market-wide long pullback. Direction-conditional:
+        # the cap fires on correlated LONG adverse, the crash-coupled SHORT adverse is
+        # excluded by construction. (A future step may mirror a SHORT-losing cap gated to
+        # exclude bull if needed; this step isolates the long-bleeding signal first.)
+        _open_long = 0
+        _open_long_losing = 0
         for _osym in ACTIVE_SYMBOLS:
             _opos = portfolio.positions.get(_osym, 0.0)
-            if _opos == 0.0 or _osym not in bar_data:
+            if _opos <= 0.0 or _osym not in bar_data:
                 continue
-            _open_count += 1
+            _open_long += 1
             _ep_sym = self.entry_prices.get(_osym)
             if _ep_sym is None:
                 continue
             _om = bar_data[_osym].close
-            _opnl = (_om - _ep_sym) / _ep_sym
-            if _opos < 0:
-                _opnl = -_opnl
+            _opnl = (_om - _ep_sym) / _ep_sym  # long: positive pnl
             if _opnl < 0.0:
-                _open_losing += 1
-        _port_adverse_frac = (_open_losing / _open_count) if _open_count >= 2 else 0.0
-        # branch step2: persistent-bear gate (fade out in sustained downtrend -> crash-safe)
-        _adverse_bear_gate = 1.0 - max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_ADVERSE_BEAR_GATE_ONSET) / PORT_ADVERSE_BEAR_GATE_SCALE)))
+                _open_long_losing += 1
+        _port_adverse_long_frac = (_open_long_losing / _open_long) if _open_long >= 2 else 0.0
         _port_adverse_open_cap = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
-            0.0, min(1.0, np.tanh((_port_adverse_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
-        ) * _adverse_bear_gate
+            0.0, min(1.0, np.tanh((_port_adverse_long_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
+        )
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
