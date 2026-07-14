@@ -3116,9 +3116,10 @@ class Strategy:
                     # longs). Byte-identical for shorts, ct/bounce longs, and
                     # sideways/rally/mixed (dd_frac < onset).
                     _dd_cap_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _dd_cap_long_only = 1.0 if current_pos > 0 else 0.0  # spares crash winning shorts (the crash-coupling wall)
                     _dd_cap_align = max(0.0, np.tanh(ret_vlong * _dd_cap_pos_dir / 0.01))
                     _dd_cap_dd_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - (PORT_DD_TARGET_CAP_ONSET)) / (PORT_DD_TARGET_CAP_SCALE * LEVERAGE_K))))
-                    _dd_target_cap = 1.0 - PORT_DD_TARGET_CAP * _dd_cap_align * _dd_cap_dd_gate
+                    _dd_target_cap = 1.0 - PORT_DD_TARGET_CAP * _dd_cap_long_only * _dd_cap_align * _dd_cap_dd_gate
                     full_target = full_target * _dd_target_cap
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
