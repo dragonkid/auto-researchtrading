@@ -4002,7 +4002,7 @@ class Strategy:
                     # lowering 0.10. Direction-agnostic; no regime label.
                     _streak_multiday_gate = max(0.0, np.tanh((abs(ret_vlong) - 0.03) / 0.02))
                     _streak_exit_gate = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _sustained_loss * _sustained_loss_trend_gate * _streak_multiday_gate
-                    _exit_thresh = _exit_thresh * (1.0 - 0.10 * _streak_exit_gate)
+                    _exit_thresh = _exit_thresh * (1.0 - 0.20 * _streak_exit_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
