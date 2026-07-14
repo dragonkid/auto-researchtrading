@@ -301,7 +301,7 @@ COOLDOWN_TREND_DECAY = 0.06
 #                     much earlier) for an accelerating trend-aligned loser.
 MAE_VEL_WINDOW = 10
 MAE_VEL_ONSET = 0.0
-MAE_VEL_MAX_FLOOR = 0.30
+MAE_VEL_MAX_FLOOR = 0.60
 
 
 def ema(values, span):
