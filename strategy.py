@@ -498,6 +498,12 @@ PORT_ADVERSE_OPEN_SCALE = 0.25   # losing-fraction range over which shrink ramps
 PORT_ADVERSE_OPEN_MAX_SHRINK = 0.30  # max first-bar size shrink at full saturation (-> 0.70x)
 PORT_ADVERSE_BEAR_GATE_ONSET = 0.55  # branch step2: persistent-bear (down_persist) fraction at which the cap FADES OUT (excludes crash); 0.55 = mostly-bear -> start fading
 PORT_ADVERSE_BEAR_GATE_SCALE = 0.20  # branch step2: fade range; full off by down_persist 0.75
+# branch step5: SHORT-side deep-bear gate (fade out SHORT application in deep 96-bar
+# downtrend where crash's trend-aligned shorts profit). Uses the raw ret_vlong MAGNITUDE
+# (_port_deep_bear_mag, stable in bounces -- a 1-3 bar bounce barely moves the 96-bar
+# slope, unlike _port_down_persist's duration count which DIPS in bounces -> step2 failed).
+PORT_ADVERSE_SHORT_BEAR_ONSET = 0.02  # deep-bear magnitude (|ret_vlong|) at which short cap fades out
+PORT_ADVERSE_SHORT_BEAR_SCALE = 0.02  # fade range; full off by |ret_vlong| 0.04 (deep crash)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -1139,42 +1145,46 @@ class Strategy:
         # (bounce longs / bleeding shorts), so any "open positions losing -> shrink next
         # entry" that reaches a trend-aligned entry removes crash's recovery shorts.
         # step2 (down_persist gate) failed: bounces dip down_persist -> gate open at bounce
-        # bars. step3 (long-losing fraction) backfired: crash's bounce LONGS that lose
-        # raised the long-losing fraction -> shrunk the subsequent profitable SHORT even
-        # harder (crash -1.634). step4 (ct-gate) made the mechanism INERT: the ct indicator
-        # excludes the very mixed trend-aligned entries the cap was helping (mixed's
-        # ret_vlong~0 chop -> ct~0 -> no cap), so the cap became byte-identical to baseline.
-        # STRUCTURAL CONCLUSION: the adverse cap's mixed benefit comes from shrinking
-        # TREND-ALIGNED LOSING LONGS (mixed's correlated long-bleed in decline/rally), and
-        # the crash harm comes from shrinking trend-aligned SHORTS. The two are separable
-        # ONLY on the DIRECTION of the entry being shrunk: a LONG-ONLY cap never touches
-        # shorts -> crash's profitable shorts PROTECTED by construction; mixed's losing
-        # longs shrunk (the gain source); crash's ct bounce longs (losers) shrunk (good);
-        # rally longs in pullbacks may be shrunk (watch rally). Apply the cap ONLY to LONG
-        # entries, driven by the LONG-losing fraction (correlated open-long bleed). This
-        # is step3's long-losing signal but applied to LONG ENTRIES ONLY (step3 applied it
-        # to BOTH long and short targets via the top-level size -> the long-losing fraction
-        # from crash bounce longs shrunk the subsequent SHORT, the bug). Compute the LONG
-        # losing fraction here; apply only at the bull (long) target line (bear/short line
-        # untouched -> shorts byte-identical -> crash protected).
-        _open_long = 0
-        _open_long_losing = 0
+        # bars. step3 (long-losing fraction) backfired: crash bounce LONGS raised the
+        # long-losing fraction -> shrunk subsequent profitable SHORT (crash -1.634).
+        # step4 (ct-gate) INERT: ct indicator excludes mixed's trend-aligned entries.
+        # step5 (long-only, long-losing fraction) INERT: long-only fraction sub-onset.
+        # STRUCTURAL CONCLUSION (step5): the opener's mixed +0.026 came from the TOTAL
+        # adverse fraction (both directions) shrinking mixed entries of BOTH directions;
+        # the long-only signal alone is too weak (sub-onset). The mixed gain is entangled
+        # with short-side shrinking, which is crash-coupled. step6: keep the TOTAL adverse
+        # fraction (restore the opener's mixed signal) but gate ONLY the SHORT application
+        # on the raw 96-bar deep-bear MAGNITUDE (_port_deep_bear_mag, stable in bounces
+        # unlike the down_persist duration count that dipped in bounces -> step2 failed).
+        # Longs: ungated total-fraction cap (mixed longs shrunk, the opener signal).
+        # Shorts: total-fraction cap FADED OUT in deep 96-bar downtrend (crash's trend-
+        # aligned profitable shorts protected); shorts still shrunk in shallow/non-bear
+        # (mixed decline, rally pullback shorts = losers -> good). The bounce dip that
+        # killed step2 does NOT affect _port_deep_bear_mag (96-bar slope stable in 1-3
+        # bar bounces) -> crash shorts protected even during bounces.
+        _open_count = 0
+        _open_losing = 0
         for _osym in ACTIVE_SYMBOLS:
             _opos = portfolio.positions.get(_osym, 0.0)
-            if _opos <= 0.0 or _osym not in bar_data:
+            if _opos == 0.0 or _osym not in bar_data:
                 continue
-            _open_long += 1
+            _open_count += 1
             _ep_sym = self.entry_prices.get(_osym)
             if _ep_sym is None:
                 continue
             _om = bar_data[_osym].close
-            _opnl = (_om - _ep_sym) / _ep_sym  # long: pnl positive in profit
+            _opnl = (_om - _ep_sym) / _ep_sym
+            if _opos < 0:
+                _opnl = -_opnl
             if _opnl < 0.0:
-                _open_long_losing += 1
-        _port_adverse_long_frac = (_open_long_losing / _open_long) if _open_long >= 2 else 0.0
-        _port_adverse_open_long = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
-            0.0, min(1.0, np.tanh((_port_adverse_long_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
+                _open_losing += 1
+        _port_adverse_frac = (_open_losing / _open_count) if _open_count >= 2 else 0.0
+        _port_adverse_open_total = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
+            0.0, min(1.0, np.tanh((_port_adverse_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
         )
+        # branch step6: SHORT-side deep-bear gate (raw 96-bar slope magnitude, stable in
+        # bounces -> crash shorts protected). Longs ungated (full total-fraction cap).
+        _adverse_short_bear_gate = 1.0 - max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_ADVERSE_SHORT_BEAR_ONSET) / PORT_ADVERSE_SHORT_BEAR_SCALE)))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -1813,13 +1823,12 @@ class Strategy:
                 _bear_ctmd_streak = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
                 _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct * _bull_ctmd_streak
                 _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct * _bear_ctmd_streak
-                # branch step5: LONG-ONLY adverse-open cap. The cap (_port_adverse_open_long,
-                # driven by the open LONG losing fraction) applies ONLY to LONG entries.
-                # Shorts are NEVER shrunk by this cap -> crash's profitable shorts byte-
-                # identical (the structural crash-coupling fix). _adverse_open_bull reuses
-                # the top-level long cap; _adverse_open_bear = 1.0 (shorts untouched).
-                _adverse_open_bull = _port_adverse_open_long
-                _adverse_open_bear = 1.0
+                # branch step6: total-fraction adverse cap. Longs: ungated (full total-
+                # fraction cap, the opener's mixed signal). Shorts: gated on deep-bear
+                # magnitude (faded out in deep 96-bar downtrend -> crash shorts protected;
+                # shorts still shrunk in shallow/non-bear decline = mixed/rally losers).
+                _adverse_open_bull = _port_adverse_open_total
+                _adverse_open_bear = 1.0 + (_port_adverse_open_total - 1.0) * _adverse_short_bear_gate
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
