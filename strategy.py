@@ -3956,6 +3956,37 @@ class Strategy:
                     _sustained_loss_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
                     _exit_dd_gate = _sustained_loss * _sustained_loss_trend_gate
                     _exit_thresh = _exit_thresh * (1.0 - 0.12 * (1.0 - _port_dd_atten) * _exit_dd_gate)
+                    # Exp1 (architectural, indep): LOSS-STREAK-gated exit threshold lowering
+                    # for sustained losers. NEW cross-component data dep on the exit
+                    # threshold: the portfolio consecutive-loss STREAK (self._loss_streak,
+                    # the count of consecutive realized losing trades) is a structurally
+                    # DISTINCT signal from the portfolio DRAWDOWN (_port_dd_atten) that the
+                    # line above already reads. A streak of SMALL losers can keep equity
+                    # near its peak (dd_frac ~ 0 -> _port_dd_atten ~ 1 -> the DD-gated
+                    # lowering above is INERT) while the streak COUNT climbs -- exactly the
+                    # case the streak_gate = exp(-max_consec/30) penalizes heavily (rally
+                    # max_consec ~12 -> streak_gate 0.674, a ~33pct rally score cut) but the
+                    # DD-gated path misses. This path lowers _exit_thresh for a SUSTAINED
+                    # loser (same _sustained_loss gate) when the portfolio is on a multi-
+                    # trade losing streak, so the current held loser exits sooner -- it
+                    # either realizes at a smaller loss (breaking the streak before it
+                    # extends to the next full stop) or shrinks the streak-extend trades'
+                    # magnitude -> lower max_consecutive_losses AND lower DD (the same
+                    # losers that extend the streak also drive the drawdown). DISTINCT
+                    # from the prior-session-walled ENTRY-block path (loss-streak-gated
+                    # new-entry emission threshold, which crashed crash because the
+                    # profitable post-streak crash shorts come immediately after the
+                    # losing streak and an entry-block removes them): this changes the
+                    # EXIT threshold for an already-open LOSING position, never blocking
+                    # new entries -> crash's winning post-streak shorts enter freely and
+                    # are spared by the _pnl_scale<0 gate (winners byte-identical). Spares
+                    # sideways via the same _sustained_loss_trend_gate (sideways mean-
+                    # reverters oscillate, not extend). Smooth tanh ramp on streak;
+                    # byte-identical at streak<=1 (gate 0). Max lowering 0.10 (modest,
+                    # complementary to the 0.12 DD path -- total max 0.22, capped by the
+                    # de-risk ramp). Direction-agnostic; no regime label.
+                    _streak_exit_gate = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _sustained_loss * _sustained_loss_trend_gate
+                    _exit_thresh = _exit_thresh * (1.0 - 0.10 * _streak_exit_gate)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
