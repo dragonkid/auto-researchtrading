@@ -321,9 +321,9 @@ MAE_VEL_MAX_FLOOR = 0.60
 #   PORT_ADV_CORR_MAX_FLOOR = max additional _de_floor lowering (composes with the
 #                            per-symbol MAE_VEL_MAX_FLOOR; both gradual, reduction-only).
 PORT_ADV_CORR_MIN_SYMS = 2
-PORT_ADV_CORR_ONSET = 0.40
+PORT_ADV_CORR_ONSET = 0.30
 PORT_ADV_CORR_SCALE = 0.20
-PORT_ADV_CORR_MAX_FLOOR = 0.30
+PORT_ADV_CORR_MAX_FLOOR = 0.60
 
 
 def ema(values, span):
