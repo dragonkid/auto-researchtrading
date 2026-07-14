@@ -3531,48 +3531,6 @@ class Strategy:
                 SHORT_HOLD_TP_ATTEN = 0.50  # branch step16 reverted: 0.60 gave +0.003668 (less than 0.50's +0.004013); 0.50 is the sweet spot (over-attenuating lets shorts run too long -> give back gains)
                 if _short_hold_cached > 0.0:
                     _time_pressure = _time_pressure * (1.0 - SHORT_HOLD_TP_ATTEN)
-                # Exp2 (architectural, indep): LONG-SIDE ER-GATED trend-aligned in-profit
-                # time-pressure OUTPUT ATTENUATION. The prior session (Exp2 d785a704) found
-                # a REAL mixed signal (+0.0226, Sh 0.701->0.745) from a long-side TP
-                # attenuation holding trend-aligned in-profit longs longer (mixed's bounce
-                # longs captured), but it CRASHED sideways (-1.307) because sideways
-                # recovery longs qualified on {long, in-profit, 96-bar-trend-aligned, broad-
-                # magnitude} -- the prior session's "NEXT" conclusion: "the HOLD-axis long
-                # attenuation is walled for sideways ... the ONLY separator that would
-                # exclude them is a LOCAL mean-reversion signal" and sanctioned the ER axis
-                # as untested. This adds the ER GATE the prior session lacked: the
-                # Kaufman efficiency ratio _er (computed line ~1606) is HIGH for DIRECTIONAL
-                # grind (mixed's bounce off a down-leg is a directional up-move -> high ER)
-                # and LOW for CHOPPY mean-reversion (sideways recovery longs snap back to a
-                # local mean -> low ER). Gating the long-side TP attenuation on high ER
-                # excludes sideways recovery longs (low ER -> gate 0 -> byte-identical) while
-                # keeping mixed's directional bounce longs (high ER). ALSO gates on
-                # slope-confirmation (_exit_slope*pos_dir, the SAME multi-window signal
-                # _dr_slope_conf uses): bull's 2021 top rollover (the prior Exp2's bull
-                # -0.0083 source) has slope WEAKENING -> gate 0 -> byte-identical, while
-                # mixed's bounce (slope still up) keeps the attenuation. Full gate set:
-                # {long, past-scale-in, in-profit, high-ER directional grind, slope-still-
-                # confirms, 96-bar-trend-aligned}. Sideways excluded (low ER); bull rollover
-                # excluded (slope weakens); crash excluded (shorts, current_pos<0). The
-                # attenuation REDUCES _time_pressure (slower time-based exit -> ride the
-                # directional bounce longer) WITHOUT shifting _max_hold (no exit-bar shift
-                # -> no stability cliff, the validated TP-attenuation safe family). Max
-                # 0.40 attenuation (mirrors SHORT_HOLD_TP_ATTEN scale). Continuous tanh
-                # gates (no boundary); direction-agnostic general principle (no regime
-                # label): a long position past scale-in, in profit, in a directional grind,
-                # whose slope still confirms, riding an uptrend has time-pressure relaxed.
-                # New cross-component data deps: TP reads (ER, exit-slope, ret_vlong, pos_pnl,
-                # bars_held) jointly.
-                LONG_TP_ER_ONSET = 0.45    # ER above which the directional-grind gate engages (sideways ~0.2-0.3, directional grind ~0.5+)
-                LONG_TP_ER_SCALE = 0.15
-                LONG_TP_ATTEN = 0.40
-                if current_pos > 0 and bars_held > ENTRY_FULL_BARS:
-                    _ltp_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # ~1 in profit
-                    _ltp_er = max(0.0, min(1.0, np.tanh((_er - LONG_TP_ER_ONSET) / LONG_TP_ER_SCALE)))  # ~0 chop, ~1 directional grind
-                    _ltp_slope_conf = max(0.0, np.tanh(_exit_slope / 0.0004))  # exit slope still UP (long)
-                    _ltp_align = max(0.0, np.tanh(ret_vlong / 0.02))  # 96-bar uptrend
-                    _ltp_gate = _ltp_profit * _ltp_er * _ltp_slope_conf * _ltp_align
-                    _time_pressure = _time_pressure * (1.0 - LONG_TP_ATTEN * _ltp_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
