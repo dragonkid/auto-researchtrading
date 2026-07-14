@@ -65,27 +65,6 @@ DYN_THRESHOLD_CEIL = 0.012
 TREND_THRESHOLD_SCALE = 0.25       # max threshold reduction in trends (reduced from 0.32 for wider buffer in rally)
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 
-# Exp2 (architectural, indep this session): TREND-LEG-DURATION harvest-timing on the
-# trend-extension-suppression path. A NON-LOCAL exit data source (prior-session-named
-# untested non-local axis, applied here on the EXIT/profit side to avoid the Exp1
-# admission-side sideways leak). _leg_dur = bars since the most recent opposite-direction
-# local extremum of smoothed_closes over a bounded lookback = age of the current
-# directional market leg. A trend-aligned WINNER riding an EXHAUSTED leg (large _leg_dur,
-# no pullback) is nearer the final top -> weaken _ts_supp (the trend-extension harvest
-# SUPPRESSION) so the deep-peak tp-harvest fires -> lock the realized gain before the
-# pullback that creates the DD. A winner on a FRESH leg (small _leg_dur) keeps full
-# suppression (let it run). SAFETY: _ts_supp is gated by ret_vlong*pos_dir (multi-day
-# trend-alignment), which is ~0 in sideways (ret_vlong~0 = weak multi-day drift) and ~0
-# for mixed's COUNTER-TREND longs (ret_vlong<0 * pos_dir+1 <0) -> _ts_supp is ALREADY ~0
-# there -> the leg-dur factor multiplies a near-zero -> byte-identical for sideways and
-# mixed-ct-long populations (the Exp1 leak paths). Fires only where _ts_supp is already
-# suppressing (bull/rally trend longs, crash trend shorts). Continuous tanh on leg age
-# above onset (no boundary). Bounded 48-bar lookback over smoothed_closes (noise-robust
-# argmin/argmax position). No new per-bar state -> deterministic -> stability-safe.
-LEG_DUR_LOOKBACK = 48               # bars over which to locate the current leg's start
-LEG_DUR_HARVEST_ONSET = 22.0        # branch step7: 18->22 sweet spot (onset 26 cliffed bull, 18 best; 22 between)
-LEG_DUR_HARVEST_MAX_RELAX = 0.40    # max fractional weakening of _ts_supp on an exhausted leg
-
 # RSI voter
 RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
@@ -581,13 +560,6 @@ class Strategy:
         # state + new control flow: _max_hold reads a temporally-smoothed hold-extension
         # magnitude (was the instantaneous product). Reset on full exit.
         self._hold_ext_ema = {}
-        # Exp2 branch step3 (this session): per-symbol EMA of the leg-duration scalar.
-        # The raw _leg_dur = (argmin position) shifts +-1 bar under AR(1) close noise ->
-        # the harvest-weaken tanh crosses its onset with +-1 bar wobble -> harvest timing
-        # wobble -> bull stability below the 0.80 knee. EMA-smoothing the scalar (span 3,
-        # halving a +-1 jump to ~+-0.5) dampens the threshold-crossing wobble at the source
-        # -> harvest timing bar-to-bar stable -> bull stability recovered. Default 0.0.
-        self._leg_dur_ema = {}
         # Exp4 (this session): per-symbol EMA of the LOCAL-trend hold-extension
         # magnitude (mirrors _hold_ext_ema for the local 20-bar-trend extension that
         # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
@@ -1188,32 +1160,6 @@ class Strategy:
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
-
-            # Exp2 (architectural, indep this session): TREND-LEG-DURATION non-local
-            # separator (EXIT-side application). Age of the current directional market
-            # leg = bars since the most recent opposite-direction local extremum of
-            # smoothed_closes over a bounded lookback. smoothed_closes is an EMA of closes
-            # (computed below, line ~1124); reading its tail here is safe (same tail the
-            # rest of the bar uses). The leg direction follows the current 20-bar trend
-            # sign (ret_long): an uptrend leg started at the most recent local MIN; a
-            # downtrend leg at the most recent local MAX. _leg_dur in [0, LEG_DUR_LOOKBACK];
-            # near LEG_DUR_LOOKBACK = a long unbroken leg (exhaustion). Pure lookback (no
-            # per-bar state) -> deterministic under AR(1) -> stability-safe. Used only on
-            # the _ts_supp harvest-suppression path (line ~4016), gated to ~byte-identical
-            # in sideways / mixed-ct-long by the existing ret_vlong*pos_dir _ts_supp gate.
-            _ld_n = min(LEG_DUR_LOOKBACK, len(closes) - 1)
-            _ld_sc = smoothed_closes[-_ld_n:]
-            if ret_long >= 0.0:
-                _leg_arg = int(np.argmin(_ld_sc))  # last local min = up-leg start
-            else:
-                _leg_arg = int(np.argmax(_ld_sc))  # last local max = down-leg start
-            _leg_dur_raw = float(_ld_n - 1 - _leg_arg)  # bars since the leg start
-            # branch step3/4: EMA-smooth the scalar to dampen the +-1 argmin wobble.
-            # step4 alpha 0.33 was WORSE (more lag dropped bull Sharpe 0.743->0.721,
-            # stability 0.793->0.785). Revert to step3 alpha 0.5 (span 3, best).
-            _leg_dur_prev = self._leg_dur_ema.get(symbol, _leg_dur_raw)
-            _leg_dur = 0.5 * _leg_dur_raw + 0.5 * _leg_dur_prev  # alpha 0.5 (span 3)
-            self._leg_dur_ema[symbol] = _leg_dur
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
             # rolling boolean (|ret_vlong| < PERSIST_WEAK_THRESH) over PERSIST_WINDOW
@@ -4081,40 +4027,6 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
-                    # Exp2 (architectural, indep this session): LEG-DURATION weakening of
-                    # the trend-extension harvest suppression. A trend-aligned winner on
-                    # an EXHAUSTED directional leg (large _leg_dur = the market leg has run
-                    # far without an opposite-direction extremum) is nearer the final top ->
-                    # weaken _ts_supp so the deep-peak tp-harvest fires -> lock realized gains
-                    # before the pullback that creates the DD (bull/rally trend longs, crash
-                    # trend shorts). A winner on a FRESH leg (small _leg_dur) keeps full
-                    # suppression (let it run). SAFETY: _ts_supp is already gated by
-                    # ret_vlong*pos_dir (multi-day trend-alignment), which is ~0 in sideways
-                    # (weak multi-day drift) and for mixed's counter-trend longs -> the
-                    # leg-dur factor multiplies a near-zero base there -> byte-identical for
-                    # the Exp1 leak paths (sideways drift, mixed ct longs). Fires only where
-                    # _ts_supp is already suppressing (genuine multi-day trend-aligned
-                    # winners). Continuous tanh on leg age above onset (no boundary).
-                    _leg_harvest_relax = 1.0 - LEG_DUR_HARVEST_MAX_RELAX * max(0.0, np.tanh((_leg_dur - LEG_DUR_HARVEST_ONSET) / 14.0))
-                    # branch step2: LONG-ONLY gate. The opener (ungated) cratered crash
-                    # -0.141: crash's trend-aligned SHORTS on extended down-legs got
-                    # harvested at leg-end, but crash downtrends PERSIST past leg-end (long
-                    # continuous down-legs are trend CONTINUATION, not exhaustion) -> early
-                    # harvest killed crash's winning shorts. The validated crash-safety
-                    # separator is position DIRECTION (the _ta_winner_gate _long_only_gate
-                    # lesson): LONGS riding an exhausted up-leg (bull/rally trend longs) are
-                    # the canonical exhaustion case (up-legs end in pullbacks = the DD source);
-                    # SHORTS in a downtrend face asymmetric continuation risk (downtrends are
-                    # choppier, bounces sharper, down-legs persist). Gate the leg-dur
-                    # harvest-weaken to LONG positions only -> crash shorts byte-identical
-                    # (gate 0). Sideways byte-identical (already via ret_vlong*pos_dir~0).
-                    _leg_long_gate = 1.0 if current_pos > 0 else 0.0
-                    # branch steps 4-6 explored EMA-span, persist-gate, DD-gate variants; all
-                    # NO-PROGRESS vs step3 (the long-only + EMA-alpha0.5 config). step3 is the
-                    # branch best (composite 0.098161). The DD gate (step6) recovered mixed but
-                    # killed bull's peak-equity Sharpe gain; the persist gate (step5) hurt
-                    # rally without fixing mixed. Reverted to step3 (long-only gate only).
-                    _ts_supp = _ts_supp * (1.0 - (1.0 - _leg_harvest_relax) * _leg_long_gate)
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
                     # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
