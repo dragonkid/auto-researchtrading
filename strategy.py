@@ -83,7 +83,7 @@ TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 # above onset (no boundary). Bounded 48-bar lookback over smoothed_closes (noise-robust
 # argmin/argmax position). No new per-bar state -> deterministic -> stability-safe.
 LEG_DUR_LOOKBACK = 48               # bars over which to locate the current leg's start
-LEG_DUR_HARVEST_ONSET = 26.0        # branch step3: raise 18->26 so only VERY exhausted legs fire
+LEG_DUR_HARVEST_ONSET = 18.0        # leg age (bars) at which exhaustion-harvest weaken begins
 LEG_DUR_HARVEST_MAX_RELAX = 0.40    # max fractional weakening of _ts_supp on an exhausted leg
 
 # RSI voter
@@ -581,6 +581,13 @@ class Strategy:
         # state + new control flow: _max_hold reads a temporally-smoothed hold-extension
         # magnitude (was the instantaneous product). Reset on full exit.
         self._hold_ext_ema = {}
+        # Exp2 branch step3 (this session): per-symbol EMA of the leg-duration scalar.
+        # The raw _leg_dur = (argmin position) shifts +-1 bar under AR(1) close noise ->
+        # the harvest-weaken tanh crosses its onset with +-1 bar wobble -> harvest timing
+        # wobble -> bull stability below the 0.80 knee. EMA-smoothing the scalar (span 3,
+        # halving a +-1 jump to ~+-0.5) dampens the threshold-crossing wobble at the source
+        # -> harvest timing bar-to-bar stable -> bull stability recovered. Default 0.0.
+        self._leg_dur_ema = {}
         # Exp4 (this session): per-symbol EMA of the LOCAL-trend hold-extension
         # magnitude (mirrors _hold_ext_ema for the local 20-bar-trend extension that
         # targets mixed's counter-trend-at-multi-day bounce longs). Asymmetric EMA
@@ -1200,7 +1207,11 @@ class Strategy:
                 _leg_arg = int(np.argmin(_ld_sc))  # last local min = up-leg start
             else:
                 _leg_arg = int(np.argmax(_ld_sc))  # last local max = down-leg start
-            _leg_dur = float(_ld_n - 1 - _leg_arg)  # bars since the leg start
+            _leg_dur_raw = float(_ld_n - 1 - _leg_arg)  # bars since the leg start
+            # branch step3: EMA-smooth the scalar to dampen the +-1 argmin wobble (span 3).
+            _leg_dur_prev = self._leg_dur_ema.get(symbol, _leg_dur_raw)
+            _leg_dur = 0.5 * _leg_dur_raw + 0.5 * _leg_dur_prev  # alpha 0.5 (span 3)
+            self._leg_dur_ema[symbol] = _leg_dur
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
             # rolling boolean (|ret_vlong| < PERSIST_WEAK_THRESH) over PERSIST_WINDOW
@@ -4082,7 +4093,7 @@ class Strategy:
                     # the Exp1 leak paths (sideways drift, mixed ct longs). Fires only where
                     # _ts_supp is already suppressing (genuine multi-day trend-aligned
                     # winners). Continuous tanh on leg age above onset (no boundary).
-                    _leg_harvest_relax = 1.0 - LEG_DUR_HARVEST_MAX_RELAX * max(0.0, np.tanh((_leg_dur - LEG_DUR_HARVEST_ONSET) / 20.0))
+                    _leg_harvest_relax = 1.0 - LEG_DUR_HARVEST_MAX_RELAX * max(0.0, np.tanh((_leg_dur - LEG_DUR_HARVEST_ONSET) / 14.0))
                     # branch step2: LONG-ONLY gate. The opener (ungated) cratered crash
                     # -0.141: crash's trend-aligned SHORTS on extended down-legs got
                     # harvested at leg-end, but crash downtrends PERSIST past leg-end (long
