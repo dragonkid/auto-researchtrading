@@ -475,37 +475,6 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
-# Exp1 (architectural, indep): CROSS-SYMBOL SIMULTANEOUS ADVERSE OPEN-POSITION cap.
-# NEW portfolio-level data dependency the strategy entirely lacks: every existing
-# portfolio signal reads either EQUITY state (_port_dd_atten = DD-fraction LEVEL,
-# _port_eq_mom_shrink = equity TRAJECTORY DERIVATIVE), the trade SEQUENCE (_loss_streak),
-# or cross-symbol PRICE direction/magnitude (_consensus, _btc_trend, _port_down_persist,
-# _port_deep_bear_mag, _alt_lead) / VOLUME (_btc_vol_rise, _btc_dvp, _alt_dvp). NONE of
-# them read the UNREALIZED PnL state of the currently-OPEN positions across symbols. The
-# gross-concentration (_conc_shrink) and net-tilt (_net_tilt_shrink) loops read open
-# position NOTIONAL (direction/exposure), NOT whether those positions are currently
-# LOSING. This is a genuinely orthogonal signal: the count/fraction of OTHER open
-# positions that are simultaneously in adverse excursion (pos_pnl<0) RIGHT NOW. A
-# market-wide correlated adverse move (a pullback hitting BTC+ETH+SOL longs at once, or
-# a relief bounce hitting all crash shorts at once) shows up in the OPEN-BOOK PnL BEFORE
-# it shows up in equity-level DD (equity only drops once losses are REALIZED or the
-# unrealized drawdown compounds; the open-PnL signal fires on the FIRST bar multiple
-# positions bleed together). _port_dd_atten LAGS this (equity EMA must drop below peak);
-# _port_eq_mom_shrink lags too (8-bar equity rate of change). The open-PnL fraction is
-# an INSTANTANEOUS correlated-adverse-regime detector. Action: when 2+ open positions
-# across symbols are simultaneously losing, the market is in a correlated adverse state
-# -> the marginal new entry is at correlated-regime-hit risk -> SHRINK its first-bar size
-# (shrink-only, safe family). Byte-identical when <2 open positions are losing (single-
-# leg adverse or no adverse = most bars in every regime; correlated multi-leg adverse is
-# the rarer clustered event this targets). Continuous tanh on the losing-fraction (no
-# boundary), direction-agnostic (no regime label): a simultaneously-bleeding book signals
-# a hostile correlated regime regardless of direction. Computed once per bar at the top
-# level from each open symbol's current pos_pnl (= (mid-entry_price)/entry_price x dir);
-# falls to 1.0 (no shrink) when <2 positions open or <2 losing. Applied to `size` (line
-# ~1585) alongside _port_bear_cap / _port_weak_cap / _port_eq_mom_shrink. Reduction-only.
-PORT_ADVERSE_OPEN_ONSET = 0.50   # losing-fraction at which shrink begins (2 of 3 losing -> 0.67 -> past onset)
-PORT_ADVERSE_OPEN_SCALE = 0.25   # losing-fraction range over which shrink ramps to full
-PORT_ADVERSE_OPEN_MAX_SHRINK = 0.30  # max first-bar size shrink at full saturation (-> 0.70x)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -1128,41 +1097,6 @@ class Strategy:
             else:
                 _alt_dvp[_asym] = 0.0
 
-        # Exp1 (architectural, indep): CROSS-SYMBOL SIMULTANEOUS ADVERSE OPEN-POSITION cap.
-        # Compute the fraction of currently-OPEN positions (across ALL active symbols)
-        # that are in adverse excursion (unrealized pos_pnl < 0) RIGHT NOW. This is a NEW
-        # portfolio-level data dep: reads the UNREALIZED PnL state of the open book, which
-        # every existing portfolio signal lacks (they read equity level/trajectory, trade
-        # sequence, or price/volume direction -- never the simultaneous open-position PnL).
-        # _port_dd_atten / _port_eq_mom_shrink LAG this signal (they react to equity moves,
-        # which only drop after unrealized losses compound); the open-PnL fraction detects
-        # a correlated adverse regime on the FIRST bar multiple positions bleed together.
-        # A losing-fraction near 1.0 = all open positions losing simultaneously (a market-
-        # wide correlated hit). Used as a shrink-only first-bar SIZE cap on the next entry.
-        # Byte-identical when <2 positions are open OR <2 are losing (the common case: most
-        # bars have 0-1 open losing positions). Continuous tanh on (losing_frac - ONSET);
-        # reduction-only; direction-agnostic. Computed once per bar before the symbol loop.
-        _open_count = 0
-        _open_losing = 0
-        for _osym in ACTIVE_SYMBOLS:
-            _opos = portfolio.positions.get(_osym, 0.0)
-            if _opos == 0.0 or _osym not in bar_data:
-                continue
-            _open_count += 1
-            _ep_sym = self.entry_prices.get(_osym)
-            if _ep_sym is None:
-                continue
-            _om = bar_data[_osym].close
-            _opnl = (_om - _ep_sym) / _ep_sym
-            if _opos < 0:
-                _opnl = -_opnl
-            if _opnl < 0.0:
-                _open_losing += 1
-        _port_adverse_frac = (_open_losing / _open_count) if _open_count >= 2 else 0.0
-        _port_adverse_open_cap = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
-            0.0, min(1.0, np.tanh((_port_adverse_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
-        )
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -1648,7 +1582,7 @@ class Strategy:
             # when any symbol has persistent weak multi-day trend (mixed's consolidation).
             # Exp3: apply portfolio equity-MOMENTUM (trajectory-derivative) shrink, computed
             # at top level. Composes with the deep-bear/weak-trend caps (all shrink-only).
-            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink * _port_adverse_open_cap
+            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
