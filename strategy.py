@@ -4094,6 +4094,29 @@ class Strategy:
                     # tanh, no new decision boundary. ret_vlong is already computed (96-bar OLS,
                     # noise-robust). Targets mixed (binding); protects all trend-aligned regimes.
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
+                    # Exp3 (architectural, indep): HIGH-CHURN weakening of the trend-extension
+                    # harvest suppression. _ts_supp normally PREVENTS harvesting clean trend-
+                    # aligned deep-peak winners (let them run). The existing _dd_tp_relax
+                    # (below) weakens it during PORTFOLIO DD (rally pullbacks = the DD source).
+                    # This is a DETERMINISTIC complement on a distinct signal: the noise-IMMUNE
+                    # integer churn count len(_eh). rally's binding constraint is DD from
+                    # riding winners through choppy-pullback BURSTS (high entry density, the
+                    # documented rally DD source); during those bursts (len(_eh)>=3), lock
+                    # realized gains at deep peaks by weakening _ts_supp so even clean trend
+                    # winners get partially harvested -> the remaining position gives back less
+                    # -> caps the burst-pullback DD. Byte-identical in low-churn regimes
+                    # (bull/crash/sideways + rally quiet stretches: len(_eh)<=1 -> gate ~0 ->
+                    # _ts_supp unchanged -> byte-identical), so the return cost is ISOLATED to
+                    # the high-churn burst partition (exactly where capping DD is worth it under
+                    # v3). Uses the SAME noise-immune integer gate as the baseline grids/
+                    # deadband/churn_size_atten (no noise-sensitive quantity -> stability
+                    # preserved). Symmetric counterpart to the reverted deep-calm (_cm==1) tp-
+                    # harvest ATTENUATION (that reduced harvest in calm; this INCREASES harvest
+                    # in bursts -- the untested direction). Shrink-on-suppression (weakening
+                    # _ts_supp only INCREASES harvest, never prevents it -> safe family, can only
+                    # lock gains, never cut a losing/open position). Continuous tanh on churn.
+                    _ts_churn_gate = max(0.0, np.tanh((len(_eh) - 2.5) / 0.6))  # ~0 low churn (<=1), ~1 bursting (>=3)
+                    _ts_supp = _ts_supp * (1.0 - 0.35 * _ts_churn_gate)
                     # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
                     # trend-extension harvest suppression. _ts_supp normally PREVENTS
                     # harvesting clean trend-aligned deep-peak winners (let them run).
