@@ -475,35 +475,6 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
-# BRANCH (Exp1 opener + iterations): CROSS-SYMBOL SIMULTANEOUS ADVERSE OPEN-POSITION cap.
-# NEW portfolio data dep reading the UNREALIZED PnL state of open positions across
-# symbols (losing-fraction of the open book). Orthogonal to equity-level/trade-sequence/
-# price-direction portfolio signals: detects a correlated adverse regime on the FIRST
-# bar multiple positions bleed together, before equity DD/trajectory signals lag it.
-# The Exp1 opener (commit 83cc4233) showed a REAL signal: mixed +0.026 (Sh 0.701->0.779)
-# via shrinking mixed's oscillating chop losers, BUT crashed crash (-0.529) via the
-# crash-coupling wall: crash's TREND-ALIGNED SHORTS show transient adverse pos_pnl during
-# dead-cat bounces -> losing-fraction saturates -> cap shrinks the next profitable crash
-# short -> crash edge removed. The opener also crashed sideways stability (open-PnL
-# fraction wobbles under AR(1) as close noise flips open-position pos_pnl sign at the
-# boundary). The branch iterates to fix these: (step2) gate the cap to fade out in
-# PERSISTENT MULTI-DAY DOWNTREND (the _port_down_persist signal, a continuous structural
-# trend-property not a regime label) so crash's profitable-but-intrabar-adverse shorts
-# are excluded -- in a sustained downtrend, transient adverse on trend-aligned shorts is
-# the NORMAL bounce-then-resume pattern, not a correlated regime hit. Byte-identical in
-# persistent bear (gate 0 -> no shrink); fires in the non-bear regimes where correlated
-# adverse IS a real signal (mixed chop, rally pullbacks, bull corrections). Reduction-only.
-PORT_ADVERSE_OPEN_ONSET = 0.50   # losing-fraction at which shrink begins (2 of 3 losing -> 0.67 -> past onset)
-PORT_ADVERSE_OPEN_SCALE = 0.25   # losing-fraction range over which shrink ramps to full
-PORT_ADVERSE_OPEN_MAX_SHRINK = 0.30  # max first-bar size shrink at full saturation (-> 0.70x)
-PORT_ADVERSE_BEAR_GATE_ONSET = 0.55  # branch step2: persistent-bear (down_persist) fraction at which the cap FADES OUT (excludes crash); 0.55 = mostly-bear -> start fading
-PORT_ADVERSE_BEAR_GATE_SCALE = 0.20  # branch step2: fade range; full off by down_persist 0.75
-# branch step5: SHORT-side deep-bear gate (fade out SHORT application in deep 96-bar
-# downtrend where crash's trend-aligned shorts profit). Uses the raw ret_vlong MAGNITUDE
-# (_port_deep_bear_mag, stable in bounces -- a 1-3 bar bounce barely moves the 96-bar
-# slope, unlike _port_down_persist's duration count which DIPS in bounces -> step2 failed).
-PORT_ADVERSE_SHORT_BEAR_ONSET = 0.02  # deep-bear magnitude (|ret_vlong|) at which short cap fades out
-PORT_ADVERSE_SHORT_BEAR_SCALE = 0.02  # fade range; full off by |ret_vlong| 0.04 (deep crash)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -1125,66 +1096,6 @@ class Strategy:
                 _alt_dvp[_asym] = float(np.sum(_adv_v * _adv_rets) / max(np.sum(_adv_v), 1e-10))
             else:
                 _alt_dvp[_asym] = 0.0
-
-        # BRANCH (Exp1 opener + step2): CROSS-SYMBOL SIMULTANEOUS ADVERSE OPEN-POSITION
-        # cap. Compute the fraction of currently-OPEN positions (across ALL active
-        # symbols) in adverse excursion (unrealized pos_pnl < 0) RIGHT NOW. NEW portfolio
-        # data dep (reads the UNREALIZED PnL state of the open book, which every existing
-        # portfolio signal lacks). The Exp1 opener showed mixed +0.026 (Sh 0.701->0.779)
-        # via shrinking mixed's oscillating chop losers, BUT crashed crash (-0.529) via
-        # crash-coupling: crash's trend-aligned shorts are intrabar-adverse during bounces.
-        # branch step2: GATE the cap to FADE OUT in PERSISTENT MULTI-DAY DOWNTREND (the
-        # _port_down_persist signal). [step2 down_persist gate and step3 direction-
-        # conditional gate BOTH failed to protect crash -- replaced by step4 per-symbol
-        # COUNTER-TREND application gate below. This block now computes the direction-
-        # AGNOSTIC total losing fraction; the application is gated per-symbol on the
-        # entry being counter-trend at the target lines, which structurally excludes
-        # crash's trend-aligned profitable shorts.]
-        # branch step4: PER-SYMBOL COUNTER-TREND application gate. The crash-coupling
-        # root cause: crash's profitable TREND-ALIGNED SHORTS follow losing positions
-        # (bounce longs / bleeding shorts), so any "open positions losing -> shrink next
-        # entry" that reaches a trend-aligned entry removes crash's recovery shorts.
-        # step2 (down_persist gate) failed: bounces dip down_persist -> gate open at bounce
-        # bars. step3 (long-losing fraction) backfired: crash bounce LONGS raised the
-        # long-losing fraction -> shrunk subsequent profitable SHORT (crash -1.634).
-        # step4 (ct-gate) INERT: ct indicator excludes mixed's trend-aligned entries.
-        # step5 (long-only, long-losing fraction) INERT: long-only fraction sub-onset.
-        # STRUCTURAL CONCLUSION (step5): the opener's mixed +0.026 came from the TOTAL
-        # adverse fraction (both directions) shrinking mixed entries of BOTH directions;
-        # the long-only signal alone is too weak (sub-onset). The mixed gain is entangled
-        # with short-side shrinking, which is crash-coupled. step6: keep the TOTAL adverse
-        # fraction (restore the opener's mixed signal) but gate ONLY the SHORT application
-        # on the raw 96-bar deep-bear MAGNITUDE (_port_deep_bear_mag, stable in bounces
-        # unlike the down_persist duration count that dipped in bounces -> step2 failed).
-        # Longs: ungated total-fraction cap (mixed longs shrunk, the opener signal).
-        # Shorts: total-fraction cap FADED OUT in deep 96-bar downtrend (crash's trend-
-        # aligned profitable shorts protected); shorts still shrunk in shallow/non-bear
-        # (mixed decline, rally pullback shorts = losers -> good). The bounce dip that
-        # killed step2 does NOT affect _port_deep_bear_mag (96-bar slope stable in 1-3
-        # bar bounces) -> crash shorts protected even during bounces.
-        _open_count = 0
-        _open_losing = 0
-        for _osym in ACTIVE_SYMBOLS:
-            _opos = portfolio.positions.get(_osym, 0.0)
-            if _opos == 0.0 or _osym not in bar_data:
-                continue
-            _open_count += 1
-            _ep_sym = self.entry_prices.get(_osym)
-            if _ep_sym is None:
-                continue
-            _om = bar_data[_osym].close
-            _opnl = (_om - _ep_sym) / _ep_sym
-            if _opos < 0:
-                _opnl = -_opnl
-            if _opnl < 0.0:
-                _open_losing += 1
-        _port_adverse_frac = (_open_losing / _open_count) if _open_count >= 2 else 0.0
-        _port_adverse_open_total = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
-            0.0, min(1.0, np.tanh((_port_adverse_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
-        )
-        # branch step6: SHORT-side deep-bear gate (raw 96-bar slope magnitude, stable in
-        # bounces -> crash shorts protected). Longs ungated (full total-fraction cap).
-        _adverse_short_bear_gate = 1.0 - max(0.0, min(1.0, np.tanh((_port_deep_bear_mag - PORT_ADVERSE_SHORT_BEAR_ONSET) / PORT_ADVERSE_SHORT_BEAR_SCALE)))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -1823,12 +1734,6 @@ class Strategy:
                 _bear_ctmd_streak = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
                 _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct * _bull_ctmd_streak
                 _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct * _bear_ctmd_streak
-                # branch step6: total-fraction adverse cap. Longs: ungated (full total-
-                # fraction cap, the opener's mixed signal). Shorts: gated on deep-bear
-                # magnitude (faded out in deep 96-bar downtrend -> crash shorts protected;
-                # shorts still shrunk in shallow/non-bear decline = mixed/rally losers).
-                _adverse_open_bull = _port_adverse_open_total
-                _adverse_open_bear = 1.0 + (_port_adverse_open_total - 1.0) * _adverse_short_bear_gate
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
@@ -2614,7 +2519,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _adverse_open_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2633,7 +2538,7 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _adverse_open_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
