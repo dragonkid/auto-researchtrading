@@ -4109,30 +4109,12 @@ class Strategy:
                     # harvest-weaken to LONG positions only -> crash shorts byte-identical
                     # (gate 0). Sideways byte-identical (already via ret_vlong*pos_dir~0).
                     _leg_long_gate = 1.0 if current_pos > 0 else 0.0
-                    # branch step5 (REVERTED): a _down_persist uptrend-persistence gate hurt
-                    # rally -0.000631 WITHOUT fixing mixed (mixed's rally phase is itself a
-                    # persistent uptrend = low down_persist, indistinguishable from rally on
-                    # this axis -- the mixed/rally inseparability wall). Reverted to step3
-                    # (long-only gate only, no persistence gate).
-                    # branch step6: PORTFOLIO-DD gate. The leg-dur harvest-weaken (steps 2-5)
-                    # helped DD-limited bull (Sharpe +0.080) but HURT non-DD-limited mixed
-                    # (-0.002575) because mixed's rally-phase longs are profitable to RIDE, not
-                    # harvest -- and mixed/rally are inseparable on the trend-alignment axis.
-                    # The clean regime-agnostic separator is the PORTFOLIO DD STATE itself
-                    # (continuous, not a regime label): capping DD is worth it WHEN the
-                    # portfolio is drawing down (dd_frac>0), NOT at portfolio peak (riding
-                    # winners is worth it at peak). At portfolio peak (dd_frac=0) -> gate 0
-                    # -> byte-identical (mixed/rally at peak untouched, recovering the mixed
-                    # loss). During DD (dd_frac>0) -> exhausted-leg longs harvested harder
-                    # (an exhausted-leg winner during a pullback is more likely the DD source
-                    # -> harvest it) -> bull DD capped. This makes leg-dur a DD-CONDITIONAL
-                    # AMPLIFIER of the existing _dd_tp_relax (which weakens uniformly during
-                    # DD), adding the exhausted-leg TARGETING that _dd_tp_relax lacks. Smooth
-                    # tanh on dd_frac so no hard boundary; leverage-coupled scale (same
-                    # discipline as PORT_DD_TP_HARVEST_SCALE) so the activation level is
-                    # leverage-invariant. Byte-identical at peak for ALL regimes.
-                    _leg_dd_gate = max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
-                    _ts_supp = _ts_supp * (1.0 - (1.0 - _leg_harvest_relax) * _leg_long_gate * _leg_dd_gate)
+                    # branch steps 4-6 explored EMA-span, persist-gate, DD-gate variants; all
+                    # NO-PROGRESS vs step3 (the long-only + EMA-alpha0.5 config). step3 is the
+                    # branch best (composite 0.098161). The DD gate (step6) recovered mixed but
+                    # killed bull's peak-equity Sharpe gain; the persist gate (step5) hurt
+                    # rally without fixing mixed. Reverted to step3 (long-only gate only).
+                    _ts_supp = _ts_supp * (1.0 - (1.0 - _leg_harvest_relax) * _leg_long_gate)
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
                     # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
