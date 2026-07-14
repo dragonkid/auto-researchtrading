@@ -2607,36 +2607,28 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                     # Exp1 (architectural, indep, this session): CACHE the long-side
-                    # hold-extension ELIGIBILITY once at long entry (mirror of the
-                    # short-side _short_hold_cache, see LONG_HOLD_TP_ATTEN header).
-                    # Evaluated from entry-bar state and frozen for the hold's life
-                    # (deterministic under AR(1) -> stability preserved, same lesson
-                    # as the short-side keep 249d8241). Three gates (all fast-saturating
-                    # /0.01 or /0.02 -> near-constant, noise-free per the validated
-                    # ret_vlong ct-gate lesson):
-                    #   (1) long-in-uptrend alignment: tanh(ret_vlong/0.01) ~1 for a
-                    #       long aligned with the multi-day uptrend (bull/rally trend
-                    #       longs); ~0 for counter-trend longs (crash dead-cat-bounce
-                    #       longs, mixed down-year longs).
-                    #   (2) magnitude deadzone: tanh((|ret_vlong|-0.015)/0.01) ~1 only
-                    #       for a DEEP uptrend (the SAME deadzone the short-side uses
-                    #       to separate crash from rally pullbacks). Excludes mixed's
-                    #       weak-trend longs (|ret_vlong|<0.015) and sideways
-                    #       oscillations -> byte-identical there.
-                    #   (3) persistent-uptrend gate: max(0, 1 - max(0, (_down_persist-
-                    #       0.40)/0.20)) = the validated _up_persist_gate (computed here
-                    #       from the entry-bar _down_persist, available pre-entry).
-                    #       ~1 for persistent uptrend (bull/rally, _down_persist<0.40),
-                    #       ~0 for persistent downtrend (crash ~0.9) and mixed's down
-                    #       year. The structural separator that excludes crash/mixed.
-                    # Eligibility = product; cache starts -1.0 (eligible, not latched)
-                    # or 0.0 (not eligible). The magnitude LATCH (0->1.0 flip when
-                    # pos_pnl first confirms positive) fires during the hold below.
-                    _long_align_entry = max(0.0, np.tanh(ret_vlong / 0.01))  # ~1 long-in-uptrend, ~0 ct-long
-                    _long_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))  # deep-uptrend deadzone
-                    _long_persist_gate_entry = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))  # persistent uptrend
-                    _long_eligible = _long_align_entry * _long_mag_gate * _long_persist_gate_entry
-                    self._long_hold_cache[symbol] = -1.0 if _long_eligible > 0.50 else 0.0
+                    # hold-extension ELIGIBILITY (mirror of the short-side
+                    # _short_hold_cache, see LONG_HOLD_TP_ATTEN header). BRANCH STEP 2:
+                    # unlike the short side, eligibility is NOT evaluated at entry.
+                    # The short side evaluates at entry because crash's winning shorts
+                    # enter INTO the persistent downtrend (entry trend state = hold
+                    # trend state). Longs are INVERTED: rally's winning longs enter
+                    # during PULLBACKS where ret_vlong has dipped (|ret_vlong| small at
+                    # entry) -> an entry-time magnitude deadzone EXCLUDES rally's
+                    # winning longs while INCLUDING sideways 2023 recovery-drift longs
+                    # (steady shallow uptrend at entry, |ret_vlong|>0.015). That leak
+                    # crashed sideways -1.316 in the opener. FIX: set ALL longs to
+                    # pending (-1.0) at entry and evaluate the trend/low-vol gate at
+                    # the LATCH moment (during the hold, when pos_pnl confirms positive)
+                    # -- by then rally's uptrend has resumed (ret_vlong positive again
+                    # post-pullback) so the gate captures rally winners, and sideways
+                    # chop (low rsi_trend_str, moderate vol) fails the gate. The latch
+                    # is a one-time evaluation at the latch bar -> deterministic under
+                    # AR(1) (the latch bar may shift +-1 but the post-latch attenuation
+                    # is a CONSTANT -> stability preserved, the SAME lesson as the
+                    # short-side keep 249d8241). Byte-identical for shorts (cleared
+                    # below) and non-long entries.
+                    self._long_hold_cache[symbol] = -1.0  # pending: evaluate at latch (all longs)
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
@@ -3591,23 +3583,45 @@ class Strategy:
                         _short_hold_cached = 0.0  # not yet latched
                 # Exp1 (architectural, indep, this session): LONG-SIDE PROFIT-LATCH (mirror
                 # of the short-side latch above, see LONG_HOLD_TP_ATTEN header). Cache is
-                # -1.0 (eligible, not yet latched), 0.0 (not eligible), or 1.0 (latched).
-                # Before reading: if eligible-and-not-latched AND pos_pnl has confirmed
-                # positive (a winning long), LATCH the cache to 1.0 (one-time 0->1 flip).
-                # This gates the time-pressure attenuation on PROFIT via a one-time latch
-                # (minimal wobble: the latch bar may shift +-1 under AR(1) but the post-
-                # latch attenuation is a CONSTANT factor -> stability preserved, the SAME
-                # lesson as the short-side keep 249d8241). Latch threshold 0.5*|stop| (the
-                # same threshold the short-side settled on). Byte-identical for shorts
-                # (direction gate 0), non-eligible longs (cache 0), and un-latched eligible
-                # longs not yet in profit (cache stays -1.0 -> attenuation 0 -> no effect).
+                # -1.0 (pending, eligible-not-yet-evaluated), 0.0 (not eligible / shorts),
+                # or 1.0 (latched). BRANCH STEP 2: evaluate the trend/low-vol gate AT THE
+                # LATCH MOMENT (not at entry -- see the entry-block comment for why entry-
+                # time gating is inverted for longs). When a pending long FIRST confirms
+                # positive (pos_pnl > 0.5*|stop|) AND the per-bar trend-gate is high, LATCH
+                # to 1.0 (one-time flip). The trend-gate is the sideways-safe + bull-safe
+                # combination:
+                #   (1) trend-aligned-at-multi-day: tanh(ret_vlong*pos_dir/0.01) ~1 when the
+                #       uptrend has resumed post-pullback (rally longs by the latch bar);
+                #       ~0 for ct longs (crash bounce longs, mixed down-year longs).
+                #   (2) rsi_trend_str trend-gate: tanh(rsi_trend_str/0.20) ~1 in TRENDS
+                #       (rally grind, bull), ~0 in CHOP (sideways) -- the validated sideways
+                #       separator used by _be_trend_gate/_w_time/_fade_trend_gate. Excludes
+                #       sideways 2023 recovery-drift longs (low rsi_trend_str) which leaked
+                #       the entry-time gate in the opener.
+                #   (3) low-vol grind gate: max(0, min(1, (1.3-vol_ratio)/0.5)) ~1 in the
+                #       calm grind (rally), ~0 in sharp high-vol (bull) -- the validated
+                #       _grind_gate bull/rally separator. Excludes bull's reversal-prone
+                #       winners (held longer -> bigger losses, the opener's bull regression).
+                # Product of 3 gates; latch only when product > 0.50 (all three clearly
+                # pass). One-time evaluation at the latch bar -> deterministic under AR(1)
+                # (latch bar may shift +-1 but post-latch attenuation is a CONSTANT factor
+                # -> stability preserved, the SAME lesson as the short-side keep 249d8241).
+                # A pending long that never has all 3 gates high while in profit stays
+                # pending -> never latches -> attenuation 0 -> byte-identical. Byte-
+                # identical for shorts (direction gate 0) and non-long positions.
                 _long_hold_cached = self._long_hold_cache.get(symbol, 0.0) if current_pos > 0 else 0.0
-                if _long_hold_cached < -0.5:  # eligible, not latched (sentinel -1.0)
+                if _long_hold_cached < -0.5:  # pending, not latched (sentinel -1.0)
                     if pos_pnl > 0.5 * abs(STOP_LOSS_PCT):  # confirmed winning long (profit latch)
-                        _long_hold_cached = 1.0
-                        self._long_hold_cache[symbol] = 1.0  # LATCH (stays 1.0)
+                        _long_ta_gate = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.01))  # trend-aligned-at-multi-day
+                        _long_rt_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))  # trend (excludes sideways chop)
+                        _long_vol_gate_l = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))  # low-vol grind (excludes bull high-vol)
+                        if _long_ta_gate * _long_rt_gate * _long_vol_gate_l > 0.50:
+                            _long_hold_cached = 1.0
+                            self._long_hold_cache[symbol] = 1.0  # LATCH (stays 1.0)
+                        else:
+                            _long_hold_cached = 0.0  # profit-confirmed but gate fails -> not latched (re-evaluated next bar while still pending)
                     else:
-                        _long_hold_cached = 0.0  # not yet latched
+                        _long_hold_cached = 0.0  # not yet profit-confirmed
                 # Branch step15: TIME-PRESSURE OUTPUT ATTENUATION (replaces the _max_hold
                 # extension that hit the stab cliff at mag 3.5). Steps 2-14 extended
                 # _max_hold (shifted the exit bar LATER) -> at mag>=3.5 the later exit
