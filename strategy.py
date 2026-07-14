@@ -4044,7 +4044,7 @@ class Strategy:
                 # fires ONLY in trending regimes (high rsi_trend_str = bull/crash/rally
                 # trending), ~0 in chop (rsi_trend_str~0 = sideways oscillating) -> sideways
                 # byte-identical. This is the multi-session-validated sideways/chop separator.
-                _streak_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                _streak_trend_gate = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.30)))  # branch step4: onset 0.20->0.30 to spare more of sideways' trending stretches (step3 sideways leaked -0.0011 when rsi_trend_str spiked in sideways directional legs)
                 # branch step3: streak-shift amount (how far the onset lowers). Halved from
                 # step2's 0.60 to 0.30 so the onset floor is 1.30 (not 1.0) -- step2 rally
                 # regressed -0.049 because harvesting rally winning longs at shallow peaks
@@ -4139,7 +4139,7 @@ class Strategy:
                     _tp_scale_streak = 0.0
                     if _streak_shift > 0.0:
                         _streak_band = max(0.0, min(1.0, np.tanh((_tp_ratio - _streak_harvest_onset) / 0.3))) - max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.3)))
-                        _tp_scale_streak = 0.12 * _streak_band * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                        _tp_scale_streak = 0.18 * _streak_band * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)  # branch step4: 0.12->0.18 (probe more streak-break)
                     _tp_scale = _tp_scale_base + _tp_scale_streak
                     target = target * (1.0 - _tp_scale)
 
