@@ -3081,6 +3081,38 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # branch step8: STREAK-gated STOP TIGHTENING for sustained losers. The
+                # de-risk floor/ceiling (steps 3-7) only reach ramp-path losers and
+                # SATURATED at rally Sharpe +0.004 (composite +0.0006 sub-noise); the
+                # binary path (step5) was byte-identical (worst losers hit the FULL
+                # stop -> _sl_pressure saturates -> exit at the stop regardless of the
+                # exit-pressure threshold). The streak-extend losers (the DD drivers
+                # AND the Sharpe drag) exit via the STOP-LOSS path. The direct lever on
+                # those is the STOP itself: tighten _stop_abs for SUSTAINED losers
+                # during a portfolio loss streak in a strong-trend regime -> the stop
+                # triggers at a SMALLER adverse move -> smaller realized loss on the
+                # worst losers -> higher Sharpe + lower DD. Winner-safe: _sl_pressure
+                # is 0 for winners (_loss<0 clamps to 0), so a tighter stop NEVER
+                # affects winning positions (crash's winning post-streak shorts have
+                # pos_pnl>0 -> _loss<0 -> unaffected -> NOT crash-coupled, unlike the
+                # walled entry-block path). Fresh-dip-safe: gated on _sustained_loss
+                # (fraction of last 4 pos_pnl bars negative, from _pnl_path computed
+                # above at line ~2630) so a fresh 1-2 bar dip (likely to recover) is
+                # spared; only a SUSTAINED loser (extending, not reverting) gets the
+                # tighter stop. Sideways-safe: gated on the same product separator
+                # (rsi_trend_str x |ret_vlong| deadzone) that made step3/6 byte-
+                # identical in sideways. Max tightening 12% (stop * 0.88). Smooth,
+                # direction-agnostic; no regime label. NOTE: this changes _stop_abs
+                # which ALSO feeds _sl_pressure -> _exit_pressure -> the de-risk/binary
+                # paths, so the tighter stop raises _sl_pressure on those bars too
+                # (cuts the loser sooner via ALL exit paths, not just the hard stop).
+                if pos_pnl < 0.0:
+                    _pp_st = self._pnl_path.get(symbol, [])
+                    _sustained_loss_st = sum(1.0 for _p in _pp_st[-4:] if _p < 0.0) / 4.0 if len(_pp_st) >= 4 else 0.0
+                    _streak_trend_g = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
+                    _streak_multiday_g = max(0.0, np.tanh((abs(ret_vlong) - 0.03) / 0.02))
+                    _streak_stop_tighten = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _sustained_loss_st * _streak_trend_g * _streak_multiday_g
+                    _stop_abs = _stop_abs * (1.0 - 0.12 * _streak_stop_tighten)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
