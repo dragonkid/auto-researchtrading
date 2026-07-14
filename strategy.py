@@ -302,6 +302,18 @@ COOLDOWN_TREND_DECAY = 0.06
 MAE_VEL_WINDOW = 10
 MAE_VEL_ONSET = 0.0
 MAE_VEL_MAX_FLOOR = 0.60
+# Exp1 (architectural, indep): STOP-PATH binary full-exit parameters for sustained
+# accelerating trend-aligned losers. The prior-session-sanctioned UNTESTED "stop-PATH
+# (not ramp)" axis. STOP_PATH_VEL_ONSET is a HIGH velocity threshold (vs the keep's
+# onset 0.0 broad population) so the binary exit fires ONLY on the most extreme
+# sustained plunges (>=6 of last 10 bars making fresh MAE lows) -- the unambiguous
+# waterfall population where a hard stop is stability-safe (velocity near-constant
+# under AR(1) -> exit bar does not wobble). STOP_PATH_PRESSURE is the low
+# exit_pressure crossing at which the binary full-exit triggers (well below the
+# existing 1.0 full-exit, so the stop-PATH closes the position BEFORE the ATR stop
+# saturates -> realized loss < stop distance -> smaller per-trade DD -> lower bull DD).
+STOP_PATH_VEL_ONSET = 0.60    # high velocity: >=6 of 10 bars making fresh MAE lows
+STOP_PATH_PRESSURE = 0.55     # low exit_pressure crossing (vs 1.0 full-exit) for the stop-path
 
 
 def ema(values, span):
@@ -4138,6 +4150,52 @@ class Strategy:
                 # Removing it: fresh entries (bars 0-1) become protected from soft-
                 # pressure noise (only SL or opp_gate can close them); bars>=2 keep
                 # identical exit behavior via de-risk ramp (de_risk=0 at pressure=thresh).
+                # Exp1 (architectural, indep): STOP-PATH binary full-exit for sustained
+                # accelerating trend-aligned losers. The prior-session-sanctioned UNTESTED
+                # axis (prior session-summary: "bull DD structurally unreachable from the
+                # exit side [stop catches losers first]... a stop-PATH (not ramp) mechanism
+                # would be needed"). All existing loss-side exits are RAMPS: the de-risk ramp
+                # (continuous _de_risk toward 0 as exit_pressure rises), the loss-latch keep
+                # (gradual 4-bar cap ramp), the MAE-velocity keep (gradual _de_floor lowering).
+                # A ramp cannot reduce bull DD because the ATR stop SATURATES (~3.5pct) and
+                # dominates the exit before the ramp reaches 0 -> the loser is held at ~full
+                # size until the stop fires at its fixed level -> the DD is the stop distance
+                # x size, and the ramp only trims the last fraction. A STOP-PATH sets
+                # target=0 DIRECTLY (binary full-exit) at a LOW exit_pressure for the validated
+                # accelerating-loser population, BYPASSING the stop-distance hold: the
+                # position is CLOSED before the stop fires -> realized loss < stop distance ->
+                # smaller per-trade DD contribution -> lower bull DD (dd_gate ~0.050 at
+                # 10.79pct DD is the 20x bull-score crush; DD relief is the dominant lever).
+                #
+                # POPULATION: the SAME validated population as the MAE-velocity keep (losing
+                # + trend-aligned-at-multi-day + high MAE velocity), which is crash-safe by
+                # construction: crash's trend-aligned shorts are WINNERS (pos_pnl>0 ->
+                # _pnl_scale>0 -> loss-gate off -> byte-identical), so crash is NOT touched.
+                # The keep's velocity onset is 0.0 (broad population -> gradual ramp). The
+                # stop-PATH uses a HIGH velocity onset (STOP_PATH_VEL_ONSET 0.60) so the
+                # binary exit fires ONLY on the most extreme sustained plunges (>=6 of last
+                # 10 bars making fresh MAE lows = a position in a clear, ongoing adverse
+                # waterfall) -- the population where a binary exit is UNAMBIGUOUS (the prior
+                # session's _exit_thresh binary wobble crashed mixed because it fired on the
+                # broad velocity population incl. rally's choppy pullbacks; the high-onset
+                # narrow population excludes the choppy/transient pullbacks that recover).
+                # The HIGH-velocity gate is the structural separator that makes the binary
+                # stop-PATH stability-safe where the broad-population _exit_thresh action was
+                # not: a sustained 6+ fresh-low plunge is a monotone regime (velocity stays
+                # high across AR(1) perturbation -> the gate is near-constant -> the exit bar
+                # does NOT wobble), whereas a choppy pullback's velocity wobbles bar-to-bar
+                # (the wobble source). Sustained-waterfall positions are the natural domain
+                # of a hard stop; choppy pullbacks are the natural domain of the gradual ramp.
+                # Reduction-only (target=0, never extends hold). Direction-agnostic (no
+                # regime label). Byte-identical for winners (loss-gate off), counter-trend
+                # at multi-day (align gate 0), low-velocity holds (gate 0), fresh entries
+                # (bars_held<2 exempted by the elif below). NEW exit path (3rd binary exit
+                # alongside SL-saturation and opp-gate), distinct from all ramp mechanisms.
+                if (_pnl_scale < 0.0 and current_pos != 0 and target != 0
+                        and _mae_v_align > 0.0 and _mae_vel_gate > 0.0
+                        and _exit_pressure >= STOP_PATH_PRESSURE
+                        and _mae_vel >= STOP_PATH_VEL_ONSET):
+                    target = 0.0
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
