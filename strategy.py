@@ -323,7 +323,7 @@ MAE_VEL_MAX_FLOOR = 0.60
 PORT_ADV_CORR_MIN_SYMS = 2
 PORT_ADV_CORR_ONSET = 0.20
 PORT_ADV_CORR_SCALE = 0.20
-PORT_ADV_CORR_MAX_FLOOR = 0.30
+PORT_ADV_CORR_MAX_FLOOR = 0.50
 
 
 def ema(values, span):
@@ -4370,8 +4370,19 @@ class Strategy:
                     # magnitude -> larger rally gain without magnitude-amplification wobble.
                     # Crash's trend-aligned bounce-loss shorts still get only the small
                     # 0.30 magnitude trim -> negligible recovery interference -> crash-safe.
+                    # branch step6: re-add the per-symbol velocity CONJUNCTION (step3's
+                    # crash-coupling separator) AND raise magnitude moderately (0.30->0.50,
+                    # between the safe 0.30 and the catastrophic 0.90 of step4). Step3
+                    # (conjunction + mag 0.30) was crash-safe + stab-safe but small rally
+                    # (+0.0039). Step4 (conjunction + mag 0.90) crashed: the velocity gate
+                    # is a soft tanh so partial-velocity crash bounce-loss shorts leaked
+                    # high-magnitude trims + mixed stab wobble. The 0.50 middle tests
+                    # whether a MODERATE magnitude with the conjunction can exceed +0.003:
+                    # the conjunction excludes most crash positions (only sustained-plunge
+                    # trend-aligned losers fire), and 0.50 is gentle enough to avoid the
+                    # mixed exit-timing wobble that crashed stab at 0.90.
                     if _pnl_scale < 0.0:
-                        _de_floor -= PORT_ADV_CORR_MAX_FLOOR * _mae_v_align * _port_adv_corr_gate
+                        _de_floor -= PORT_ADV_CORR_MAX_FLOOR * _mae_v_align * _mae_vel_gate * _port_adv_corr_gate
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
