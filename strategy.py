@@ -3681,37 +3681,26 @@ class Strategy:
                 # (full at vol_ratio<=0.8, fading to 0 by vol_ratio>=1.1) -> bull (vol_ratio
                 # >1.1) fully excluded, rally/mixed low-vol grind kept. Continuous tanh-style
                 # ramp, no boundary.
-                # BRANCH STEP 5: MTM-PATH-EFFICIENCY gate (the structural sideways/rally
-                # separator that step4's trend-scale gates could NOT provide). step4's
-                # mag-deadzone was INERT for sideways because sideways 2023 IS a recovery
-                # uptrend at 96-bar (|ret_vlong|~0.015-0.02 exceeds the deadzone) -- the
-                # sideways/rally difference is at the SHORTER timescale (sideways choppy
-                # hourly, rally smooth grind), invisible to 96-bar trend gates. The
-                # per-position MTM-PATH-EFFICIENCY (_mtm_chop = 1 - |net pos_pnl| / sum|d pos_pnl|
-                # over the 12-bar pos_pnl path, already used by the emission throttle) captures
-                # this: a SMOOTH climber (rally/mixed trend long, steady PnL climb -> high
-                # efficiency -> low chop) vs a CHOPPY whipsaw (sideways long, oscillates around
-                # BE -> low efficiency -> high chop). Gate the attenuation on LOW chop (smooth
-                # path only): full attenuation at chop=0 (smooth climber), fading to 0 by
-                # chop=0.30 (choppy whipsaw). This is a per-position STRUCTURAL property (path
-                # shape), NOT a regime label -- generalizes to any smooth-climber vs
-                # whipsaw. Sideways longs (choppy path) -> gate 0 -> byte-identical; rally/
-                # mixed trend longs (smooth path) -> gate ~1 -> attenuation kept. Computed
-                # from the already-maintained _pnl_path (updated line ~2716, before this
-                # point). The mag/vol gates from step4 are RETAINED underneath (they spare
-                # bull + shallow drift as belt-and-suspenders).
-                _long_tp_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))  # deep-uptrend deadzone (excludes sideways shallow drift)
+                # BRANCH STEP 6: RAISE the ret_vlong magnitude deadzone 0.015 -> 0.025 AND
+                # DROP the step5 MTM-chop gate. step5's chop gate recovered sideways BUT
+                # killed mixed's +0.069 gain (mixed's beneficial rally-phase longs have
+                # CHOPPY paths -- they oscillate in the down year -- so the smooth-path-only
+                # gate excluded them) AND dropped min_stab below the 0.80 knee (the per-bar
+                # chop/eff flips as the path evolves -> wobble -> stability penalty). The
+                # sideways/mixed separator is NOT path-shape (both are choppy at hourly);
+                # it is the 96-bar TREND MAGNITUDE: sideways 2023 is a SHALLOW recovery
+                # (|ret_vlong|~0.015-0.02, just above step4's 0.015 deadzone -> leaked),
+                # while mixed's beneficial rally-phase longs are in STRONG uptrend legs
+                # (|ret_vlong|>0.025). Raise the deadzone to 0.025 -> sideways shallow
+                # recovery (|ret_vlong|<0.025) now FAILS -> byte-identical; mixed rally-phase
+                # (|ret_vlong|>0.025) PASSES -> mixed gain kept. The chop gate is dropped
+                # (it was the mixed-killer + the stab-drop source). The vol-gate (step4)
+                # stays for bull. Hypothesis: this recovers sideways (mag deadzone excludes
+                # shallow recovery) AND keeps mixed (deep rally-phase legs pass) AND
+                # restores stab (no per-bar chop wobble).
+                _long_tp_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.025) / 0.01)))  # step6: RAISED deadzone 0.015->0.025 (excludes sideways shallow recovery ~0.015-0.02, keeps mixed deep rally-phase >0.025)
                 _long_tp_vol_gate = max(0.0, min(1.0, (1.1 - vol_ratio) / 0.3))  # ~1 low-vol grind (rally/mixed), ~0 by vol_ratio>=1.1 (bull)
-                _long_tp_chop = 0.0
-                _pp_tp = self._pnl_path.get(symbol, [])
-                if len(_pp_tp) >= 4:
-                    _ppa_tp = np.array(_pp_tp)
-                    _net_tp = abs(_ppa_tp[-1] - _ppa_tp[0])
-                    _tot_tp = float(np.sum(np.abs(np.diff(_ppa_tp))))
-                    _mtm_eff_tp = _net_tp / max(_tot_tp, 1e-10)
-                    _long_tp_chop = max(0.0, min(1.0, 1.0 - _mtm_eff_tp))
-                _long_tp_chop_gate = max(0.0, min(1.0, (0.30 - _long_tp_chop) / 0.20))  # ~1 smooth path (chop<=0.10), ~0 choppy (chop>=0.30)
-                _time_pressure = _time_pressure * (1.0 - LONG_HOLD_TP_ATTEN * _ta_winner_gate * _long_tp_mag_gate * _long_tp_vol_gate * _long_tp_chop_gate)
+                _time_pressure = _time_pressure * (1.0 - LONG_HOLD_TP_ATTEN * _ta_winner_gate * _long_tp_mag_gate * _long_tp_vol_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
