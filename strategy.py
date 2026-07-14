@@ -1257,54 +1257,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp3 (architectural, indep): 9th voter -- ATR-NORMALIZED 6-bar close momentum.
-            # Prior-session-sanctioned untested axis: "a genuinely new orthogonal DATA-SOURCE
-            # voter added WITHOUT touching existing voter weights." The 8 voters use raw
-            # close-derived returns (ret_short, EMA_cross, RSI, MACD, slope, EMA_slope), a
-            # volume-weighted level deviation (VWAP_dev), and a directionless-then-signed
-            # range/close efficiency (rc). NONE normalizes momentum by the symbol's OWN
-            # volatility: a +2% 6-bar move is a large signal in low-vol BTC but a small
-            # signal in high-vol SOL. ATR-normalized momentum (6-bar close return / ATR_pct)
-            # is a vol-CONSISTENT conviction measure -- the same signal fires at the same
-            # real-move magnitude across symbols/regimes regardless of vol regime. Distinct
-            # from ret_short (raw close vs median, NOT vol-normalized), from _lr_slope (log
-            # regression slope, NOT return/ATR), and from rc (efficiency ratio, NOT a level
-            # advance). Signed by the 6-bar close direction (positive return = bull). A 6-bar
-            # return equal to ~1 ATR (a full ATR of directional advance over 6 bars) is a
-            # strong conviction move -> conf rises; near-zero return -> conf 0.5 neutral.
-            # Sharpness 1.0 (matches the 8th rc voter). Added with a SMALL fixed weight (0.55,
-            # below the 0.7 base floor of the original 6 voters, matching the 8th voter) --
-            # appended WITHOUT modifying any existing _base_weights (the _wt_shift only
-            # shifts indices 1-3, leaving this 9th weight untouched). New orthogonal-ish
-            # data-source voter on the vol-normalized-momentum axis.
-            _am_n = 6
-            # branch step2: SMOOTH the momentum input via smoothed_closes (already AR(1)-
-            # attenuated) for noise-robustness. The opener used raw closes -> the 6-bar
-            # return flipped sign under AR(1) close noise on small-return bars -> vote
-            # flips -> sideways stability crashed to 0.0. smoothed_closes damps the
-            # single-bar perturbation before the 6-bar return is computed -> the sign is
-            # stable on small-return bars. AND widen sharpness 1.0->1.5 (softer tanh ->
-            # small |ATR-momentum| stays closer to conf 0.5 neutral, reducing vote-flip
-            # impact further). Keeps the directional signal on strong-momentum bars.
-            # branch step4: REVERT window to 6-bar (step3's 10-bar killed the bull
-            # signal -- byte-id to baseline) + add a small-momentum DEADZONE to kill
-            # the pullback-dip vote-flip WITHOUT flattening the strong-bar signal.
-            # step2 (6-bar, sharpness 1.5) had the real bull Sh +0.114 gain but bull
-            # stab below 0.80 knee from 3-5 bar pullback-dip momentum sign-flips. The
-            # flips come from SMALL |ATR-momentum| bars (pullback dips move the 6-bar
-            # return by a tiny fraction of an ATR -> near-zero momentum -> sign
-            # wobbles under noise). A deadzone maps |ATR-momentum| < 0.25 ATR to EXACT
-            # neutral (sig 0 -> conf 0.5, no vote): the small-momentum pullback-dip
-            # bars emit NO conviction either way -> no flip source -> sign stable ->
-            # bull stab recovers, while the STRONG bars (|ATR-momentum| > 0.25, the
-            # real trend signal) pass through the deadzone untouched -> bull signal
-            # preserved. Orthogonal to step3's window lever: gate the small-magnitude
-            # bars to neutral, do NOT flatten via window length.
-            _am_ret = (smoothed_closes[-1] - smoothed_closes[-(_am_n + 1)]) / max(smoothed_closes[-(_am_n + 1)], 1e-10)
-            _atr_mom = _am_ret / max(_atr_pct_e, 1e-10)  # 6-bar return in ATR units
-            _am_deadzone = 0.25
-            _atr_mom_gated = _atr_mom if abs(_atr_mom) >= _am_deadzone else 0.0
-            _atr_mom_sig = _atr_mom_gated / 1.5  # step2 sharpness 1.5 (saturates ~1.5 ATR)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -1314,7 +1266,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _atr_mom_sig,  # 9th voter: ATR-normalized 6-bar momentum (smoothed, deadzone-gated, sharpness 1.5)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -1341,18 +1292,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            # branch step2: chop-dampener on the 9th voter weight (mirrors the VWAP
-            # chop-dampener). The opener's fixed 0.55 weight fired equally in chop
-            # (sideways) -> the noise-sensitive momentum voter flipped votes there ->
-            # sideways stability crashed to 0.0. Scale the 9th weight by trend-strength
-            # so it is SMALL in chop (sideways _trend_strength_w~0 -> weight 0.40, small
-            # voter impact -> fewer/no vote-flips -> sideways byte-identical-ish) and
-            # FULL in trends (bull _trend_strength_w~1 -> weight 0.90, keeps the bull
-            # Sharpe +0.239 gain from the opener). Smooth (continuous via tanh, no
-            # boundary); direction-agnostic general principle (no regime label): the
-            # momentum voter is meaningful in directional regimes, muted in chop.
-            _atr_mom_wt = 0.40 + 0.50 * _trend_strength_w  # in [0.40, ~0.90]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, _atr_mom_wt)  # 8th: range/close efficiency (fixed), 9th: ATR-normalized momentum (trend-strength-scaled, chop-dampened)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -1374,13 +1314,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 9)
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
