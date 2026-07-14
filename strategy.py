@@ -394,32 +394,6 @@ PORT_DOWN_PERSIST_MAX_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.8
 PORT_WEAK_PERSIST_MAX_ONSET = 0.85   # high onset (single symbol fires more often)
 PORT_WEAK_PERSIST_MAX_SCALE = 0.10
 PORT_WEAK_PERSIST_MAX_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
-# Exp1 (architectural, indep): PORTFOLIO CROSS-SYMBOL SYNCHRONIZED SHORT-TERM (3-bar)
-# MOMENTUM ct-entry SIZE shrink. NEW cross-symbol x cross-timescale data dep: every
-# existing cross-symbol signal reads either the 96-bar ret_vlong (down_persist /
-# weak_persist / deep_bear magnitude, the TREND axis -- saturated), the ~20-bar
-# consensus SIGN (magnitude-agnostic direction), or vol_ratio (vol axis). NONE reads a
-# SYNCHRONIZED SHORT-TERM directional momentum across symbols -- the cross-symbol MIN
-# of the 3-bar close return, requiring ALL symbols to move together over 3 bars. This
-# is a fast preemptive broad-momentum signal distinct in BOTH timescale (3-bar vs 96-
-# bar) AND aggregation (min = all-must-agree vs the existing avg/max). A COUNTER-TREND
-# entry taken against a confirmed synchronized broad 3-bar move is fighting a broad
-# short-term momentum (lower quality: the whole market just confirmed against it) ->
-# shrink its first-bar size. Targets the ct entries that are the clustered losers in
-# the trending regimes (rally pullback shorts re-entering during broad up-surges,
-# crash dead-cat-bounce longs during broad down-legs). Shrink-only, max 0.25, gated
-# on the cross-symbol min |3-bar return| exceeding SYNC_MOM_ONSET (synchronized
-# magnitude) AND the min SIGN matching the counter-trend direction. Byte-identical
-# when fewer than 2 symbols present or the broad 3-bar move is unsynchronized (one
-# symbol up, another down -> min return near 0 / sign disagreement -> shrink 0).
-# Continuous tanh (no boundary); direction-agnostic general principle (no regime
-# label): a counter-trend entry against a synchronized broad short-term move is
-# lower quality. Composes multiplicatively with the existing per-symbol ct shrinks
-# (which read 96-bar ret_vlong, an independent timescale).
-SYNC_MOM_WINDOW = 3            # short-term return window (bars)
-SYNC_MOM_ONSET = 0.015         # min |3-bar return| across symbols at which shrink engages
-SYNC_MOM_SCALE = 0.015         # ramp width (0.015 -> 0.030 saturates)
-SYNC_MOM_CT_MAX_SHRINK = 0.25  # max ct first-bar shrink at full synchronized momentum
 # Exp2 (architectural, indep): PORTFOLIO-LEVEL WEAK-TREND ADMISSION TIGHTENER (avg).
 # Extends the validated portfolio-cap pattern (4 keeps on SIZE) to ADMISSION: when the
 # cross-symbol AVERAGE _weak_persist is high (all symbols choppy together = sideways),
@@ -870,42 +844,6 @@ class Strategy:
         else:
             _consensus_strength = 0.0
             _consensus_dir = 0.0
-
-        # Exp1 (architectural, indep): PORTFOLIO CROSS-SYMBOL SYNCHRONIZED SHORT-TERM
-        # (3-bar) MOMENTUM. NEW cross-symbol x cross-timescale signal: the cross-symbol
-        # MIN of the 3-bar close return (the WEAKEST symbol's short-term return). When
-        # the min is a large-magnitude value of ONE sign, ALL symbols moved together over
-        # 3 bars (synchronized broad short-term momentum); when symbols disagree, the min
-        # is small or opposite-sign to the others (unsynchronized). Distinct from the
-        # 20-bar consensus SIGN (magnitude-agnostic; this uses the 3-bar MAGNITUDE of the
-        # worst symbol) and from the 96-bar ret_vlong (different timescale). The min
-        # aggregation requires ALL symbols to agree in sign for a large same-sign value
-        # (one symbol going up while another goes down keeps the min near 0 or opposite).
-        # Direction _sync_mom_dir = +1 if all up (min 3-bar return > 0), -1 if all down
-        # (min < 0), 0 if mixed (the min disagrees in sign with a broad up move = at
-        # least one symbol fell while others rose -> unsynchronized). Strength = tanh on
-        # |min| / SYNC_MOM_ONSET. Computed once per bar from close (noise-perturbed ->
-        # legitimately noise-sensitive; the 3-bar window is short so a single-bar AR(1)
-        # perturbation moves the min by ~5bps = below the 0.015 onset -> the shrink is
-        # near-constant where it fires, noise-free per the validated safe-family lesson,
-        # and unsynchronized bars get shrink 0 -> byte-identical there).
-        _sync_mom_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > SYNC_MOM_WINDOW + 1]
-        _sync_mom_min_ret = 0.0
-        _sync_mom_dir = 0.0
-        _sync_mom_strength = 0.0
-        if len(_sync_mom_syms) >= 2:
-            _sync_rets = []
-            for _msym in _sync_mom_syms:
-                _mc = bar_data[_msym].history["close"].values
-                _sync_rets.append((_mc[-1] - _mc[-(SYNC_MOM_WINDOW + 1)]) / max(_mc[-(SYNC_MOM_WINDOW + 1)], 1e-10))
-            _sync_mom_min_ret = min(_sync_rets)
-            # Synchronized direction: the MIN determines the sign. If the min is positive,
-            # ALL symbols rose over 3 bars (broad up-surge); if negative, at least one fell
-            # (and since it's the min, it fell the most) -> broad down-leg or mixed. Use
-            # the min's sign for the direction (the worst symbol's direction), and gate the
-            # strength on |min| so mixed/unsynchronized (small |min|) -> ~0.
-            _sync_mom_dir = 1.0 if _sync_mom_min_ret > 0.0 else (-1.0 if _sync_mom_min_ret < 0.0 else 0.0)
-            _sync_mom_strength = max(0.0, min(1.0, np.tanh((abs(_sync_mom_min_ret) - SYNC_MOM_ONSET) / SYNC_MOM_SCALE)))
 
         # Exp1 (architectural, indep): PORTFOLIO CROSS-SYMBOL DEEP-BEAR down_persist.
         # Compute each symbol's _down_persist (fraction of last PERSIST_WINDOW bars where
@@ -1777,33 +1715,6 @@ class Strategy:
                 _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn, ~0 bursting
                 _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
                 _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend
-                # Exp1 (architectural, indep): SYNCHRONIZED SHORT-TERM MOMENTUM ct-entry
-                # size shrink. A counter-trend entry taken against a confirmed synchronized
-                # broad 3-bar move (all symbols moved together) is fighting a broad short-
-                # term momentum -> lower quality -> shrink first-bar size. Uses the
-                # cross-symbol _sync_mom_dir/_sync_mom_strength computed at the portfolio
-                # block. The shrink fires ONLY when the synchronized short-term momentum
-                # OPPOSES the counter-trend entry direction:
-                #  - bull ct entry (long in multi-day downtrend, ret_vlong<0): the downtrend
-                #    is a bounce-long (crash dead-cat bounce). A synchronized DOWN 3-bar move
-                #    (broad market falling together) means the bounce long is being entered
-                #    into a fresh synchronized down-leg -> worse -> shrink.
-                #  - bear ct entry (short in multi-day uptrend, ret_vlong>0): the pullback
-                #    short is fighting the uptrend. A synchronized UP 3-bar move (broad
-                #    market surging together) means the short is fighting a fresh broad up-
-                #    surge -> worse -> shrink.
-                # Uses the SAME fast-saturating /0.01 ret_vlong ct indicator as _ct_vlong so
-                # the shrink is a near-constant magnitude on ct entries (noise-free), and
-                # _sync_mom_strength is itself deep-saturated (near-constant where it fires)
-                # -> the product is near-constant on the ct-against-synchronized bars ->
-                # stability preserved. Trend-aligned entries (ct indicator 0) byte-identical;
-                # unsynchronized bars (strength 0) byte-identical. Shrink-only (max 0.25).
-                # Composes multiplicatively with the per-symbol ct shrinks above (independent
-                # timescale: this is 3-bar cross-symbol, those are 96-bar per-symbol).
-                _bull_ctmd = max(0.0, np.tanh(-ret_vlong / 0.01))   # bull ct in multi-day downtrend
-                _bear_ctmd = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend
-                _sync_mom_ct_shrink_bull = 1.0 - SYNC_MOM_CT_MAX_SHRINK * _bull_ctmd * (_sync_mom_strength * max(0.0, -_sync_mom_dir))
-                _sync_mom_ct_shrink_bear = 1.0 - SYNC_MOM_CT_MAX_SHRINK * _bear_ctmd * (_sync_mom_strength * max(0.0, _sync_mom_dir))
                 # Exp3 (architectural): COUNTER-TREND-specific loss-streak size shrink.
                 # Distinct from Exp1's blanket escalation (which hurt bull by shrinking
                 # trend-aligned post-streak entries): this shrinks ONLY counter-trend
@@ -2608,7 +2519,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _sync_mom_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2627,7 +2538,7 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _sync_mom_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
