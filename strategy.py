@@ -4083,7 +4083,20 @@ class Strategy:
                     # _ts_supp is already suppressing (genuine multi-day trend-aligned
                     # winners). Continuous tanh on leg age above onset (no boundary).
                     _leg_harvest_relax = 1.0 - LEG_DUR_HARVEST_MAX_RELAX * max(0.0, np.tanh((_leg_dur - LEG_DUR_HARVEST_ONSET) / 14.0))
-                    _ts_supp = _ts_supp * _leg_harvest_relax
+                    # branch step2: LONG-ONLY gate. The opener (ungated) cratered crash
+                    # -0.141: crash's trend-aligned SHORTS on extended down-legs got
+                    # harvested at leg-end, but crash downtrends PERSIST past leg-end (long
+                    # continuous down-legs are trend CONTINUATION, not exhaustion) -> early
+                    # harvest killed crash's winning shorts. The validated crash-safety
+                    # separator is position DIRECTION (the _ta_winner_gate _long_only_gate
+                    # lesson): LONGS riding an exhausted up-leg (bull/rally trend longs) are
+                    # the canonical exhaustion case (up-legs end in pullbacks = the DD source);
+                    # SHORTS in a downtrend face asymmetric continuation risk (downtrends are
+                    # choppier, bounces sharper, down-legs persist). Gate the leg-dur
+                    # harvest-weaken to LONG positions only -> crash shorts byte-identical
+                    # (gate 0). Sideways byte-identical (already via ret_vlong*pos_dir~0).
+                    _leg_long_gate = 1.0 if current_pos > 0 else 0.0
+                    _ts_supp = _ts_supp * (1.0 - (1.0 - _leg_harvest_relax) * _leg_long_gate)
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
                     # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
