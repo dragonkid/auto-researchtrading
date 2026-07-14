@@ -5076,7 +5076,13 @@ class Strategy:
                 _pd_dd_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - (PORT_DD_TARGET_CAP_ONSET)) / (PORT_DD_TARGET_CAP_SCALE * LEVERAGE_K))))
                 _pd_cap_factor = 1.0 - PORT_DD_TARGET_CAP * _pd_long_only * _pd_align * _pd_dd_gate
                 _pd_ceiling = (size if current_pos > 0 else -size) * _pd_cap_factor
-                if (current_pos > 0 and target > _pd_ceiling) or (current_pos < 0 and target < _pd_ceiling):
+                # Only trim when the DD cap is ACTIVE (dd_gate>0). When dd_gate=0 the
+                # ceiling equals `size` (cap_factor 1.0) but `size` can be below an
+                # established position (entered at higher equity) -> trimming to current
+                # `size` would be a size-recalibration, NOT a DD cap, and bites sideways/
+                # rally/mixed (whose dd_frac < onset) -> regression. Gate the trim on
+                # dd_gate>0 so non-deep-DD regimes are BYTE-IDENTICAL (no ceiling applied).
+                if _pd_dd_gate > 0.0 and ((current_pos > 0 and target > _pd_ceiling) or (current_pos < 0 and target < _pd_ceiling)):
                     target = _pd_ceiling
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
