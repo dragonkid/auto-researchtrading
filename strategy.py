@@ -1589,20 +1589,7 @@ class Strategy:
             # already has multiple vol-conditioning channels (vol_ratio direct, calm_boost,
             # sideways_boost) — adding a near-constant volume multiplier added LOC without
             # orthogonal signal. Removing eliminates redundant near-constant size scaling.
-            # Exp5 (architectural, indep, this session): VOL-TARGETING CORE exponent
-            # trend-conditioning. The inverse-vol sizing exponent (fixed 0.85) controls
-            # how aggressively size scales with inverse vol. In a CONFIRMED TREND (high
-            # rsi_trend_str) the low realized_vol is a genuine trend signal, not noise --
-            # a steeper exponent (up to 0.95) amplifies size more in that calm-trend regime
-            # -> more trend return (bull/rally trend legs). In chop (rsi_trend_str ~ 0) the
-            # exponent stays at the baseline 0.85 (byte-identical for sideways). NEW data
-            # dep on the size core: the vol-targeting exponent reads the per-bar trend
-            # strength (a general trend/noise property, no regime label). Continuous tanh
-            # (well, linear ramp over [0,1]), no boundary; sideways byte-identical by
-            # construction (rsi_trend_str ~ 0 in chop). Touches the vol-targeting core
-            # exponent axis (distinct from Exp2/3 base-target changes, which crashed).
-            _vol_exp = 0.85 + 0.10 * rsi_trend_str
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** _vol_exp)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
             # Architectural simplification: removed _xa_boost (post-cap chop-only +8% boost).
             # Redundant with sideways_boost (max +50% in chop) and CROSS_ASSET_FIXED_BOOST
             # (already in combined_mult, max +15% in chop). Three chop-amplifying multipliers
