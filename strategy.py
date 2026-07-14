@@ -135,6 +135,7 @@ SHORT_HOLD_CACHED_EXT = 4.5  # branch step14: retry 4.5 (crash Sh crosses zero) 
 # weak-trend longs (magnitude deadzone), down-trend longs (persist gate), bull
 # (vol-gate), and non-latched/uneligible positions.
 LONG_HOLD_TP_ATTEN = 0.50  # mirror of SHORT_HOLD_TP_ATTEN; max time-pressure reduction for latched winning longs (vol-gated at use)
+LONG_HOLD_TP_ATTEN_HALF = 0.25  # branch step7: halved magnitude (test if smaller attenuation nets positive: shrinks both mixed gain and sideways regression, std scales down)
 # Exp1 (architectural, indep): LOSS-LATCH permanent target-size cap. The structural
 # MIRROR of the keep 249d8241's profit-latch (short-side hold-attenuation set once when
 # a short CONFIRMS winning), applied to the LOSS side and to the position's target SIZE.
@@ -3700,7 +3701,26 @@ class Strategy:
                 # restores stab (no per-bar chop wobble).
                 _long_tp_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.025) / 0.01)))  # step6: RAISED deadzone 0.015->0.025 (excludes sideways shallow recovery ~0.015-0.02, keeps mixed deep rally-phase >0.025)
                 _long_tp_vol_gate = max(0.0, min(1.0, (1.1 - vol_ratio) / 0.3))  # ~1 low-vol grind (rally/mixed), ~0 by vol_ratio>=1.1 (bull)
-                _time_pressure = _time_pressure * (1.0 - LONG_HOLD_TP_ATTEN * _ta_winner_gate * _long_tp_mag_gate * _long_tp_vol_gate)
+                # BRANCH STEP 7: REDUCE the attenuation magnitude and DROP the mag deadzone
+                # (step6's deeper 0.025 deadzone was byte-identical-inert for sideways --
+                # sideways 2023 recovery |ret_vlong| EXCEEDS 0.025 in the legs where the
+                # attenuation fires, so the deadzone cannot exclude it; and the deeper
+                # deadzone only shrank mixed's gain by excluding mixed's moderate rally
+                # legs). The sideways/mixed inseparability on the trend-magnitude axis is
+                # confirmed (same wall as path-shape in step5). Pivot: the step3 pure
+                # _ta_winner_gate x vol-gate(1.3) config gave mixed +0.069 but sideways -0.055
+                # and bull -0.013 (std blow-up capped composite at 0.093). Test whether a
+                # SMALLER magnitude finds a net-positive sweet spot: the attenuation is a
+                # TENSION (helps trend-following mixed, hurts mean-reverting sideways) so
+                # scaling it down shrinks BOTH. At a small enough magnitude the sideways
+                # regression may fall under the +0.003 keep floor's tolerance while mixed
+                # still gains enough to lift mean, AND std (which scales with the spread)
+                # shrinks -> composite = mean - 0.3*std may improve. Drop the mag deadzone
+                # (inert for the target), keep the 1.3 vol-gate (step3's, wider -- tighter
+                # 1.1 made bull WORSE not better in step4, so the wider gate is preferred),
+                # magnitude 0.50 -> 0.25.
+                _long_tp_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))  # step3's wider vol-gate (step4's 1.1 made bull worse)
+                _time_pressure = _time_pressure * (1.0 - LONG_HOLD_TP_ATTEN_HALF * _ta_winner_gate * _long_tp_vol_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
