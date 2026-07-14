@@ -3595,6 +3595,34 @@ class Strategy:
                 # 12b6bc63/Exp4/Exp5 byte-identical simplification precedent. (_scale_in_winning
                 # at line ~2440 is a SEPARATE variable, unaffected.)
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)  # heavier in loss
+                # Exp2 (architectural, indep): PORTFOLIO-DD-ADAPTIVE slope-against WEIGHT
+                # amplification for TREND-ALIGNED LOSERS. NEW cross-component data dep on the
+                # dominant loss-side exit weight: _w_slope currently depends on PnL sign only
+                # (heavier in loss). Add a term that raises it further for a trend-aligned
+                # LOSING position DURING a portfolio drawdown. Mechanism: bull_2021's DD
+                # (10.79pct, deep in the dd_gate exp-penalty zone where DD reduction is high-
+                # leverage, unlike the 5pct knee) comes from trend-aligned longs bought into
+                # corrections that keep falling -- the position is trend-aligned (ret_long>0,
+                # pos_dir +1) but LOSING, during a portfolio DD (the correction = the DD
+                # source). The slope-against pressure is the dominant loss-side exit term;
+                # amplifying its WEIGHT for exactly this population makes the MAX-fusion cut
+                # the trend-aligned DD loser FASTER -> smaller realized loss -> lower bull
+                # DD -> higher bull score (dd_gate ~0.05 at 10.79pct DD is the ~20x crush;
+                # DD relief is the dominant bull lever per the score decomposition).
+                # CRASH-SAFE: (a) LOSS-gated (max(0,-_pnl_scale) -> 0 for winning crash shorts,
+                # byte-identical); (b) trend-ALIGN-gated via tanh(ret_long*pos_dir/0.04) ->
+                # crash's LOSING positions are counter-trend crash-bounce longs
+                # (ret_long<0, pos_dir +1 -> product<0 -> gate 0 -> no amp, handled by ct
+                # paths). (c) DD-gated (1-_port_dd_atten -> 0 at portfolio peak, byte-identical).
+                # SIDEWAYS-SAFE: sideways is weak-trend (rsi_trend_str~0 -> |ret_long| small
+                # -> trend-align gate ~0 -> byte-identical); avoids the Exp1 sideways wall
+                # (trend gate excludes chop mean-reverters). Continuous tanh (no boundary),
+                # reduction-only (weight raised, never lowered; ramp ceiling preserved by the
+                # 0.20 magnitude cap). Direction-agnostic general principle (no regime label):
+                # a losing position that trades WITH the local trend while the portfolio is
+                # in drawdown is a correlated-regime-hit extending loser -> cut it faster.
+                _slope_dd_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                _w_slope = _w_slope + 0.20 * max(0.0, -_pnl_scale) * _slope_dd_align * (1.0 - _port_dd_atten)
                 # Architectural: vol-conditioned profit-side _w_pp.
                 # Low vol (sideways/rally): _w_pp simplified (no extra boost).
                 #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
