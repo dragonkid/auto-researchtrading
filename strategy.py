@@ -83,7 +83,7 @@ TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 # above onset (no boundary). Bounded 48-bar lookback over smoothed_closes (noise-robust
 # argmin/argmax position). No new per-bar state -> deterministic -> stability-safe.
 LEG_DUR_LOOKBACK = 48               # bars over which to locate the current leg's start
-LEG_DUR_HARVEST_ONSET = 18.0        # leg age (bars) at which exhaustion-harvest weaken begins
+LEG_DUR_HARVEST_ONSET = 26.0        # branch step3: raise 18->26 so only VERY exhausted legs fire
 LEG_DUR_HARVEST_MAX_RELAX = 0.40    # max fractional weakening of _ts_supp on an exhausted leg
 
 # RSI voter
@@ -4082,7 +4082,7 @@ class Strategy:
                     # the Exp1 leak paths (sideways drift, mixed ct longs). Fires only where
                     # _ts_supp is already suppressing (genuine multi-day trend-aligned
                     # winners). Continuous tanh on leg age above onset (no boundary).
-                    _leg_harvest_relax = 1.0 - LEG_DUR_HARVEST_MAX_RELAX * max(0.0, np.tanh((_leg_dur - LEG_DUR_HARVEST_ONSET) / 14.0))
+                    _leg_harvest_relax = 1.0 - LEG_DUR_HARVEST_MAX_RELAX * max(0.0, np.tanh((_leg_dur - LEG_DUR_HARVEST_ONSET) / 20.0))
                     # branch step2: LONG-ONLY gate. The opener (ungated) cratered crash
                     # -0.141: crash's trend-aligned SHORTS on extended down-legs got
                     # harvested at leg-end, but crash downtrends PERSIST past leg-end (long
