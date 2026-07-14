@@ -1208,9 +1208,11 @@ class Strategy:
             else:
                 _leg_arg = int(np.argmax(_ld_sc))  # last local max = down-leg start
             _leg_dur_raw = float(_ld_n - 1 - _leg_arg)  # bars since the leg start
-            # branch step3: EMA-smooth the scalar to dampen the +-1 argmin wobble (span 3).
+            # branch step3/4: EMA-smooth the scalar to dampen the +-1 argmin wobble.
+            # step4: slow to alpha 0.33 (span 5) to push bull stability above 0.80 knee
+            # (step3 alpha 0.5 recovered to 0.793, still below knee).
             _leg_dur_prev = self._leg_dur_ema.get(symbol, _leg_dur_raw)
-            _leg_dur = 0.5 * _leg_dur_raw + 0.5 * _leg_dur_prev  # alpha 0.5 (span 3)
+            _leg_dur = 0.33 * _leg_dur_raw + 0.67 * _leg_dur_prev  # alpha 0.33 (span 5)
             self._leg_dur_ema[symbol] = _leg_dur
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
