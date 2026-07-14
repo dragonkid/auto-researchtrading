@@ -3655,15 +3655,35 @@ class Strategy:
                 # PERSIST through LOW-vol grind. Gate the attenuation on low vol_ratio
                 # (the validated _grind_gate bull/rally separator) -> bull byte-identical.
                 # The attenuation magnitude scales continuously: LONG_HOLD_TP_ATTEN *
-                # _ta_winner_gate * vol_gate (0 when not a sideways-safe winning long OR
-                # high-vol bull). Stability: _ta_winner_gate uses slow smooth signals
-                # (ret_vlong 96-bar, giveback, slope) not the fast pos_pnl flip that wobbled
-                # the short-side per-bar gate to stab 0.047; per-bar here is on the SMOOTH
-                # gate. Byte-identical for shorts (_long_only_gate 0), losers (profit gate
-                # 0 inside _ta_winner_gate), sideways (reversal-protectors turn it off),
+                # _ta_winner_gate * mag_gate * vol_gate (0 when not a sideways-safe winning
+                # long OR shallow-drift OR high-vol bull). Stability: _ta_winner_gate uses
+                # slow smooth signals (ret_vlong 96-bar, giveback, slope) not the fast
+                # pos_pnl flip that wobbled the short-side per-bar gate to stab 0.047;
+                # per-bar here is on the SMOOTH gate. Byte-identical for shorts
+                # (_long_only_gate 0), losers (profit gate 0 inside _ta_winner_gate),
+                # sideways (reversal-protectors + the mag deadzone below turn it off),
                 # and bull (vol-gate 0).
-                _long_tp_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))  # ~1 low-vol grind (rally), ~0 high-vol sharp (bull)
-                _time_pressure = _time_pressure * (1.0 - LONG_HOLD_TP_ATTEN * _ta_winner_gate * _long_tp_vol_gate)
+                # BRANCH STEP 4: TWO additional protectors to recover the step2/3 sideways
+                # and bull regressions while KEEPING mixed's +0.069 gain (the dominant
+                # signal). (a) RET_VLONG MAGNITUDE DEADZONE: step3 still regressed sideways
+                # -0.055 because sideways 2023's SHALLOW recovery drift (|ret_vlong|~0.01)
+                # passes _ta_winner_gate's soft tanh(ret_vlong/0.01) and the smooth drift
+                # passes the reversal-protectors -> attenuation fires on drift longs that
+                # then mean-revert -> loss. Add a per-bar magnitude deadzone: only attenuate
+                # when |ret_vlong| is solidly positive (deep uptrend, |ret_vlong|>0.015)
+                # -- the SAME deadzone the short-side uses, but applied at the attenuation
+                # point (during hold, post-pullback) where rally/mixed-rally-phase ret_vlong
+                # has RECOVERED to solid values (vs the entry-time version which failed
+                # because rally enters during pullbacks with small ret_vlong). Sideways
+                # shallow drift (|ret_vlong|~0.01) stays below the deadzone -> byte-identical.
+                # (b) TIGHTER VOL-GATE: step3's (1.3-vol_ratio)/0.5 partially fired on bull's
+                # moderate vol (0.8-1.3 band) -> bull -0.010. Tighten to (1.1-vol_ratio)/0.3
+                # (full at vol_ratio<=0.8, fading to 0 by vol_ratio>=1.1) -> bull (vol_ratio
+                # >1.1) fully excluded, rally/mixed low-vol grind kept. Continuous tanh-style
+                # ramp, no boundary.
+                _long_tp_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.015) / 0.01)))  # deep-uptrend deadzone (excludes sideways shallow drift)
+                _long_tp_vol_gate = max(0.0, min(1.0, (1.1 - vol_ratio) / 0.3))  # ~1 low-vol grind (rally/mixed), ~0 by vol_ratio>=1.1 (bull)
+                _time_pressure = _time_pressure * (1.0 - LONG_HOLD_TP_ATTEN * _ta_winner_gate * _long_tp_mag_gate * _long_tp_vol_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
