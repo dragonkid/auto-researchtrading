@@ -629,6 +629,21 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
+        # Exp2 (architectural, indep): PER-SYMBOL realized-loss streak counter.
+        # Finer-grained mirror of the portfolio self._loss_streak: each symbol tracks
+        # its OWN consecutive realized-loss count. The portfolio streak aggregates
+        # across symbols chronologically (interleaved); the per-symbol streak isolates
+        # the symbol that is actually in a losing RUN. Per the prior-session streak_gate
+        # diagnostic, rally's binding max_consecutive_losses (BTC's run of 9) is
+        # dominated by ONE symbol -- a portfolio-level signal lumps all symbols together
+        # and shrinks the next entry on symbols that are NOT in a losing run (ETH/SOL had
+        # short 3-6 runs while BTC ran 9). A per-symbol counter shrinks the next entry on
+        # the symbol that is actually losing. Updated on each closed trade (increment on
+        # loss, reset on win), exactly mirroring the portfolio streak's update rule. NOT
+        # popped on exit (the streak must PERSIST across the close->re-enter gap to
+        # influence the NEXT entry -- it is read at entry sizing on the bar AFTER the
+        # close). Reset only implicitly by a winning trade. Default 0 (no effect).
+        self._sym_loss_streak = {}
         # Exp1 (this session): per-symbol rolling pos_pnl PATH history (the MTM
         # trajectory since entry). Used to compute MTM-path-efficiency =
         # |net pos_pnl| / sum(|bar-to-bar pos_pnl change|) over the window, in [0,1].
@@ -1734,6 +1749,41 @@ class Strategy:
                 _bear_ctmd_streak = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
                 _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct * _bull_ctmd_streak
                 _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct * _bear_ctmd_streak
+                # Exp2 (architectural, indep): PER-SYMBOL realized-loss-streak x
+                # COUNTER-TREND entry-size shrink. Prior-session-sanctioned future path
+                # ("per-symbol-streak mechanism that breaks sooner than the portfolio
+                # streak"). The existing _streak_ct_shrink above uses the PORTFOLIO
+                # self._loss_streak -- it lumps all symbols together and shrinks the next
+                # ct entry on EVERY symbol during a portfolio streak, including symbols
+                # that are NOT in a losing run. Per the prior-session streak diagnostic,
+                # rally's binding max_consecutive_losses is dominated by ONE symbol
+                # (BTC's run of 9 ct pullback shorts; ETH/SOL had short 3-6 runs). This
+                # PER-SYMBOL counter (self._sym_loss_streak, updated at trade close)
+                # isolates the symbol that is actually losing and shrinks ONLY that
+                # symbol's next ct entry. CRASH-SAFE BY CONSTRUCTION: the shrink is gated
+                # on the SAME multi-day counter-trend indicator (_bull_ctmd_streak/
+                # _bear_ctmd_streak, tanh on ret_vlong/0.01) as the portfolio version.
+                # Crash's profitable trend-aligned SHORTS (short in a downtrend = trend-
+                # aligned, ct indicator = 0) are EXCLUDED -- the ct gate is 0 for them ->
+                # shrink = 1.0 byte-identical. The shrink fires on COUNTER-TREND entries
+                # only: crash's dead-cat-bounce ct LONGS (the losers) AND rally's ct
+                # pullback SHORTS (the streak-extend losers) -- the documented losing
+                # populations. The per-symbol granularity shrinks BTC's ct entries harder
+                # (its run saturates the streak tanh) while leaving ETH/SOL ct entries
+                # less shrunk (their shorter runs) -- more targeted than the portfolio
+                # version's uniform shrink. NEW per-symbol state (self._sym_loss_streak)
+                # + new control flow at entry sizing. Shrink-only (factor <= 1.0),
+                # continuous tanh (no boundary), reuses the noise-free near-constant
+                # ret_vlong ct indicator (per the validated safe-family lesson -> the
+                # shrink is a near-constant magnitude, not a noise-tracking wobble ->
+                # stability preserved). Composes multiplicatively with the portfolio
+                # _streak_ct_shrink (independent signals: portfolio breadth vs per-symbol
+                # depth). Max 0.20 shrink (below the portfolio 0.25 since it composes on
+                # top and the per-symbol streak saturates faster at /1.5 scale). Byte-
+                # identical when the symbol's own streak < 2 OR the entry is trend-aligned.
+                _sym_streak = max(0.0, np.tanh((self._sym_loss_streak.get(symbol, 0) - 1) / 1.5))  # 0 sym-streak<=1, ~1 streak>=2.5 (faster saturation than portfolio /2.0)
+                _sym_streak_ct_shrink_bull = 1.0 - 0.20 * _sym_streak * _bull_ctmd_streak
+                _sym_streak_ct_shrink_bear = 1.0 - 0.20 * _sym_streak * _bear_ctmd_streak
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
@@ -2519,7 +2569,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _sym_streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
@@ -2538,7 +2588,7 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _sym_streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
@@ -4985,6 +5035,14 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
+                        # Exp2: update PER-SYMBOL realized-loss streak (mirrors the
+                        # portfolio streak at per-symbol granularity). NOT popped on
+                        # exit (persists across the close->re-enter gap to influence the
+                        # next entry on this symbol).
+                        if _exit_pnl_signed < 0:
+                            self._sym_loss_streak[symbol] = self._sym_loss_streak.get(symbol, 0) + 1
+                        else:
+                            self._sym_loss_streak[symbol] = 0
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
