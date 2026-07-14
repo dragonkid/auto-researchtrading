@@ -323,7 +323,7 @@ MAE_VEL_MAX_FLOOR = 0.60
 PORT_ADV_CORR_MIN_SYMS = 2
 PORT_ADV_CORR_ONSET = 0.30
 PORT_ADV_CORR_SCALE = 0.20
-PORT_ADV_CORR_MAX_FLOOR = 0.60
+PORT_ADV_CORR_MAX_FLOOR = 0.30
 
 
 def ema(values, span):
@@ -4353,8 +4353,28 @@ class Strategy:
                     # single-leg bleeds (<PORT_ADV_CORR_MIN_SYMS open), low-correlation
                     # holds (onset gate 0), and fresh entries (bars_held>=2 exemption below).
                     # Continuous tanh on (correlation - onset)/scale (no boundary).
+                    # branch step3: CONJUNCTION with the per-symbol MAE-VELOCITY gate
+                    # (_mae_vel_gate). Step2's amplify exposed the CRASH-COUPLING WALL:
+                    # crash's trend-aligned shorts that are TEMPORARILY LOSING during a
+                    # dead-cat bounce ARE trend-aligned losers (pos_pnl<0, _mae_v_align>0)
+                    # -> the book-bleeding signal fired -> trimmed them -> the bounce ended
+                    # and the downtrend resumed -> realized loss instead of recovery ->
+                    # crash edge removed (-0.017). The cross-symbol correlation ALONE cannot
+                    # separate crash's transient bounce-loss shorts (RECOVER) from rally's
+                    # pullback-loss longs (EXTEND) -- the crash-coupling/mixed-inseparability
+                    # wall. The per-symbol MAE-VELOCITY is the missing separator: a crash
+                    # bounce is TRANSIENT (the short dips 1-2 bars then recovers -> few fresh
+                    # MAE lows in the window -> _mae_vel LOW -> _mae_vel_gate ~0), whereas a
+                    # rally pullback is a SUSTAINED plunge (fresh lows bar after bar ->
+                    # _mae_vel HIGH -> _mae_vel_gate ~1). CONJUNCTION: fire the portfolio
+                    # amplifier ONLY when BOTH the book is bleeding together (cross-symbol
+                    # correlation) AND THIS position's own velocity is high (sustained
+                    # plunge). Crash's transient bounce-loss shorts fail the own-velocity
+                    # gate -> excluded REGARDLESS of magnitude -> crash byte-identical even
+                    # at higher magnitude. This unlocks safe amplification (step4) without
+                    # the crash-coupling wall.
                     if _pnl_scale < 0.0:
-                        _de_floor -= PORT_ADV_CORR_MAX_FLOOR * _mae_v_align * _port_adv_corr_gate
+                        _de_floor -= PORT_ADV_CORR_MAX_FLOOR * _mae_v_align * _mae_vel_gate * _port_adv_corr_gate
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
