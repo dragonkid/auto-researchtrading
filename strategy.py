@@ -4109,21 +4109,30 @@ class Strategy:
                     # harvest-weaken to LONG positions only -> crash shorts byte-identical
                     # (gate 0). Sideways byte-identical (already via ret_vlong*pos_dir~0).
                     _leg_long_gate = 1.0 if current_pos > 0 else 0.0
-                    # branch step5: UPTREND-PERSISTENCE gate. step2 still regressed mixed
-                    # -0.002575: mixed's RALLY-PHASE longs have ret_vlong>0 transiently (a
-                    # bounce in its overall downtrend) -> _ts_supp's ret_vlong*pos_dir factor
-                    # >0 -> suppression active -> leg-dur weaken fires -> harvests the bounce
-                    # longs early -> loses mixed's rally-phase gains (mixed is NOT DD-limited
-                    # so no DD offset). The separator between bull/rally (PERSISTENT up) and
-                    # mixed's transient rally-phase (bounce in a persistent bear) is the
-                    # DURATION of ret_vlong negativity, the validated _down_persist separator
-                    # (same as _ta_winner_gate _up_persist_gate). Require LOW _down_persist
-                    # (persistent uptrend) for the harvest-weaken -> mixed (high down_persist
-                    # = persistent bear underneath the bounce) excluded; bull/rally (low
-                    # down_persist = persistent up) kept. Continuous ramp; crash (down_persist
-                    # ~0.9) already excluded by the long-only gate. Byte-identical for mixed.
-                    _leg_up_persist_gate = max(0.0, 1.0 - max(0.0, (_down_persist - 0.40) / 0.20))
-                    _ts_supp = _ts_supp * (1.0 - (1.0 - _leg_harvest_relax) * _leg_long_gate * _leg_up_persist_gate)
+                    # branch step5 (REVERTED): a _down_persist uptrend-persistence gate hurt
+                    # rally -0.000631 WITHOUT fixing mixed (mixed's rally phase is itself a
+                    # persistent uptrend = low down_persist, indistinguishable from rally on
+                    # this axis -- the mixed/rally inseparability wall). Reverted to step3
+                    # (long-only gate only, no persistence gate).
+                    # branch step6: PORTFOLIO-DD gate. The leg-dur harvest-weaken (steps 2-5)
+                    # helped DD-limited bull (Sharpe +0.080) but HURT non-DD-limited mixed
+                    # (-0.002575) because mixed's rally-phase longs are profitable to RIDE, not
+                    # harvest -- and mixed/rally are inseparable on the trend-alignment axis.
+                    # The clean regime-agnostic separator is the PORTFOLIO DD STATE itself
+                    # (continuous, not a regime label): capping DD is worth it WHEN the
+                    # portfolio is drawing down (dd_frac>0), NOT at portfolio peak (riding
+                    # winners is worth it at peak). At portfolio peak (dd_frac=0) -> gate 0
+                    # -> byte-identical (mixed/rally at peak untouched, recovering the mixed
+                    # loss). During DD (dd_frac>0) -> exhausted-leg longs harvested harder
+                    # (an exhausted-leg winner during a pullback is more likely the DD source
+                    # -> harvest it) -> bull DD capped. This makes leg-dur a DD-CONDITIONAL
+                    # AMPLIFIER of the existing _dd_tp_relax (which weakens uniformly during
+                    # DD), adding the exhausted-leg TARGETING that _dd_tp_relax lacks. Smooth
+                    # tanh on dd_frac so no hard boundary; leverage-coupled scale (same
+                    # discipline as PORT_DD_TP_HARVEST_SCALE) so the activation level is
+                    # leverage-invariant. Byte-identical at peak for ALL regimes.
+                    _leg_dd_gate = max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
+                    _ts_supp = _ts_supp * (1.0 - (1.0 - _leg_harvest_relax) * _leg_long_gate * _leg_dd_gate)
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
                     # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
