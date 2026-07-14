@@ -272,6 +272,24 @@ NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
+# Exp1 (architectural, indep): TREND-ADAPTIVE per-voter CONFIDENCE FLOOR. The voter
+# confidence mapping conf = conf_floor + (1-2*conf_floor)*0.5*(1+tanh(s)) clamps each
+# voter's contribution to [conf_floor, 1-conf_floor]. The fixed floor (0.1) feeds
+# bull_votes/bear_votes (the FLIP gate's opposite-side count at line ~4391): an
+# against-voter still contributes conf_floor to the OPPOSITE-side vote count. In a
+# strong trend-aligned move, noise-driven opp-side voter spikes can push the opposite
+# count over FLIP_MIN_VOTES and trigger a whipsaw flip out of a winning trend-aligned
+# position. Lowering the floor in strong trends (gated on rsi_trend_str, the validated
+# chop/trend separator) reduces the opp-side baseline count so transient noise spikes
+# do not cross FLIP_MIN_VOTES -> fewer whipsaw flips on trend-aligned winners. The
+# quintic strong-sum (_bull_strong) is UNAFFECTED: (c-0.5)^5 is zeroed by max() for all
+# c<=0.5 regardless of floor, so admission is byte-identical; only the FLIP-gate vote
+# count changes. Floor stays at 0.1 in chop (rsi_trend_str~0 -> byte-identical flip
+# count for sideways). NEW control-flow data dep: the conf mapping reads per-bar trend
+# strength (the conf floor is trend-adaptive). Continuous tanh ramp (no boundary).
+CONF_FLOOR_BASE = 0.10        # floor (and 1-floor ceiling) in chop / weak trend
+CONF_FLOOR_TREND = 0.02        # floor in strong trend (lower -> opp-side noise count lower)
+CONF_FLOOR_TREND_DECAY = 0.20  # rsi_trend_str at which floor reaches CONF_FLOOR_TREND
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
 # emission layer (downstream of all quantization — the ONLY layer that reaches
 # mixed_2025 per prior session's root-cause finding), a same-sign REDUCTION resize
@@ -1299,11 +1317,21 @@ class Strategy:
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
             ]
-            # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
-            # Prevents any single voter from dominating the strong-sum under noise saturation.
-            # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
-            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
-            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            # Voter contribution clipping: each conf bounded to [conf_floor, 1-conf_floor]
+            # instead of (0,1). Prevents any single voter from dominating the strong-sum
+            # under noise saturation. A noise-flipped voter shifts _bull_strong by at most
+            # ~0.8 (was ~2.0).
+            # Exp1 (architectural, indep): TREND-ADAPTIVE conf floor. In strong trends
+            # (high rsi_trend_str) lower the floor so against-voters contribute LESS to
+            # the opposite-side flip count -> fewer whipsaw flips on trend-aligned winners.
+            # Chop (rsi_trend_str~0) keeps the baseline 0.10 floor -> byte-identical flip
+            # count for sideways. The quintic strong-sum is unaffected (it zeros c<=0.5).
+            _conf_floor = CONF_FLOOR_BASE - (CONF_FLOOR_BASE - CONF_FLOOR_TREND) * max(
+                0.0, min(1.0, np.tanh(rsi_trend_str / CONF_FLOOR_TREND_DECAY))
+            )
+            _conf_span = 1.0 - 2.0 * _conf_floor
+            _bull_confs = [_conf_floor + _conf_span * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
+            _bear_confs = [_conf_floor + _conf_span * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
