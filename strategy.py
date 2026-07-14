@@ -475,6 +475,29 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
+# BRANCH (Exp1 opener + iterations): CROSS-SYMBOL SIMULTANEOUS ADVERSE OPEN-POSITION cap.
+# NEW portfolio data dep reading the UNREALIZED PnL state of open positions across
+# symbols (losing-fraction of the open book). Orthogonal to equity-level/trade-sequence/
+# price-direction portfolio signals: detects a correlated adverse regime on the FIRST
+# bar multiple positions bleed together, before equity DD/trajectory signals lag it.
+# The Exp1 opener (commit 83cc4233) showed a REAL signal: mixed +0.026 (Sh 0.701->0.779)
+# via shrinking mixed's oscillating chop losers, BUT crashed crash (-0.529) via the
+# crash-coupling wall: crash's TREND-ALIGNED SHORTS show transient adverse pos_pnl during
+# dead-cat bounces -> losing-fraction saturates -> cap shrinks the next profitable crash
+# short -> crash edge removed. The opener also crashed sideways stability (open-PnL
+# fraction wobbles under AR(1) as close noise flips open-position pos_pnl sign at the
+# boundary). The branch iterates to fix these: (step2) gate the cap to fade out in
+# PERSISTENT MULTI-DAY DOWNTREND (the _port_down_persist signal, a continuous structural
+# trend-property not a regime label) so crash's profitable-but-intrabar-adverse shorts
+# are excluded -- in a sustained downtrend, transient adverse on trend-aligned shorts is
+# the NORMAL bounce-then-resume pattern, not a correlated regime hit. Byte-identical in
+# persistent bear (gate 0 -> no shrink); fires in the non-bear regimes where correlated
+# adverse IS a real signal (mixed chop, rally pullbacks, bull corrections). Reduction-only.
+PORT_ADVERSE_OPEN_ONSET = 0.50   # losing-fraction at which shrink begins (2 of 3 losing -> 0.67 -> past onset)
+PORT_ADVERSE_OPEN_SCALE = 0.25   # losing-fraction range over which shrink ramps to full
+PORT_ADVERSE_OPEN_MAX_SHRINK = 0.30  # max first-bar size shrink at full saturation (-> 0.70x)
+PORT_ADVERSE_BEAR_GATE_ONSET = 0.55  # branch step2: persistent-bear (down_persist) fraction at which the cap FADES OUT (excludes crash); 0.55 = mostly-bear -> start fading
+PORT_ADVERSE_BEAR_GATE_SCALE = 0.20  # branch step2: fade range; full off by down_persist 0.75
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -1097,6 +1120,46 @@ class Strategy:
             else:
                 _alt_dvp[_asym] = 0.0
 
+        # BRANCH (Exp1 opener + step2): CROSS-SYMBOL SIMULTANEOUS ADVERSE OPEN-POSITION
+        # cap. Compute the fraction of currently-OPEN positions (across ALL active
+        # symbols) in adverse excursion (unrealized pos_pnl < 0) RIGHT NOW. NEW portfolio
+        # data dep (reads the UNREALIZED PnL state of the open book, which every existing
+        # portfolio signal lacks). The Exp1 opener showed mixed +0.026 (Sh 0.701->0.779)
+        # via shrinking mixed's oscillating chop losers, BUT crashed crash (-0.529) via
+        # crash-coupling: crash's trend-aligned shorts are intrabar-adverse during bounces.
+        # branch step2: GATE the cap to FADE OUT in PERSISTENT MULTI-DAY DOWNTREND (the
+        # _port_down_persist signal). In a sustained downtrend (crash), transient adverse
+        # on trend-aligned shorts is the NORMAL bounce-then-resume pattern, NOT a
+        # correlated regime hit -> the cap must NOT fire there. Continuous tanh fade:
+        # full effect at down_persist < 0.55 (non-bear regimes: mixed chop, rally pullbacks,
+        # bull corrections where correlated adverse IS a real signal), fading to 0 by
+        # down_persist 0.75 (persistent bear = crash -> byte-identical, crash shorts
+        # protected). This is a structural trend-PROPERTY gate (continuous, no regime
+        # label), not a discrete regime switch. Byte-identical in persistent bear AND when
+        # <2 open positions losing (the common case). Reduction-only, direction-agnostic.
+        _open_count = 0
+        _open_losing = 0
+        for _osym in ACTIVE_SYMBOLS:
+            _opos = portfolio.positions.get(_osym, 0.0)
+            if _opos == 0.0 or _osym not in bar_data:
+                continue
+            _open_count += 1
+            _ep_sym = self.entry_prices.get(_osym)
+            if _ep_sym is None:
+                continue
+            _om = bar_data[_osym].close
+            _opnl = (_om - _ep_sym) / _ep_sym
+            if _opos < 0:
+                _opnl = -_opnl
+            if _opnl < 0.0:
+                _open_losing += 1
+        _port_adverse_frac = (_open_losing / _open_count) if _open_count >= 2 else 0.0
+        # branch step2: persistent-bear gate (fade out in sustained downtrend -> crash-safe)
+        _adverse_bear_gate = 1.0 - max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_ADVERSE_BEAR_GATE_ONSET) / PORT_ADVERSE_BEAR_GATE_SCALE)))
+        _port_adverse_open_cap = 1.0 - PORT_ADVERSE_OPEN_MAX_SHRINK * max(
+            0.0, min(1.0, np.tanh((_port_adverse_frac - PORT_ADVERSE_OPEN_ONSET) / PORT_ADVERSE_OPEN_SCALE))
+        ) * _adverse_bear_gate
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -1582,7 +1645,7 @@ class Strategy:
             # when any symbol has persistent weak multi-day trend (mixed's consolidation).
             # Exp3: apply portfolio equity-MOMENTUM (trajectory-derivative) shrink, computed
             # at top level. Composes with the deep-bear/weak-trend caps (all shrink-only).
-            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink
+            size = equity * BASE_POSITION_SIZE * combined_mult * _port_bear_cap * _port_weak_cap * _port_eq_mom_shrink * _port_adverse_open_cap
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
