@@ -494,6 +494,30 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
+# Exp1 (architectural, indep, this session): CROSS-SYMBOL RETURN-DISPERSION portfolio size
+# cap. NEW cross-symbol data dep: the STANDARD DEVIATION of the 3 symbols' 96-bar
+# ret_vlong (a cross-sectional SPREAD measure). Every existing portfolio signal
+# AGGREGATES per-symbol values (avg/max/min/sum of down_persist, weak_persist,
+# deep_bear_mag, vol_ratio, trend_mag_agree) -- NONE measures the DISPERSION (how far
+# apart the symbols' multi-day returns are). High dispersion = the 3 symbols are
+# diverging (a rotational/transition market where one leg trends up while another
+# trends down -> the trend voters disagree across assets -> lower-conviction, more
+# misjudged entries). Low dispersion = synchronized broad move (bull/rally/crash all
+# trend together -> values cluster -> no shrink). Used as a shrink-only SIZE cap
+# (applied to `size` via _port_weak_cap): up to 18% shrink at high dispersion. The
+# ret_vlong values are already collected in _port_rv_vals (96-bar OLS log-HL2 slope*n,
+# the SAME inputs used by _port_deep_bear_mag / _port_trend_mag_agree); std is a
+# smooth deterministic function of them -> no new noise source (averages 96 bars of
+# AR(1) noise per symbol, ~1/sqrt(96) attenuation). Byte-identical when dispersion is
+# low (synchronized trends where all 3 ret_vlong cluster). Direction-agnostic general
+# principle (no regime label): a market whose legs diverge multi-day is internally
+# uncertain -> take smaller risk. Distinct from the walled cross-alt DIVERGENCE EXIT
+# signals (those were per-pair price-divergence exit triggers that over-harvested
+# sideways chop; this is a portfolio SIZE cap on the multi-day return spread, never
+# an exit trigger). Composes with the avg/max vol caps above.
+PORT_RET_DISP_ONSET = 0.012   # ret_vlong std above which cap engages (0.012 = the symbols' 96-bar returns diverge by ~1.2pct)
+PORT_RET_DISP_SCALE = 0.010   # ramp width (0.012->0.022 saturates)
+PORT_RET_DISP_MAX_SHRINK = 0.18  # max size shrink at full saturation (-> 0.82x)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -976,6 +1000,19 @@ class Strategy:
         _port_vol_ratio_avg = (sum(_port_vol_ratio_vals) / len(_port_vol_ratio_vals)) if _port_vol_ratio_vals else 0.0
         _port_vol_avg_cap = 1.0 - PORT_VOL_AVG_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_avg_cap
+        # Exp1 (architectural, indep, this session): CROSS-SYMBOL RETURN-DISPERSION size cap.
+        # NEW cross-symbol aggregation: the STD of the 3 symbols' 96-bar ret_vlong (the
+        # cross-sectional SPREAD). Every existing portfolio signal aggregates (avg/max/min/
+        # sum) -- none measures dispersion. High dispersion = rotational/transition market
+        # (legs diverge multi-day -> trend voters disagree across assets -> lower-conviction
+        # entries); low dispersion = synchronized broad move -> no shrink. Shrink-only SIZE
+        # cap; composes with the vol/bear caps above. See PORT_RET_DISP_* constants.
+        # Deterministic: std of the already-collected _port_rv_vals (96-bar OLS, ~1/sqrt(96)
+        # noise attenuation per symbol) -> no new noise source. Byte-identical when the
+        # symbols' ret_vlong cluster (synchronized trends).
+        _port_ret_disp = float(np.std(_port_rv_vals)) if len(_port_rv_vals) >= 2 else 0.0
+        _port_ret_disp_cap = 1.0 - PORT_RET_DISP_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_ret_disp - PORT_RET_DISP_ONSET) / PORT_RET_DISP_SCALE)))
+        _port_weak_cap = _port_weak_cap * _port_ret_disp_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
