@@ -3767,7 +3767,10 @@ class Strategy:
                 # harvest even with giveback (let the oscillator re-peak). Continuous tanh
                 # ramp on peak age (no boundary); byte-identical for fresh peaks (age 0).
                 _peak_age = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
-                _climax_peak_age_gate = max(0.0, min(1.0, np.tanh((_peak_age - 2.0) / 2.0)))  # 0 age<=2, ~1 age>=4
+                # branch step4: raise the LONG-side peak-age onset 2->4 (let long trend
+                # winners run longer before the climax harvest triggers; requires an OLDER
+                # sustained peak = more confident reversal). Shorts unaffected (immediate).
+                _climax_peak_age_gate = max(0.0, min(1.0, np.tanh((_peak_age - 4.0) / 2.0)))  # longs: 0 age<=4, ~1 age>=6
                 # branch step3c: LONG-ONLY peak-age gate. Step3b regressed crash -0.0031:
                 # the peak-age gate delayed the harvest for SHORTS too (crash dead-cat-bounce
                 # shorts need the harvest to fire FAST at the bounce). Apply the peak-age
