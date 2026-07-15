@@ -179,30 +179,6 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
-# Exp1 BRANCH (architectural, indep this session): PORTFOLIO-DD-ADAPTIVE
-# _ta_winner_gate pp-attenuation MAGNITUDE. The fixed 0.95 pp-attenuation for
-# trend-aligned long winners (line ~3360) is DD-BLIND -- it rides pullbacks at
-# full strength even during the portfolio's deepest DD, exactly when the ridden
-# pullback IS the DD source (bull DD 10.79pct sits deep in the dd_gate exp
-# penalty, dd_gate~0.05, score ~20x crushed). Make the magnitude DD-adaptive:
-# full 0.95 at portfolio peak (byte-identical -- the let-winners-run Sharpe
-# mechanism); ramp DOWN to a FLOOR during DD so pp_pressure fires earlier on
-# trend-aligned long winners -> harvest giveback before the pullback deepens
-# into the DD -> cap bull DD. DISTINCT from PORT_DD_GIVEBACK_TIGHTEN (giveback
-# TOLERANCE threshold) and PORT_DD_TP_HARVEST_RELAX (_ts_supp tp-harvest
-# suppression): this caps the pp-attenuation MAGNITUDE (how much pp fires once
-# active). Three independent DD levers on three distinct pp-path quantities.
-# Same leverage-coupled DD-fraction scale. The safety gates (giveback<0.15,
-# slope-against<0.0004, long-only, up_persist<0.40) ensure reduced attenuation
-# fires ONLY on gradual pullbacks in persistent uptrends.
-# Exp1 opener (floor 0.60): bull Sh +0.018 but DD 10.787 UNCHANGED -- the 0.60
-# floor left 60pct attenuation ON through the DD leg so pp stayed suppressed.
-# Branch step2: LOWER the floor 0.60 -> 0.20 so pp fires near-full during deep DD,
-# harvesting the DD-defining pullback early. Watch bull Sharpe (the let-winners-
-# run mechanism partially released) and stability.
-PORT_DD_PP_ATTEN_MAX = 0.95   # pp-attenuation magnitude at portfolio peak (== baseline fixed; byte-identical when dd_frac=0)
-PORT_DD_PP_ATTEN_FLOOR = 0.20   # branch step2: floor 0.60->0.20 (pp near-full strength during deep DD, harvest the DD pullback early)
-PORT_DD_PP_ATTEN_SCALE = 0.012  # base DD-fraction at which the attenuation ramps MAX->FLOOR (scaled by LEVERAGE_K, same discipline as PORT_DD_TP_HARVEST_SCALE)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -3381,21 +3357,7 @@ class Strategy:
                 # are the safety: attenuation ONLY fires on gradual pullbacks in persistent uptrends,
                 # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
                 # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
-                # Exp1 BRANCH (architectural, indep this session): PORTFOLIO-DD-ADAPTIVE
-                # pp-attenuation MAGNITUDE. Replaces the FIXED 0.95 with a DD-adaptive
-                # magnitude: full 0.95 at portfolio peak (byte-identical to baseline --
-                # let trend-aligned long winners ride pullbacks = the Sharpe mechanism),
-                # ramping DOWN to PORT_DD_PP_ATTEN_FLOOR during portfolio DD so pp_pressure
-                # fires earlier on the ridden pullback -> harvest giveback before it
-                # deepens into the DD -> cap bull DD (deep in the dd_gate exp tail where
-                # DD reduction is the dominant score lever). Continuous tanh on the
-                # leverage-coupled DD fraction; the existing safety gates
-                # (_gb_mag_gate/_slope_against_gate/_long_only_gate/_up_persist_gate)
-                # ensure the reduced attenuation fires ONLY on gradual pullbacks in
-                # persistent uptrends -- sharp reversals keep _ta_winner_gate=0 (gates
-                # off) so full pp_pressure regardless of DD. Byte-identical at peak.
-                _pp_atten_mag = PORT_DD_PP_ATTEN_FLOOR + (PORT_DD_PP_ATTEN_MAX - PORT_DD_PP_ATTEN_FLOOR) * max(0.0, 1.0 - np.tanh(_port_dd_frac / (PORT_DD_PP_ATTEN_SCALE * LEVERAGE_K)))
-                _pp_pressure = _pp_pressure * (1.0 - _pp_atten_mag * _ta_winner_gate)
+                _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
