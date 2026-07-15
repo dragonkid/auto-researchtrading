@@ -270,6 +270,21 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Exp3 (architectural, indep this session): momentum-gated de-risk CUSHION reduction.
+# The convex cushion (_dr_k up to 1.6) lets trend-aligned winners ride pullback noise
+# (the validated stability + return lever). But it is the SAME mechanism that lets
+# bull's trend-aligned long winners ride DEEP pullbacks -> the residual DD after the
+# 95pct _ta_winner_gate pp-suppression (Exp2 confirmed the pp-tolerance axis is walled
+# behind that 95pct attenuation). The de-risk cushion is a DIFFERENT lever the
+# _ta_winner_gate does NOT touch: it controls how fast a trend-aligned winner SHRINKS
+# via the graduated partial-exit ramp as exit pressure builds. Reducing the cushion
+# (-> linear fast cut) during a FRESH portfolio pullback (negative 8-bar equity
+# momentum, low dd_frac) makes trend-aligned winners de-risk faster exactly when the
+# portfolio is declining -> less giveback realized during the pullback -> caps the DD
+# at its source. Trend-leg (momentum positive) keeps the full cushion -> winners run
+# -> return preserved. Sustained deep DD (crash) is byte-identical (_mom_dd_gate 0).
+# Max cushion reduction 70pct of the convex amp at a sharp fresh-pullback decline.
+DERISK_MOM_REDUCE = 0.70
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -4365,7 +4380,20 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp3: momentum-gated de-risk cushion reduction. During a fresh
+                        # portfolio pullback (negative 8-bar equity momentum, low dd_frac),
+                        # reduce the convex cushion for trend-aligned winners so they de-risk
+                        # at near-linear speed through the pullback (less giveback realized ->
+                        # caps DD at its source). _mom_reduce_gate in [0,1]: 0 at rising/flat
+                        # portfolio (cushion preserved, winners run), 1 at sharp fresh-pullback
+                        # decline. Reduces the DERISK_CONVEX_AMP contribution only -- losers
+                        # (_pnl_scale<0 -> amp term 0 -> _dr_k=1.0 already) byte-identical;
+                        # trend-aligned winners in trend legs (momentum>=0 -> gate 0) byte-
+                        # identical; crash (sustained DD -> _mom_dd_gate 0 -> gate 0) byte-
+                        # identical. Smooth (tanh/momentum, no boundary); reduction-only.
+                        _mom_reduce_gate = (1.0 - _port_eq_mom_shrink) / 0.15  # 0..1 (0.15 = entry-shrink max)
+                        _dr_amp_eff = DERISK_CONVEX_AMP * (1.0 - DERISK_MOM_REDUCE * _mom_reduce_gate)
+                        _dr_k = 1.0 + _dr_amp_eff * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
