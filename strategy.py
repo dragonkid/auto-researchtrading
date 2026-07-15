@@ -4424,25 +4424,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # branch step6: PEAK-FRESHNESS gate on the convex de-risk cushion. The
-                        # cushion (k>1) rides pullback noise for trend-aligned winners. A
-                        # CONFIRMED-STALE peak (winner giving back for several bars without a
-                        # new peak = the trend is REVERSING, not a transient pullback) should
-                        # NOT get the cushion -> cut faster (k->1 linear) to lock gains at the
-                        # reversal. A FRESH peak (peak recently updated = still making new
-                        # highs = continuation) KEEPS the cushion (ride the pullback). Uses the
-                        # peak age (self._peak_bar, side-neutral) -> a fresh-peak factor that
-                        # is 1 at a new peak and ->0 as the peak stalls. This makes the de-risk
-                        # cushion peak-confirmation-aware: ride CONTINUATION pullbacks, cut at
-                        # CONFIRMED reversals -> higher Sharpe (ride continuation) + lower DD
-                        # (cut reversal) on the strong regimes. Distinct from the slope-conf
-                        # gate (near-term slope): a peak can be stale while slope is still mildly
-                        # positive (a rolling-top reversal) -> the peak-freshness catches what
-                        # slope misses. Continuous tanh on peak age (no boundary). Byte-
-                        # identical for losers/ct (cushion gate _pnl_scale/_dr_align already 0).
-                        _dr_peak_age = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
-                        _dr_peak_fresh = max(0.0, min(1.0, np.tanh((4.0 - _dr_peak_age) / 2.0)))  # 1 age<=2, ~0 age>=6
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_peak_fresh  # cushion rides fresh-peak continuation; linear cut at stale-peak reversal
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
