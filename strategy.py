@@ -2172,7 +2172,28 @@ class Strategy:
                 # many OTHER positions are open, so the shrink amount is bar-stable under
                 # AR(1) -> stability preserved).
                 _conc_loss_frac = (_conc_loss_n / _conc_loss_total) if _conc_loss_total > 0 else 0.0
-                _conc_loss_shrink = 1.0 - PORT_CONC_LOSS_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_conc_loss_frac - PORT_CONC_LOSS_ONSET) / PORT_CONC_LOSS_SCALE)))
+                # branch step2: PERSISTENT-DOWNTREND gate (exclude crash). The opener's
+                # symmetric shrink coupled to crash: crash's trend-aligned winning SHORTS are
+                # entered during the multi-month bear when the concurrent-loss fraction is
+                # HIGH (the bounce-LONGS are losing, AND the winning shorts are temporarily
+                # underwater during bounces -> counted as losers too) -> shrink hits the
+                # winning shorts -> crash edge removed (crash-coupling wall, confirmed by
+                # step1's direction-aware fix making crash worse: underwater-winning-shorts
+                # are indistinguishable from losing shorts by pos_pnl sign). The validated
+                # crash separator (used by pp-attenuation _up_persist_gate and the
+                # PORT_DOWN_PERSIST cap) is _port_down_persist: crash ~0.9 (persistent bear)
+                # vs bull ~0.3 / rally ~0.3 (transient pullback dips). Gate the concurrent-
+                # loss shrink to fire ONLY in NON-persistent-downtrend regimes: full strength
+                # when _down_persist low (transient adverse episodes = sideways/bull/rally
+                # pullbacks where losers are GENUINE losers, not underwater winning shorts),
+                # fading to 0 by _down_persist~0.60 (crash byte-identical). This is the SAME
+                # validated duration-count separator the pp-attenuation keep uses, applied
+                # here to the concurrent-loss shrink. Continuous ramp (no boundary); the
+                # gate reads the noise-robust 96-bar duration-count _port_down_persist (a
+                # +-1 bar entry shift does not move the 48-bar fraction -> bar-stable). NOT a
+                # regime label -- a structural trend-DURATION property.
+                _conc_loss_down_gate = max(0.0, 1.0 - max(0.0, (_port_down_persist - 0.40) / 0.20))
+                _conc_loss_shrink = 1.0 - PORT_CONC_LOSS_MAX_SHRINK * _conc_loss_down_gate * max(0.0, min(1.0, np.tanh((_conc_loss_frac - PORT_CONC_LOSS_ONSET) / PORT_CONC_LOSS_SCALE)))
                 _conc_shrink_bull *= _conc_loss_shrink
                 _conc_shrink_bear *= _conc_loss_shrink
                 # Exp1 (architectural, indep): PORTFOLIO NET-DIRECTIONAL-TILT shrink.
