@@ -2192,7 +2192,19 @@ class Strategy:
                 # gate reads the noise-robust 96-bar duration-count _port_down_persist (a
                 # +-1 bar entry shift does not move the 48-bar fraction -> bar-stable). NOT a
                 # regime label -- a structural trend-DURATION property.
-                _conc_loss_down_gate = max(0.0, 1.0 - max(0.0, (_port_down_persist - 0.40) / 0.20))
+                # branch step6: SHARPEN the gate (fade 0.40->0.20 becomes 0.30->0.50) to exclude
+                # the early-crash build-up more cleanly. Step3 (fade 0.40-0.60) crashed crash
+                # stability because the build-up phase (down_persist 0.40-0.60) had the gate
+                # PARTIALLY active (0.5 at down_persist 0.50) -> the shrink fired at half
+                # strength on early-crash bars -> cascade -> crash trade selection noise-fragile.
+                # Sharpen to fade 0.30->0.50: gate is 0 by down_persist 0.50 (full exclusion of
+                # the build-up from 0.50 onward), and FULL (1.0) below 0.30 (sideways/bull/rally
+                # transient episodes where down_persist stays <0.30). The 0.30-0.50 fade is the
+                # transition; bull/rally (~0.3) keep full gate, crash build-up (>=0.50) excluded.
+                # This is the SAME validated _up_persist_gate onset (0.40) the pp-attenuation
+                # keep uses, but here applied as the down-persist EXCLUSION onset (shrink OFF by
+                # 0.50, vs step3's 0.60). Continuous ramp, no boundary.
+                _conc_loss_down_gate = max(0.0, 1.0 - max(0.0, (_port_down_persist - 0.30) / 0.20))
                 _conc_loss_shrink = 1.0 - PORT_CONC_LOSS_MAX_SHRINK * _conc_loss_down_gate * max(0.0, min(1.0, np.tanh((_conc_loss_frac - PORT_CONC_LOSS_ONSET) / PORT_CONC_LOSS_SCALE)))
                 _conc_shrink_bull *= _conc_loss_shrink
                 _conc_shrink_bear *= _conc_loss_shrink
