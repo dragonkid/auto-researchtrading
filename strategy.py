@@ -3714,7 +3714,18 @@ class Strategy:
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
-                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # branch step2: ABLATE _ve_pressure from the MAX-fusion (zero weight).
+                # Branch-opener (Exp4) proved the related _vc_pressure climax-harvest
+                # was net-NEGATIVE on rally (prematurely harvesting trend winners on
+                # volume spikes that were continuation, not exhaustion -> +0.0022 rally
+                # Sharpe from removal). _ve_pressure is the analogous profit-side
+                # climax-harvest on vol-of-PRICE expansion (short>long vol). Test the
+                # same hypothesis: if _ve_pressure also misfires on rally's trend
+                # winners (vol expansion during a grinding uptrend is trend-CONTINUATION
+                # not reversal), ablation stacks the rally gain. If _ve_pressure is
+                # load-bearing (catches genuine regime-shift tops), rally regresses and
+                # this step is reverted. _w_ve was max(0,_pnl_scale).
+                _w_ve = 0.0
                 # Exp3 (architectural simplification, this session): removed the dead
                 # _ep_pressure (early-profit-lock) and _ar_pressure (adverse-recovery)
                 # terms. Both were already zeroed (_ep_pressure=0.0 since the
