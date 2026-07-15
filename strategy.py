@@ -3357,7 +3357,17 @@ class Strategy:
                 # are the safety: attenuation ONLY fires on gradual pullbacks in persistent uptrends,
                 # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
                 # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
-                _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
+                # branch step5: push the trend-aligned-winner pp attenuation to FULL
+                # (0.95 -> 1.0) for longs, stacking with the long-side climax-harvest
+                # removal (vc+ve). The branch established long trend winners should run
+                # through vol/volume expansion (continuation not reversal); removing the
+                # RESIDUAL 5pct pp giveback on trend-aligned longs (full suppression) lets
+                # them ride pullbacks maximally. Risk: rally DD rises past the 5pct knee
+                # (winners ride deeper pullbacks); monitor -- if DD>5.5pct or stability
+                # crashes, revert to 0.95. Shorts unaffected (_ta_winner_gate is long-only
+                # via _long_only_gate). Magnitude axis was pushed 0.35->0.95 (prior keeps);
+                # 1.0 is the untested extreme.
+                _pp_pressure = _pp_pressure * (1.0 - 1.0 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
