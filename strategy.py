@@ -2135,8 +2135,17 @@ class Strategy:
                 # and its entry price (portfolio.entry_prices[_osym]). Skips a position if
                 # either is unavailable (cannot sign its PnL -> excluded from the fraction,
                 # conservative: not counted as losing).
+                # branch step1: DIRECTION-AWARE loss tracking. The opener's symmetric shrink
+                # hit crash's trend-aligned winning SHORTS (crash-coupling wall: the losing
+                # positions during crash are bounce LONGS, but the symmetric shrink also hit
+                # the winning shorts). Track losing LONGS vs losing SHORTS separately so the
+                # shrink can be directed at the LOSING SIDE only (shrink a new entry that adds
+                # to the losing side; spare the counter/hedging side which includes crash's
+                # winning shorts and rally's winning longs).
                 _conc_loss_n = 0
                 _conc_loss_total = 0
+                _conc_loss_long = 0   # branch step1: count of LOSING long positions (others)
+                _conc_loss_short = 0  # branch step1: count of LOSING short positions (others)
                 for _osym, _opos in portfolio.positions.items():
                     if _osym != symbol:
                         if _opos > 0:
@@ -2154,6 +2163,11 @@ class Strategy:
                                 _conc_loss_total += 1
                                 if _o_pos_pnl < 0.0:
                                     _conc_loss_n += 1
+                                    # branch step1: record the LOSING direction.
+                                    if _opos > 0:
+                                        _conc_loss_long += 1
+                                    else:
+                                        _conc_loss_short += 1
                 _conc_frac_bull = _long_notional / max(equity, 1e-10)
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
@@ -2172,9 +2186,37 @@ class Strategy:
                 # many OTHER positions are open, so the shrink amount is bar-stable under
                 # AR(1) -> stability preserved).
                 _conc_loss_frac = (_conc_loss_n / _conc_loss_total) if _conc_loss_total > 0 else 0.0
-                _conc_loss_shrink = 1.0 - PORT_CONC_LOSS_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_conc_loss_frac - PORT_CONC_LOSS_ONSET) / PORT_CONC_LOSS_SCALE)))
-                _conc_shrink_bull *= _conc_loss_shrink
-                _conc_shrink_bear *= _conc_loss_shrink
+                # branch step1: DIRECTION-AWARE shrink. Only shrink a new entry that ADDS to
+                # the LOSING side of the book (the side with more losing positions). A new
+                # entry in the opposite (counter/hedging/winning) direction is left at full
+                # size. Mechanism: during crash, the losing positions are bounce LONGS ->
+                # _conc_loss_long > _conc_loss_short -> shrink NEW LONGS (the losing side:
+                # bounce longs), NOT new shorts (crash's trend-aligned winning entries) ->
+                # crash edge preserved. During rally, the losing positions are pullback
+                # SHORTS -> shrink new shorts, not new longs -> rally longs preserved. A
+                # new entry that HEDGES the losing book (takes the opposite side) carries
+                # LESS correlated risk -> no shrink. Continuous: the loss-side imbalance is
+                # a noise-immune integer count; the shrink STRENGTH ramps with the concurrent-
+                # loss fraction, and is GATED to the losing direction. Byte-identical when
+                # no other positions held, all winning, OR the new entry is in the non-losing
+                # direction (the counter/hedge side). When losing-long == losing-short
+                # (balanced losses) BOTH directions shrink (falls back to the symmetric
+                # opener behavior for the balanced case). General principle (no regime
+                # label): a new entry that piles onto the already-losing side of the book
+                # is the correlated-risk entry; the hedging side is not.
+                _loss_side_bull = max(0.0, _conc_loss_long - _conc_loss_short)  # >0 when longs are the losing side
+                _loss_side_bear = max(0.0, _conc_loss_short - _conc_loss_long)  # >0 when shorts are the losing side
+                # The shrink strength scales with the concurrent-loss fraction (the overall
+                # adverse-episode intensity); the direction gate routes it to the losing side.
+                # When the entry is in the losing direction, apply the fraction-scaled shrink;
+                # when it's in the hedging direction, no shrink (floor 1.0). When losses are
+                # balanced (both sides equal), the loss_side is 0 for both -> no direction
+                # advantage -> fall back to symmetric (apply half the fraction to both, so
+                # a balanced losing book still shrinks both sides modestly).
+                _conc_loss_shrink_bull = 1.0 - PORT_CONC_LOSS_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_conc_loss_frac - PORT_CONC_LOSS_ONSET) / PORT_CONC_LOSS_SCALE))) * min(1.0, (_loss_side_bull + 0.5 * min(_conc_loss_long, _conc_loss_short)) / max(_conc_loss_n, 1))
+                _conc_loss_shrink_bear = 1.0 - PORT_CONC_LOSS_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_conc_loss_frac - PORT_CONC_LOSS_ONSET) / PORT_CONC_LOSS_SCALE))) * min(1.0, (_loss_side_bear + 0.5 * min(_conc_loss_long, _conc_loss_short)) / max(_conc_loss_n, 1))
+                _conc_shrink_bull *= _conc_loss_shrink_bull
+                _conc_shrink_bear *= _conc_loss_shrink_bear
                 # Exp1 (architectural, indep): PORTFOLIO NET-DIRECTIONAL-TILT shrink.
                 # Reuses the cross-symbol notional aggregated above (the per-side
                 # _long_notional/_short_notional loop). Net tilt = (long-short)/equity
