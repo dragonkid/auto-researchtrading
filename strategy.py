@@ -268,35 +268,6 @@ CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.6
 NET_TILT_FLOOR = 0.10 * LEVERAGE_K   # net |tilt|/equity below which no shrink (scaled by LEVERAGE_K for decision invariance)
 NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ramp (scaled by LEVERAGE_K)
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
-# Exp2 (architectural, indep): PORTFOLIO CONCURRENT-LOSS-FRACTION entry-size shrink.
-# A genuinely NEW portfolio-level data dependency the strategy entirely lacks: the
-# CROSS-POSITION PnL COMPOSITION. Every existing portfolio signal reads the AGGREGATE
-# equity state -- _port_dd_atten reads the DD-FRACTION LEVEL (1 - equity/peak);
-# _port_eq_mom_shrink reads the equity TRAJECTORY DERIVATIVE (8-bar slope); _loss_streak
-# reads the trade-SEQUENCE. NONE reads whether the CURRENTLY-OPEN positions are
-# individually winning or losing. A balanced book (2 big winners + 2 big losers) and
-# a uniformly-modest book (4 small winners) can share the SAME aggregate equity yet
-# have opposite cross-position PnL composition. The fraction of currently-held
-# positions (excluding this symbol) that are in UNREALIZED LOSS is a leading
-# correlated-regime signal: when most open positions are losing SIMULTANEOUSLY, the
-# market is in an adverse episode (correlated regime hit) and a NEW entry added now
-# is statistically more likely to also lose -> shrink the first-bar commitment so
-# the in-stress entries realize smaller losses -> higher Sharpe in the negative/
-# near-zero regimes (crash, sideways, bull) where correlated adverse legs cluster.
-# DISTINCT from _port_dd_atten (lagging: fires only AFTER the aggregate DD has drawn
-# down; the concurrent-loss fraction rises BEFORE the aggregate DD materializes as
-# individual positions go red) and _port_eq_mom (derivative of equity level, not the
-# per-position composition). Shrink-only (safe family), symmetric (direction-agnostic
-# -- a losing-book is adverse regardless of which side this entry takes), continuous
-# tanh (no boundary). Byte-identical when no other positions are held (fraction
-# undefined -> floor 1.0) and when the held book is uniformly winning (fraction 0 ->
-# no shrink -> no cost on clean-trend regimes where all positions win together).
-# Composes multiplicatively with _conc_shrink / _net_tilt_shrink (independent signals:
-# gross-notional, net-direction, PnL-composition). Sparing magnitude (max 0.20) since
-# it rides on top of the existing portfolio shrinks.
-PORT_CONC_LOSS_ONSET = 0.40    # branch step3: 0.50->0.40 lower onset (fire on more bull pullback-cluster bars where 2/5 = 0.40 losing; bull's pullback clusters have 2-3 concurrent losers out of 4-5 held)
-PORT_CONC_LOSS_SCALE = 0.25    # tanh saturation scale (0.50 -> 0.75 saturates)
-PORT_CONC_LOSS_MAX_SHRINK = 0.35  # branch step3: 0.20->0.35 amplify (push the bull DD cut past +0.003; step2 +0.000447 sub-noise at 0.20)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
@@ -2130,92 +2101,16 @@ class Strategy:
                 # pile-ups shrink; uncorrelated/single-leg entries unaffected.
                 _long_notional = 0.0
                 _short_notional = 0.0
-                # Exp2: count OTHER held positions in unrealized LOSS (cross-position PnL
-                # composition). Needs the other symbol's current mid (bar_data[_osym].close)
-                # and its entry price (portfolio.entry_prices[_osym]). Skips a position if
-                # either is unavailable (cannot sign its PnL -> excluded from the fraction,
-                # conservative: not counted as losing).
-                _conc_loss_n = 0
-                _conc_loss_total = 0
                 for _osym, _opos in portfolio.positions.items():
                     if _osym != symbol:
                         if _opos > 0:
                             _long_notional += _opos
                         elif _opos < 0:
                             _short_notional += -_opos
-                        if _opos != 0.0:
-                            _oep = portfolio.entry_prices.get(_osym)
-                            _obd = bar_data.get(_osym)
-                            if _oep is not None and _obd is not None and len(_obd.history) > 0:
-                                _o_mid = _obd.close
-                                _o_pos_pnl = (_o_mid - _oep) / _oep
-                                if _opos < 0:
-                                    _o_pos_pnl = -_o_pos_pnl
-                                _conc_loss_total += 1
-                                if _o_pos_pnl < 0.0:
-                                    _conc_loss_n += 1
                 _conc_frac_bull = _long_notional / max(equity, 1e-10)
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
-                # Exp2 (architectural, indep): PORTFOLIO CONCURRENT-LOSS-FRACTION entry
-                # shrink. Computed above as _conc_loss_n / _conc_loss_total (fraction of
-                # other held positions in unrealized loss). When a MAJORITY of currently-
-                # open positions are losing simultaneously (fraction above ONSET), the book
-                # is in a correlated adverse episode -> shrink the new entry's first-bar size.
-                # Shrink-only, symmetric (same fraction shrinks bull and bear entries), byte-
-                # identical when no other positions held (total=0 -> fraction 0 -> no shrink)
-                # and when all other positions are winning (fraction 0). Composes with
-                # _conc_shrink / _net_tilt_shrink (independent portfolio signals). Continuous
-                # tanh on the fraction (no boundary; the fraction is a noise-IMMUNE integer
-                # ratio of held positions -- a +-1 bar entry-timing shift does not change how
-                # many OTHER positions are open, so the shrink amount is bar-stable under
-                # AR(1) -> stability preserved).
-                _conc_loss_frac = (_conc_loss_n / _conc_loss_total) if _conc_loss_total > 0 else 0.0
-                # branch step2: PERSISTENT-DOWNTREND gate (exclude crash). The opener's
-                # symmetric shrink coupled to crash: crash's trend-aligned winning SHORTS are
-                # entered during the multi-month bear when the concurrent-loss fraction is
-                # HIGH (the bounce-LONGS are losing, AND the winning shorts are temporarily
-                # underwater during bounces -> counted as losers too) -> shrink hits the
-                # winning shorts -> crash edge removed (crash-coupling wall, confirmed by
-                # step1's direction-aware fix making crash worse: underwater-winning-shorts
-                # are indistinguishable from losing shorts by pos_pnl sign). The validated
-                # crash separator (used by pp-attenuation _up_persist_gate and the
-                # PORT_DOWN_PERSIST cap) is _port_down_persist: crash ~0.9 (persistent bear)
-                # vs bull ~0.3 / rally ~0.3 (transient pullback dips). Gate the concurrent-
-                # loss shrink to fire ONLY in NON-persistent-downtrend regimes: full strength
-                # when _down_persist low (transient adverse episodes = sideways/bull/rally
-                # pullbacks where losers are GENUINE losers, not underwater winning shorts),
-                # fading to 0 by _down_persist~0.60 (crash byte-identical). This is the SAME
-                # validated duration-count separator the pp-attenuation keep uses, applied
-                # here to the concurrent-loss shrink. Continuous ramp (no boundary); the
-                # gate reads the noise-robust 96-bar duration-count _port_down_persist (a
-                # +-1 bar entry shift does not move the 48-bar fraction -> bar-stable). NOT a
-                # regime label -- a structural trend-DURATION property.
-                # branch step6: SHARPEN the gate (fade 0.40->0.20 becomes 0.30->0.50) to exclude
-                # the early-crash build-up more cleanly. Step3 (fade 0.40-0.60) crashed crash
-                # stability because the build-up phase (down_persist 0.40-0.60) had the gate
-                # PARTIALLY active (0.5 at down_persist 0.50) -> the shrink fired at half
-                # strength on early-crash bars -> cascade -> crash trade selection noise-fragile.
-                # Sharpen to fade 0.30->0.50: gate is 0 by down_persist 0.50 (full exclusion of
-                # the build-up from 0.50 onward), and FULL (1.0) below 0.30 (sideways/bull/rally
-                # transient episodes where down_persist stays <0.30). The 0.30-0.50 fade is the
-                # transition; bull/rally (~0.3) keep full gate, crash build-up (>=0.50) excluded.
-                # This is the SAME validated _up_persist_gate onset (0.40) the pp-attenuation
-                # keep uses, but here applied as the down-persist EXCLUSION onset (shrink OFF by
-                # 0.50, vs step3's 0.60). Continuous ramp, no boundary.
-                # branch step7: TIGHTEN further (fade 0.20->0.40, gate 0 by down_persist 0.40).
-                # Step6 (fade 0.30-0.50) still had the gate at 0.5 when down_persist=0.40 (the
-                # MIDDLE of the fade) -> early-crash build-up (down_persist 0.40-0.50) STILL
-                # partially active -> crash stability still crashed (0.0). Tighten to fade
-                # 0.20->0.40: gate is 0 by down_persist 0.40 (full exclusion of build-up from
-                # 0.40 onward), FULL below 0.20. Cost: bull/rally (~0.3) sit at gate ~0.67
-                # (0.33 into the fade) -> less shrink -> some bull/mixed gain lost. Test whether
-                # composite still crosses +0.003 with crash STABILIZED.
-                _conc_loss_down_gate = max(0.0, 1.0 - max(0.0, (_port_down_persist - 0.20) / 0.20))
-                _conc_loss_shrink = 1.0 - PORT_CONC_LOSS_MAX_SHRINK * _conc_loss_down_gate * max(0.0, min(1.0, np.tanh((_conc_loss_frac - PORT_CONC_LOSS_ONSET) / PORT_CONC_LOSS_SCALE)))
-                _conc_shrink_bull *= _conc_loss_shrink
-                _conc_shrink_bear *= _conc_loss_shrink
                 # Exp1 (architectural, indep): PORTFOLIO NET-DIRECTIONAL-TILT shrink.
                 # Reuses the cross-symbol notional aggregated above (the per-side
                 # _long_notional/_short_notional loop). Net tilt = (long-short)/equity
