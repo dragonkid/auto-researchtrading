@@ -3660,7 +3660,15 @@ class Strategy:
                 # recovery) also excluded. Continuous tanh on ret_vlong2/0.02 (noise-robust
                 # 200-bar slope). Byte-identical for non-bull (mixed down-year + sideways flat
                 # + crash excluded by long-only/align).
-                _w_pp_sustained_up = max(0.0, np.tanh(ret_vlong2 / 0.02))
+                # branch step6: MAGNITUDE DEADZONE on ret_vlong2 -- step2's /0.02 scale let
+                # sideways' weak 200-bar recovery drift (~+0.005) fire partially (tanh(0.25)=0.245)
+                # -> the sideways leak (-0.0004). step3 (/0.04 scale) was byte-identical (still fires
+                # 12pct). A MAGNITUDE DEADZONE (ret_vlong2 - 0.02)/0.02 instead of the pure scale:
+                # sideways ~0.005 -> tanh(-0.75) -> ~0 EXCLUDED; bull ~0.04+ -> tanh(1.0) -> 0.76
+                # fires. Separates bull's STRONG sustained up-year from sideways' WEAK recovery
+                # drift on the MAGNITUDE axis (bull ret_vlong2 ~0.04 vs sideways ~0.005, an 8x
+                # magnitude gap the deadzone exploits). Continuous, no hard boundary.
+                _w_pp_sustained_up = max(0.0, min(1.0, np.tanh((ret_vlong2 - 0.02) / 0.02)))
                 _w_pp_long_breadth_gate = _w_pp_long_breadth_gate * _w_pp_sustained_up
                 _w_pp = _w_pp * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
