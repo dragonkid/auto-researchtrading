@@ -138,6 +138,63 @@ LOSS_LATCH_STILL_LOSS = 0.15  # branch step12: lower still-loss gate 0.30->0.15 
 LOSS_LATCH_SUSTAIN_BARS = 4  # branch step4: bars MAE must STAY deep (continuous) before the latch fires -- sustained-deep-MAE separator (absorbs latch-bar wobble; spares crash's fast-recovering winning shorts)
 LOSS_LATCH_RAMP_BARS = 4     # branch step10: revert to 4 (step9 2-bar crashed stab 0.081; 4 bars is the stab-safe minimum)
 LOSS_LATCH_CAP = 0.45         # branch step10: deeper cap 0.55->0.45 at the stab-safe 4-bar ramp (push composite above +0.003)
+# Exp1 (architectural, indep): ROUND-TRIP LATCH permanent target-size cap. The
+# structural COMPLEMENT of the loss-latch on the WINNER side: the loss-latch fires
+# on a position that CONFIRMS as a deep LOSER (MAE deep + still losing) -> permanent
+# size cap so its eventual stop-loss/soft-exit realizes a SMALLER loss. This fires
+# on the MIRROR population: a position that CONFIRMED as a deep WINNER (developed a
+# large peak_pnl well past scale-in) that has since GIVEN BACK most of that peak
+# (round-tripped) but is STILL IN PROFIT (pos_pnl > 0 -- a round-tripping winner,
+# NOT yet a loser; losers route to the loss-latch). A winner that rode to a deep
+# peak then gave most of it back is a position whose EDGE has EXPIRED -- the move
+# that built the peak has clearly reversed -- so the remaining position is
+# lower-quality dead capital that is likely to give back the REST -> latch a
+# permanent target-size cap so the remaining giveback costs less realized PnL.
+# DISTINCT from EVERY existing winner-side mechanism:
+#  (a) _pp_pressure (giveback harvest) is a CONTINUOUS per-bar pressure recomputed
+#      each bar from peak-vs-current -> it wobbles under AR(1) (the documented size-
+#      wobble wall) and is absorbed by MAX-fusion when another term dominates;
+#  (b) _tp_scale (tp-harvest) fires once per deep-peak CROSSING (peak>=1.6*_pp_min)
+#      then resets as the peak re-forms -> it does NOT latch on the round-trip
+#      (a position can peak->giveback->re-peak->giveback many times, tp-harvest
+#      fires on each re-peak but never permanently caps the position);
+#  (c) the trend-aligned-winner pp-attenuation (_ta_winner_gate) LETS winners run
+#      (attenuates harvest); this CAPS them after the round-trip (opposite action).
+# The round-trip latch is a POSITION-STATE separator (the loss-latch's validated
+# family): it captures the structural property "this position DEMONSTRATED a deep
+# winner that has now round-tripped" regardless of regime, and is set ONCE ->
+# deterministic under AR(1) noise (the latch bar may shift +-1 but the post-latch
+# cap is a CONSTANT -> stability preserved, same lesson as loss/profit latches).
+# Reduction-only (size cap, never boost -> safe family).
+# CRASH-SAFETY (the crash-coupling wall): crash's trend-aligned winning SHORTS
+# also round-trip (they give back on dead-cat bounces then resume the downtrend).
+# Latching them smaller removes crash's edge (the wall). The structural separator
+# that isolated the pp-attenuation keep (and the _ta_dd_hold_ext keep): position
+# DIRECTION. mixed's round-tripping winners are LONGS (mixed's 100pct-long-in-a-
+# down-year book, PF 4.3); crash's round-tripping winners are SHORTS. Gate the
+# latch LONG-ONLY (current_pos>0) -> crash trend shorts byte-identical (gate 0),
+# mixed's longs get the cap. This is the SAME long-only structural property (long/
+# short risk asymmetry, NOT a regime label) used at lines ~3334, ~3413, ~4688.
+# RALLY-SAFETY: rally's trend-aligned longs also round-trip (pullback longs give
+# back). But rally is a PERSISTENT uptrend (_down_persist ~0.3) where pullbacks
+# RECOVER -> latching rally's pullback longs would trim positions that resume
+# winning (the documented reversion-miss wall). The validated separator (the
+# pp-attenuation keep uses _up_persist_gate): gate on LOW _down_persist for the
+# LATCH DECISION? No -- mixed ALSO has low-ish _down_persist during its rally
+# phases. The clean separator is the round-trip DEPTH itself combined with
+# LONG-ONLY: a mixed bounce-long round-trips a DEEP peak then gives most back
+# (peak>=2*stop, giveback>=60pct); a rally pullback-long gives back a SHALLOW
+# portion of a still-developing peak (rally's grinding uptrend re-peaks before a
+# 60pct giveback completes). The deep-peak onset (2.0x stop) + high giveback (60pct)
+# threshold is itself the separator -- rally's shallow pullback givebacks stay
+# below the latch threshold -> byte-identical; mixed's deep-peak round-trips cross
+# it. (The giveback RATIO is continuous from peak_pnl which is a high-water mark
+# -> noise-robust; the latch fires on a sustained threshold cross, gradual ramp
+# absorbs the +-1 bar wobble -> stability-safe.)
+ROUND_TRIP_PEAK_ONSET = 2.0   # peak_pnl / |stop| above which a deep winner is confirmed (2.0x stop = well past scale-in, a real trend winner)
+ROUND_TRIP_GIVEBACK_FRAC = 0.60  # fraction of peak given back (pos_pnl <= (1-frac)*peak) to confirm a round-trip (60pct of a deep peak given back)
+ROUND_TRIP_RAMP_BARS = 4     # gradual cap ramp-in (mirrors LOSS_LATCH_RAMP_BARS: 4 bars is the stab-safe minimum)
+ROUND_TRIP_CAP = 0.55         # permanent target cap after a confirmed round-trip (-> 0.55x size; reduction-only)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -605,6 +662,19 @@ class Strategy:
         # preserved) AND reaches the stop-loss path (it is a target cap applied before
         # emission regardless of exit path). -1 sentinel = not latched. Reset on full exit.
         self._loss_latch_bar = {}
+        # Exp1 (architectural, indep): per-symbol ROUND-TRIP LATCH permanent target-size cap.
+        # The structural mirror of the loss-latch on the WINNER side: a one-time 1.0 ->
+        # ROUND_TRIP_CAP flip when a held position CONFIRMS as a deep winner that has
+        # round-tripped (developed a peak >= ROUND_TRIP_PEAK_ONSET*|stop|, then gave back
+        # >= ROUND_TRIP_GIVEBACK_FRAC of it, still in profit), then read as a CONSTANT cap
+        # on the held target magnitude for the rest of the position's life. Deterministic
+        # under AR(1) noise (set once, never recomputed -> zero per-bar wobble -> stab
+        # preserved, same lesson as loss-latch). LONG-ONLY (crash-safety: crash's round-
+        # tripping SHORTS excluded -> crash byte-identical). Default 1.0 (no effect) for
+        # shorts / non-round-tripping winners / fresh entries / uncached symbols. Reset on
+        # full exit. See ROUND_TRIP_CAP header.
+        self._round_trip_latch = {}
+        self._round_trip_latch_bar = {}  # bar_count at which the round-trip latch fired (-1 = not latched)
         # Exp1 (architectural, indep): per-symbol POSITION-CACHED short-side hold-
         # extension. Unlike _hold_ext_ema/_local_hold_ext_ema (per-bar EMA recomputed
         # each held bar), this is computed ONCE at short entry from entry-bar state
@@ -3195,6 +3265,40 @@ class Strategy:
                             self._loss_latch[symbol] = LOSS_LATCH_CAP
                             self._loss_latch_bar[symbol] = self.bar_count
                             _loss_latch_val = LOSS_LATCH_CAP
+                # Exp1 (architectural, indep): ROUND-TRIP LATCH trigger. The position's
+                # peak_pnl (high-water mark, already updated above) and pos_pnl are read.
+                # If this is the FIRST bar the position CONFIRMS a round-trip WINNER --
+                # peak_pnl reached a deep threshold (>= ROUND_TRIP_PEAK_ONSET*|stop| = a
+                # developed multi-bar winner well past scale-in) AND the position has
+                # since GIVEN BACK most of that peak (pos_pnl <= (1-ROUND_TRIP_GIVEBACK_FRAC)
+                # * peak_pnl = >=60pct of the deep peak given back) AND it is STILL IN
+                # PROFIT (pos_pnl > 0 = a round-tripping WINNER, not yet a loser; losers
+                # route to the loss-latch above) AND it is LONG-ONLY (crash-safety: crash's
+                # round-tripping winning SHORTS excluded by the long gate -> crash byte-
+                # identical) -- LATCH a permanent target-size cap (one-time 1.0 ->
+                # ROUND_TRIP_CAP flip). Set ONCE and held for the life of the position
+                # (deterministic under AR(1) noise: the latch bar may shift +-1 but the
+                # post-latch cap is a CONSTANT -> stability preserved, same lesson as the
+                # loss-latch). The peak_pnl high-water mark is noise-robust (only updates
+                # upward, confirmed by 2 rising bars) so the giveback RATIO is bar-stable;
+                # the gradual ramp-in (ROUND_TRIP_RAMP_BARS, applied at emission) absorbs
+                # the +-1 bar latch-bar wobble. Byte-identical for shorts (long gate 0),
+                # shallow-peak winners (peak < onset -> never latches), non-round-tripping
+                # winners (giveback < frac -> still riding the peak -> no latch), and
+                # losers (pos_pnl <= 0 -> still-in-profit gate fails -> routes to loss-latch).
+                # Reduction-only (cap < 1.0). The giveback threshold is on the PEAK (high-
+                # water mark), so a position must have GENUINELY developed a deep winner
+                # first -- a fresh entry that dips and recovers never crosses the peak onset.
+                if current_pos > 0:  # long-only structural gate (crash-safety)
+                    _rt_val = self._round_trip_latch.get(symbol, 1.0)
+                    if _rt_val >= 1.0:  # not yet latched (default 1.0)
+                        _rt_peak = self.peak_pnl.get(symbol, 0.0)
+                        _rt_peak_deep = _rt_peak >= ROUND_TRIP_PEAK_ONSET * abs(STOP_LOSS_PCT)
+                        # round-trip: gave back >= FRAC of the deep peak, still in profit
+                        _rt_round_tripped = (pos_pnl <= (1.0 - ROUND_TRIP_GIVEBACK_FRAC) * _rt_peak) and (pos_pnl > 0.0)
+                        if _rt_peak_deep and _rt_round_tripped:
+                            self._round_trip_latch[symbol] = ROUND_TRIP_CAP
+                            self._round_trip_latch_bar[symbol] = self.bar_count
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
                 # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
@@ -5091,6 +5195,22 @@ class Strategy:
                         _ll_ramp = max(0.0, min(1.0, (self.bar_count - _ll_bar) / LOSS_LATCH_RAMP_BARS))
                         _ll_cap_now = 1.0 - (1.0 - LOSS_LATCH_CAP) * _ll_ramp
                         target = target * _ll_cap_now
+                # Exp1 (architectural, indep): apply the ROUND-TRIP LATCH gradual target
+                # cap (mirrors the loss-latch cap application). Ramps the cap IN from 1.0
+                # (no effect) to ROUND_TRIP_CAP over ROUND_TRIP_RAMP_BARS so the cap is
+                # gradual (absorbs latch-bar wobble -> stab preserved) and reaches ALL exit
+                # paths (target cap applied before emission regardless of which exit fires).
+                # Applied to SAME-SIGN held LONG positions ONLY (full exits / flips exempt;
+                # shorts byte-identical since the latch is never set for shorts).
+                # Reduction-only (cap < 1.0); byte-identical when unlatched (default 1.0).
+                if current_pos > 0:
+                    _rt_val = self._round_trip_latch.get(symbol, 1.0)
+                    if _rt_val < 1.0:
+                        _rt_bar = self._round_trip_latch_bar.get(symbol, -1)
+                        if _rt_bar >= 0:
+                            _rt_ramp = max(0.0, min(1.0, (self.bar_count - _rt_bar) / ROUND_TRIP_RAMP_BARS))
+                            _rt_cap_now = 1.0 - (1.0 - ROUND_TRIP_CAP) * _rt_ramp
+                            target = target * _rt_cap_now
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
@@ -5104,7 +5224,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist, self._round_trip_latch, self._round_trip_latch_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -5126,6 +5246,11 @@ class Strategy:
                     self._loss_latch.pop(symbol, None)
                     self._loss_latch_elig_bar.pop(symbol, None)
                     self._loss_latch_bar.pop(symbol, None)
+                    # Exp1 (round-trip): clear the round-trip latch on any new entry /
+                    # flip so the new position starts unlatched (the latch is set by
+                    # the trigger on THIS position's own peak/giveback, not inherited).
+                    self._round_trip_latch.pop(symbol, None)
+                    self._round_trip_latch_bar.pop(symbol, None)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
