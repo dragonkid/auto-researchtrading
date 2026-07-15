@@ -513,6 +513,34 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
 
+# STRUCTURAL_EXPLORATION: PEAK-CONFIRMED CLIMAX HARVEST. Subsystem rewrite of the
+# profit-side exit pressure sources _ve_pressure (vol-of-price expansion) and
+# _vc_pressure (volume-climax). OLD core mechanism: raw vol/volume EXPANSION triggers
+# the harvest (fires on ANY expansion). The reverted climax-harvest branch proved this
+# MISFIRES on LONG trend winners: vol/volume expansion in a GRINDING uptrend (rally) is
+# trend-CONTINUATION not exhaustion, so the harvest prematurely cuts a still-running
+# winner -> lower Sharpe (rally +0.0046 from long-side removal). BUT unconditional removal
+# is sub-noise (+0.000638, std-blocked: gain concentrated in strong regimes) and loses the
+# DD cap a true climax harvest provides. The OLD mechanism is at its STRUCTURAL CEILING:
+# the raw-expansion signal CANNOT distinguish continuation (grinding uptrend, new peaks)
+# from exhaustion (true climax, peak formed + reversal) -- both show vol/volume expansion.
+# NEW core mechanism: PEAK-CONFIRMED expansion. The pressure is the PRODUCT of (a) the
+# expansion signal AND (b) a PEAK-GIVEBACK confirmation (the position has given back from
+# its peak = the peak has FORMED and is reversing, not still being made). A grinding-
+# uptrend winner at a NEW peak (pos_pnl == peak_pnl, giveback = 0) -> composite = 0 -> NO
+# harvest -> let the winner run -> Sharpe gain. A true climax (peak formed, pos_pnl gives
+# back, expansion high) -> composite = high -> harvest -> DD cap preserved. This is a
+# core-mechanism rewrite (the pressure function's input space changes from 1D expansion to
+# a 2D expansion x giveback composite), NOT a gate on top: the giveback factor multiplies
+# the pressure MAGNITUDE, so the signal is structurally "expansion-AT-a-reversing-peak".
+# Byte-identical for losers (profit-side weight _w_ve/_w_vc = pnl_scale = 0 for losers),
+# and for positions at peak in calm vol (expansion ~0 -> composite ~0 either way). The
+# giveback factor reuses _giveback_ratio (already computed for _pp_pressure) -- no new
+# price-derived read, just a new functional form on existing signals. Direction-agnostic
+# general principle (no regime label): a climax confirmed by a peak reversal is a genuine
+# exhaustion, regardless of regime; an expansion without a peak reversal is continuation.
+CLIMAX_GIVEBACK_SCALE = 0.15    # giveback_ratio (fraction of peak given back) at which the climax confirmation saturates
+
 
 class Strategy:
     def __init__(self):
@@ -3710,7 +3738,16 @@ class Strategy:
                 _vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
-                _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # STRUCTURAL_EXPLORATION: PEAK-CONFIRMED expansion. The raw expansion
+                # pressure is multiplied by a PEAK-GIVEBACK confirmation (the position has
+                # given back from its peak = the peak FORMED and is reversing, not still
+                # being made). _giveback_ratio (computed above for _pp_pressure) is 0 at a
+                # fresh/new peak (grinding uptrend continuation -> NO harvest, let winner
+                # run) and rises as the position reverses off its peak (true climax ->
+                # harvest). This rewrites the core mechanism from 1D expansion to a 2D
+                # expansion x giveback composite (see CLIMAX_GIVEBACK_SCALE header).
+                _climax_giveback_conf = max(0.0, min(1.0, np.tanh(_giveback_ratio / CLIMAX_GIVEBACK_SCALE)))
+                _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4)) * _climax_giveback_conf
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
@@ -3744,7 +3781,7 @@ class Strategy:
                 _vol_mean_e = float(np.mean(_vol_arr_e))
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
-                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
+                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5))) * _climax_giveback_conf
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
