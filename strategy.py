@@ -3767,7 +3767,7 @@ class Strategy:
                 # harvest even with giveback (let the oscillator re-peak). Continuous tanh
                 # ramp on peak age (no boundary); byte-identical for fresh peaks (age 0).
                 _peak_age = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
-                _climax_peak_age_gate = max(0.0, min(1.0, np.tanh((_peak_age - 2.0) / 2.0)))  # 0 age<=2, ~1 age>=4
+                _climax_peak_age_gate = max(0.0, min(1.0, np.tanh((_peak_age - 4.0) / 2.0)))  # branch step3: 0 age<=4, ~1 age>=6 (older peak = confirmed reversal; delay harvest to let winners run longer)
                 _climax_giveback_conf = max(0.0, min(1.0, np.tanh(_giveback_ratio / CLIMAX_GIVEBACK_SCALE))) * _climax_peak_age_gate
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4)) * _climax_giveback_conf
                 # Profit-side weight: only fire when in profit (lock gains on
