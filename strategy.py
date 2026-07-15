@@ -3628,6 +3628,19 @@ class Strategy:
                 # attenuation 0.30 (reduces _w_pp's 0.20 boost by up to 30pct). Continuous tanh,
                 # no new decision boundary.
                 _w_pp_long_breadth_gate = max(0.0, np.tanh(_port_trend_mag_agree / 0.02)) * (1.0 if current_pos > 0 else 0.0)
+                # branch step1: add UPTREND-ALIGNMENT gate (ret_vlong>0) so the breadth
+                # attenuation fires ONLY for trend-aligned long winners (bull/rally longs in a
+                # broad uptrend), NOT for counter-trend CRASH BOUNCE longs. Opener (long-only
+                # alone) collapsed crash -1.075: crash's persistent broad DOWN-trend makes
+                # _port_trend_mag_agree HIGH (all 3 symbols agree DOWN), so the long-only gate
+                # fired on crash bounce LONGS (counter-trend losers that pp SHOULD harvest at
+                # giveback) -> their harvest weight attenuated -> rode the giveback -> bigger
+                # losses -> crash collapsed. The uptrend-alignment gate (ret_vlong>0, the
+                # validated _ta_winner_gate multi-day separator) excludes crash bounce longs
+                # (ret_vlong<0) while keeping bull/rally longs (ret_vlong>0). Crash shorts
+                # (current_pos<0) already excluded by long-only.
+                _w_pp_long_align = max(0.0, np.tanh(ret_vlong / 0.02))
+                _w_pp_long_breadth_gate = _w_pp_long_breadth_gate * _w_pp_long_align
                 _w_pp = _w_pp * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
                 # In strong trends (high |ret_long|), trend-aligned winning
