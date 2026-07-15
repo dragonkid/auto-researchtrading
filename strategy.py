@@ -3683,6 +3683,15 @@ class Strategy:
                 # Following the regime-asymmetric insight from 5648b3a8: time pressure
                 # removal helped bull/crash but destroyed sideways/rally.
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) * (1.0 - _trend_strength_w)
+                # branch step8: extend the breadth-gate attenuation to the TIME-PRESSURE weight
+                # _w_time for broad-trend long winners (a SECOND decision surface, ADDITIVE to
+                # the _w_pp attenuation at step6). The _w_pp attenuation let broad-trend longs
+                # ride GIVEBACK harvest; this lets them ride TIME-pressure too (time pressure is
+                # noise in trend following -> a broad-confirmed-trend long winner's time-pressure
+                # exit is more likely premature -> attenuate the profit-side time-pressure amp).
+                # Reuses the SAME validated _w_pp_long_breadth_gate (long-only x uptrend-align x
+                # sustained-up-year-magnitude-deadzone). Byte-identical for non-bull (gate 0).
+                _w_time = _w_time * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
