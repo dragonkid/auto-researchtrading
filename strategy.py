@@ -76,11 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exp2 (architectural, indep): multi-day trend-EXTENT amplification of tp-harvest.
-# TP_EXTENT_MAX = max extra fraction added to the tp-harvest base (0.45) when the
-#   multi-day trend |ret_vlong| is strong (deep-peak winners in strong trends get a
-#   larger harvest -> more paper converted to realized -> less giveback oscillation).
-TP_EXTENT_MAX = 0.35  # 0.45 base -> up to 0.45*(1+0.35)=0.61 at full extent
 # Exp1 (architectural, indep): POSITION-CACHED ENTRY-LOCKED short-side hold-
 # extension. The prior session (b636bb1a opener) proved crash Sharpe can cross
 # ZERO via a short-side trend-aligned hold-extension (mirror of the long-only
@@ -4132,41 +4127,7 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    # Exp2 (architectural, indep, this session): MULTI-DAY TREND-EXTENT
-                    # amplification of the tp-harvest magnitude. NEW control-flow data
-                    # dep at tp-harvest: the harvest MAGNITUDE now reads the multi-day
-                    # trend EXTENT |ret_vlong| (96-bar OLS slope magnitude, noise-robust),
-                    # a signal the tp-harvest did NOT read (it read _tp_ratio [peak depth],
-                    # _tp_trend_gate [LOCAL 20-bar |ret_long|], and _ts_supp [multi-day
-                    # trend-ALIGN, the direction product]). Mechanism: a DEEP peak forming
-                    # in a STRONG multi-day trend (high |ret_vlong|) is a genuine trend
-                    # extension whose mean-reversion is HARDER and whose paper-to-giveback
-                    # oscillation is the largest (the mixed "ride to +30%, give back to
-                    # +24%, re-peak" MTM drag is dominated by deep-peak winners in mixed's
-                    # multi-day-trend legs). Amplify the harvest magnitude in strong
-                    # multi-day trends so MORE paper is converted to realized at the deep
-                    # peak -> smaller remaining position -> less giveback on the next
-                    # oscillation -> lower MTM oscillation -> higher Sharpe. CRASH-SAFE
-                    # by construction: _ts_supp already SUPPRESSES the harvest for trend-
-                    # aligned positions (ret_vlong*pos_dir>0 -> _ts_supp HIGH -> the
-                    # (1-1.5*_ts_supp) factor ~0 -> _tp_scale ~0); amplifying the base
-                    # 0.45 by an extent factor when (1-1.5*_ts_supp) already zeros it
-                    # leaves it ~0 -> crash's trend-aligned winning shorts (product>0 ->
-                    # _ts_supp HIGH) BYTE-IDENTICAL. The amplification fires ONLY on the
-                    # UNSUPPRESSED population (mixed's counter-trend-at-multi-day longs
-                    # where ret_vlong*pos_dir<0 -> _ts_supp~0 -> (1-1.5*_ts_supp)~1, AND
-                    # |ret_vlong| is large because mixed IS a multi-day down-year -> both
-                    # gates pass -> amplified harvest). BYTE-IDENTICAL in chop/sideways
-                    # (|ret_vlong|~0 -> extent amp ~1.0 via the deadzone below -> no
-                    # amplification; also sideways peaks are rare and _tp_trend_gate~0).
-                    # Continuous tanh deadzone on |ret_vlong|/0.03 (smooth ramp, no
-                    # boundary): ~0 below |ret_vlong|<0.01 (chop/sideways), saturating to
-                    # the amplification ceiling by |ret_vlong|~0.05 (strong trends).
-                    # Reduction-only target (harvest never delays exit). TP_EXTENT_MAX
-                    # caps the amplification (1.0 base + up to TP_EXTENT_MAX extra).
-                    _tp_extent_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong) - 0.01) / 0.02)))
-                    _tp_extent_amp = 1.0 + TP_EXTENT_MAX * _tp_extent_gate
-                    _tp_scale = 0.45 * _tp_extent_amp * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
