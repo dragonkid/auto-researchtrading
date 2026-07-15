@@ -539,7 +539,7 @@ COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturate
 # price-derived read, just a new functional form on existing signals. Direction-agnostic
 # general principle (no regime label): a climax confirmed by a peak reversal is a genuine
 # exhaustion, regardless of regime; an expansion without a peak reversal is continuation.
-CLIMAX_GIVEBACK_SCALE = 0.25    # branch step3: raise 0.15->0.25 (let winners run longer before the climax harvest triggers; needs a larger giveback to confirm a true peak reversal)
+CLIMAX_GIVEBACK_SCALE = 0.15    # giveback_ratio (fraction of peak given back) at which the climax confirmation saturates
 
 
 class Strategy:
