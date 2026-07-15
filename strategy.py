@@ -1011,7 +1011,30 @@ class Strategy:
         # noise attenuation per symbol) -> no new noise source. Byte-identical when the
         # symbols' ret_vlong cluster (synchronized trends).
         _port_ret_disp = float(np.std(_port_rv_vals)) if len(_port_rv_vals) >= 2 else 0.0
-        _port_ret_disp_cap = 1.0 - PORT_RET_DISP_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_ret_disp - PORT_RET_DISP_ONSET) / PORT_RET_DISP_SCALE)))
+        # branch step2: TREND-REGIME gate. Exp1 opener crashed crash (-0.307) and regressed
+        # sideways (-0.052). The dispersion signal is a ROTATION/TRANSITION signal (legs
+        # diverge when no broad trend is in force), NOT a bounce/pullback signal. In a
+        # PERSISTENT BROAD BEAR (crash: _port_down_persist ~0.9), transient dispersion is
+        # bounce noise (one symbol bounces while others stay down) -> shrinking then hurts
+        # crash's trend-aligned winning SHORTS (the crash edge) = the crash-coupling wall.
+        # In ALL-SYMBOLS-CHOPPY (sideways: _port_weak_persist_avg high), dispersion is
+        # oscillation noise -> shrinking distorts sideways' mean-reversion recoveries (the
+        # mean-reversion wall). SUPPRESS the cap in BOTH broad-trend regimes so it fires
+        # ONLY in genuine rotation (mixed: one symbol at a time trending, no broad trend,
+        # down_persist ~0.5, weak_avg moderate). Two suppressors composed:
+        #   _disp_bear_suppress: fades the cap OUT as down_persist rises (crash); full cap
+        #     below down_persist 0.45, gone by 0.65 (validated duration-count separator,
+        #     noise-immune -- the SAME _down_persist the pp_attenuation _up_persist_gate
+        #     uses). bull down_persist ~0.3 -> NOT suppressed -> bull keeps the DD relief.
+        #   _disp_chop_suppress: fades the cap OUT as weak_persist_avg rises (sideways);
+        #     full cap below 0.45, gone by 0.65 (the SAME _port_weak_persist_avg the
+        #     admission tightener uses). mixed weak_avg moderate -> NOT suppressed.
+        # Continuous tanh ramps (no boundary); byte-identical when the cap is inactive
+        # (dispersion below onset) regardless of gate. Reduction-only (cap <= 1.0).
+        _disp_bear_suppress = max(0.0, 1.0 - max(0.0, (_port_down_persist - 0.45) / 0.20))
+        _disp_chop_suppress = max(0.0, 1.0 - max(0.0, (_port_weak_persist_avg - 0.45) / 0.20))
+        _disp_gate = _disp_bear_suppress * _disp_chop_suppress
+        _port_ret_disp_cap = 1.0 - PORT_RET_DISP_MAX_SHRINK * _disp_gate * max(0.0, min(1.0, np.tanh((_port_ret_disp - PORT_RET_DISP_ONSET) / PORT_RET_DISP_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_ret_disp_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
