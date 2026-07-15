@@ -294,9 +294,9 @@ NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-
 # Composes multiplicatively with _conc_shrink / _net_tilt_shrink (independent signals:
 # gross-notional, net-direction, PnL-composition). Sparing magnitude (max 0.20) since
 # it rides on top of the existing portfolio shrinks.
-PORT_CONC_LOSS_ONSET = 0.50    # fraction of other-held positions in loss above which shrink engages (0.5 = majority losing)
+PORT_CONC_LOSS_ONSET = 0.40    # branch step3: 0.50->0.40 lower onset (fire on more bull pullback-cluster bars where 2/5 = 0.40 losing; bull's pullback clusters have 2-3 concurrent losers out of 4-5 held)
 PORT_CONC_LOSS_SCALE = 0.25    # tanh saturation scale (0.50 -> 0.75 saturates)
-PORT_CONC_LOSS_MAX_SHRINK = 0.20  # max first-bar shrink at full concurrent-loss (-> 0.80x)
+PORT_CONC_LOSS_MAX_SHRINK = 0.35  # branch step3: 0.20->0.35 amplify (push the bull DD cut past +0.003; step2 +0.000447 sub-noise at 0.20)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
