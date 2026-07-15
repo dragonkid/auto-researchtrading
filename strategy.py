@@ -2204,7 +2204,15 @@ class Strategy:
                 # This is the SAME validated _up_persist_gate onset (0.40) the pp-attenuation
                 # keep uses, but here applied as the down-persist EXCLUSION onset (shrink OFF by
                 # 0.50, vs step3's 0.60). Continuous ramp, no boundary.
-                _conc_loss_down_gate = max(0.0, 1.0 - max(0.0, (_port_down_persist - 0.30) / 0.20))
+                # branch step7: TIGHTEN further (fade 0.20->0.40, gate 0 by down_persist 0.40).
+                # Step6 (fade 0.30-0.50) still had the gate at 0.5 when down_persist=0.40 (the
+                # MIDDLE of the fade) -> early-crash build-up (down_persist 0.40-0.50) STILL
+                # partially active -> crash stability still crashed (0.0). Tighten to fade
+                # 0.20->0.40: gate is 0 by down_persist 0.40 (full exclusion of build-up from
+                # 0.40 onward), FULL below 0.20. Cost: bull/rally (~0.3) sit at gate ~0.67
+                # (0.33 into the fade) -> less shrink -> some bull/mixed gain lost. Test whether
+                # composite still crosses +0.003 with crash STABILIZED.
+                _conc_loss_down_gate = max(0.0, 1.0 - max(0.0, (_port_down_persist - 0.20) / 0.20))
                 _conc_loss_shrink = 1.0 - PORT_CONC_LOSS_MAX_SHRINK * _conc_loss_down_gate * max(0.0, min(1.0, np.tanh((_conc_loss_frac - PORT_CONC_LOSS_ONSET) / PORT_CONC_LOSS_SCALE)))
                 _conc_shrink_bull *= _conc_loss_shrink
                 _conc_shrink_bear *= _conc_loss_shrink
