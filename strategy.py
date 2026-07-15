@@ -321,7 +321,9 @@ MAE_VEL_MAX_FLOOR = 0.60
 # LOSING (pos_pnl<0 -> crash's trend-aligned WINNING shorts excluded) +
 # trend-aligned-at-multi-day (counter-trend losers excluded). Gradual only.
 ADV_MOM_BARS = 3       # window for the recent pos_pnl momentum
-ADV_MOM_ONSET = 0.15    # |pos_pnl decline|/|stop| above which the amplifier engages
+ADV_MOM_ONSET = 0.35    # branch step1: 0.15->0.35 require a DEEP 3-bar decline/stop to exclude
+                        # mixed's shallow mean-reverting chop dips (which mean-revert) while
+                        # keeping rally's deep extending bleeds (the trim target)
 ADV_MOM_MAX_FLOOR = 0.30  # max _de_floor lowering (smaller than MAE_VEL: complementary, not redundant)
 
 
