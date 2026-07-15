@@ -513,6 +513,14 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
 
+# Exp3 (architectural, indep): CROSS-SYMBOL SYNCHRONIZED short-term DECLINE entry shrink
+# for trend-aligned LONGS. See _port_sync_decline_mag header. The MIN 4-bar return across
+# symbols (most-declining) isolates a synchronized correlated decline (bull-market
+# correction across all 3 assets) from single-symbol noise. Applied to long entries gated
+# on trend-aligned-at-multi-day (ret_vlong>0). Reduction-only, smooth tanh.
+SYNC_DECLINE_SHRINK_MAX = 0.20  # max shrink at deep synchronized decline
+SYNC_DECLINE_SCALE = 0.025      # 4-bar return magnitude (per symbol) at which shrink saturates
+
 
 class Strategy:
     def __init__(self):
@@ -896,6 +904,7 @@ class Strategy:
         _port_weak_persist_vals = []  # Exp6: per-symbol weak_persist for max-aggregation
         _port_rv_vals = []  # Exp8: per-symbol raw ret_vlong for max-aggregation deep-bear cap
         _port_vol_ratio_vals = []  # Exp1: per-symbol vol_ratio for max-aggregation vol-spike cap
+        _port_ret4_vals = []  # Exp3: per-symbol 4-bar return for synchronized-decline entry shrink
         for _psym in _port_down_persist_syms:
             _pc = bar_data[_psym].history["close"].values
             _pn = min(VLONG_WINDOW, len(_pc) - 1)
@@ -923,7 +932,26 @@ class Strategy:
                 _p_baseline_vol = max(np.std(np.diff(np.log(_pc[-_p_long_n - 1:-1]))), 1e-6)
                 _p_target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _p_baseline_vol
                 _port_vol_ratio_vals.append(_p_rv_short / max(_p_target_vol_dyn, 1e-6))
+            # Exp3: per-symbol 4-bar return (short-term decline for synchronized-decline gate)
+            if len(_pc) > 4:
+                _port_ret4_vals.append((float(_pc[-1]) - float(_pc[-5])) / float(_pc[-5]))
         _port_down_persist = (sum(_port_down_persist_vals) / len(_port_down_persist_vals)) if _port_down_persist_vals else 0.0
+        # Exp3 (architectural, indep): CROSS-SYMBOL SYNCHRONIZED short-term DECLINE. NEW
+        # cross-symbol data dep: the MIN 4-bar return across symbols (most-declining symbol).
+        # A synchronized sharp decline across all 3 symbols within an UPTREND is a correlated
+        # bull-market correction (May/Sept 2021: BTC/ETH/SOL all fell together) = bull's DD
+        # source (trend-aligned longs bought into the falling market, ret_vlong still >0).
+        # Distinct from _port_down_persist (52-bar persistent bear = crash, NOT a short-term
+        # synchronized correction) and _port_dd_atten (portfolio EQUITY DD, lags the first
+        # correction entries). The MIN aggregation requires the WEAKEST symbol to be declining
+        # -> strict synchronized-decline confirmation. Applied as a long-entry shrink gated
+        # on trend-aligned-at-multi-day (ret_vlong>0: uptrend pullback, NOT a crash downtrend
+        # where longs are counter-trend already gated). Reduction-only, smooth tanh. Targets
+        # bull DD at the correlated-correction phase; sideways byte-identical if its recovery
+        # drift is not a synchronized sharp 4-bar decline (gradual, not all-3-sharp).
+        _port_sync_decline_mag = 0.0
+        if len(_port_ret4_vals) >= 2:
+            _port_sync_decline_mag = max(0.0, -min(_port_ret4_vals))  # magnitude of the most-declining symbol's 4-bar return
         # Exp1: portfolio-level deep-bear size cap (AVERAGE aggregation). Continuous tanh
         # ramp above ONSET; shrink-only (caps at 1.0; never amplifies size).
         _port_bear_cap = 1.0 - PORT_DOWN_PERSIST_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_down_persist - PORT_DOWN_PERSIST_ONSET) / PORT_DOWN_PERSIST_SCALE)))
@@ -2200,6 +2228,16 @@ class Strategy:
                 _cv_counter_bear = max(0.0, _cv_ret3)   # short entered after an up-move
                 _cv_shrink_bull = 1.0 - COUNTER_VEL_SHRINK_MAX * _cv_ta_bull * max(0.0, min(1.0, np.tanh(_cv_counter_bull / COUNTER_VEL_SCALE)))
                 _cv_shrink_bear = 1.0 - COUNTER_VEL_SHRINK_MAX * _cv_ta_bear * max(0.0, min(1.0, np.tanh(_cv_counter_bear / COUNTER_VEL_SCALE)))
+                # Exp3 (architectural, indep): CROSS-SYMBOL SYNCHRONIZED short-term DECLINE
+                # entry shrink for trend-aligned LONGS. Uses _port_sync_decline_mag (MIN 4-bar
+                # return magnitude across symbols, computed at the top-level cross-symbol block).
+                # Gated on trend-aligned-at-multi-day (ret_vlong>0: uptrend pullback, spares
+                # crash downtrend longs [ct, ret_vlong<0] and all shorts). Reduction-only, smooth
+                # tanh on the synchronized-decline magnitude. Distinct from _cv_shrink (single-
+                # symbol 3-bar velocity): a synchronized multi-symbol decline is a correlated
+                # bull-market correction (bull DD source), not a single-symbol transient dip.
+                _sd_ta_bull = max(0.0, np.tanh(ret_vlong / 0.01))  # ~1 bull/rally aligned long, ~0 ct/crash
+                _sync_decline_shrink_bull = 1.0 - SYNC_DECLINE_SHRINK_MAX * _sd_ta_bull * max(0.0, min(1.0, np.tanh(_port_sync_decline_mag / SYNC_DECLINE_SCALE)))
                 # Exp5 (architectural, indep): volume-RISING trend-ALIGNED entry boost —
                 # bilateral counterpart to the Exp3 decline shrink. A trend-aligned entry on
                 # RISING volume has strong participation confirming the trend (rally longs on
@@ -2551,7 +2589,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _sync_decline_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
