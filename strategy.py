@@ -1191,6 +1191,18 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
+            # branch step2: LONGER-WINDOW (200-bar) trend for the sustained-uptrend vs
+            # down-year separator. mixed is a down-year (96-bar ret_vlong oscillates +/- but
+            # the 200-bar trend is negative); bull is a sustained up-year (200-bar positive);
+            # sideways 2023 recovery ~flat (200-bar ~0). Used ONLY to gate the _w_pp breadth
+            # attenuation so it fires for bull's sustained up-year (positive 200-bar) but NOT
+            # mixed's down-year rally-phases (negative 200-bar) -- separating the bull
+            # let-winners-run population from mixed's round-trip population. 200-bar OLS slope
+            # on log(HL2): each bar carries 1/200 of AR(1) noise -> very smooth, noise-robust
+            # (the validated ret_vlong stability property, extended to a longer window).
+            _vlong2_n = min(200, len(closes) - 1)
+            _hl2_vl2 = (bd.history["high"].values[-_vlong2_n:] + bd.history["low"].values[-_vlong2_n:]) / 2.0
+            ret_vlong2 = _fast_slope(np.log(_hl2_vl2)) * _vlong2_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
@@ -3641,6 +3653,15 @@ class Strategy:
                 # (current_pos<0) already excluded by long-only.
                 _w_pp_long_align = max(0.0, np.tanh(ret_vlong / 0.02))
                 _w_pp_long_breadth_gate = _w_pp_long_breadth_gate * _w_pp_long_align
+                # branch step2: add SUSTAINED-UP-YEAR gate (ret_vlong2>0, 200-bar) to exclude
+                # mixed's down-year rally-phase longs (ret_vlong>0 in mixed up-phases BUT
+                # ret_vlong2<0 -- the year is down -> those givebacks ROUND-TRIP, unlike bull's
+                # sustained up-year where givebacks recover). Sideways (ret_vlong2~0 flat
+                # recovery) also excluded. Continuous tanh on ret_vlong2/0.02 (noise-robust
+                # 200-bar slope). Byte-identical for non-bull (mixed down-year + sideways flat
+                # + crash excluded by long-only/align).
+                _w_pp_sustained_up = max(0.0, np.tanh(ret_vlong2 / 0.02))
+                _w_pp_long_breadth_gate = _w_pp_long_breadth_gate * _w_pp_sustained_up
                 _w_pp = _w_pp * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
                 # In strong trends (high |ret_long|), trend-aligned winning
