@@ -801,11 +801,6 @@ class Strategy:
             _eq_hist = _eq_hist[-8:]
         self._equity_ema_hist = _eq_hist
         _port_eq_mom_shrink = 1.0
-        # Exp2 (this session): portfolio-equity-MOMENTUM giveback-tightening factor for
-        # the exit side (composed into _pp_tighten at the giveback). Default 1.0 (no
-        # tightening) when momentum non-negative or insufficient history. Computed
-        # unconditionally so it is in scope at the pp-pressure block below.
-        _port_eq_mom_pp_tighten = 1.0
         if len(_eq_hist) >= 8 and self._peak_equity > 1e-10:
             _eq_mom = (self._equity_ema - _eq_hist[0]) / self._peak_equity  # 8-bar rate of change / peak
             # Shrink only when momentum negative; max 15% shrink at deep negative momentum.
@@ -828,21 +823,6 @@ class Strategy:
             # excluded (gate ~0.5-0.8), rally/mixed sharp pullbacks still saturate -> keeps
             # the rally/mixed DD-cut while reducing sideways' gentle-oscillation shrink.
             _port_eq_mom_shrink = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
-            # Exp2 (this session): MOMENTUM giveback-tightening for the exit side. The
-            # active PORT_DD_GIVEBACK_TIGHTEN keys on the DD-FRACTION LEVEL (fires at
-            # DEEP dd_frac, slow). This keys on the DD DERIVATIVE (8-bar equity momentum):
-            # fires EARLIER -- when the portfolio has JUST STARTED declining (fresh
-            # pullback, low dd_frac, negative momentum), before the dd_frac-level
-            # tightening has engaged. Tighten the winner giveback tolerance so
-            # pp_pressure harvests winners faster during the fresh decline -> locks
-            # realized gains before the declining regime takes them back -> caps the
-            # DD at its SOURCE (the start of the pullback) rather than after it
-            # deepens. Same _mom_dd_gate (fresh-pullback only, byte-identical in
-            # sustained deep DD = crash) and /0.01 momentum scale as the entry shrink.
-            # Reduction-only (tighten <= 1.0); byte-identical when momentum >= 0 (rising
-            # portfolio = bull/rally/mixed uptrend legs) and in sustained deep DD (gate 0).
-            # Max 12% giveback tightening at a sharp fresh-pullback decline.
-            _port_eq_mom_pp_tighten = 1.0 - 0.12 * max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01))) * _mom_dd_gate
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -3271,10 +3251,7 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp2 (this session): compose the DD-LEVEL giveback tightening with the
-                # MOMENTUM giveback tightening (fresh-pullback derivative signal, fires
-                # earlier than the dd_frac-level). Multiplicative: both reduction-only.
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _port_eq_mom_pp_tighten
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
