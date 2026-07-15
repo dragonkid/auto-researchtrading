@@ -3714,27 +3714,7 @@ class Strategy:
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
-                # Exp2 (architectural, indep): DD-GATED long-side climax-harvest removal.
-                # The reverted climax-harvest branch found _ve/_vc MISFIRE on LONG trend
-                # winners (vol/volume expansion in a grinding uptrend = CONTINUATION not
-                # exhaustion -> premature harvest cuts a still-running winner -> lower
-                # Sharpe; rally +0.0046 from long-only removal) BUT unconditional removal was
-                # sub-noise +0.000638 (std-blocked: gain concentrated in strong regimes) AND
-                # crash needs the climax harvest for shorts (dead-cat-bounce harvest). NEW
-                # data dep: the climax-harvest weights now read PORTFOLIO DD state. Keep the
-                # harvest for LONGS only DURING portfolio DD (a climax during a drawdown may
-                # deepen the DD -> harvest to cap DD); REMOVE it for longs at PEAK equity (a
-                # climax at peak in a grinding uptrend is continuation -> let the winner run
-                # -> Sharpe gain). Shorts keep the full climax harvest unconditionally (crash
-                # protection). Continuous tanh on the DD fraction (no boundary); byte-
-                # identical for shorts (short_only branch unaffected) and for longs at deep
-                # DD (dd_active~1 -> full harvest kept). Distinct from the reverted branch
-                # (unconditional long-only removal): this isolates the Sharpe gain to peak-
-                # equity bars (no DD-cap cost) while preserving the DD cap during drawdowns.
-                _climax_dd_active = max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.004 * LEVERAGE_K))))
-                _climax_long_keep = _climax_dd_active  # 0 at peak (remove), 1 during DD (keep)
-                _climax_side_gate = 0.0 if current_pos > 0 else 1.0  # shorts keep full harvest
-                _w_ve = max(0.0, _pnl_scale) * max(_climax_side_gate, _climax_long_keep)  # in [0, 1], only positive pos_pnl
+                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
                 # Exp3 (architectural simplification, this session): removed the dead
                 # _ep_pressure (early-profit-lock) and _ar_pressure (adverse-recovery)
                 # terms. Both were already zeroed (_ep_pressure=0.0 since the
@@ -3765,8 +3745,7 @@ class Strategy:
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                # Exp2: DD-gated long-side climax-harvest removal (same gate as _w_ve above).
-                _w_vc = max(0.0, _pnl_scale) * max(_climax_side_gate, _climax_long_keep)  # profit-side; longs kept only during DD
+                _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
