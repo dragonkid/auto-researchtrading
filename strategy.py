@@ -3783,7 +3783,17 @@ class Strategy:
                 # reversal, harvest immediately at the bounce).
                 _climax_age_side = _climax_peak_age_gate if current_pos > 0 else 1.0  # longs: age-gated; shorts: immediate
                 _climax_giveback_conf = max(0.0, min(1.0, np.tanh(_giveback_ratio / CLIMAX_GIVEBACK_SCALE))) * _climax_age_side
-                _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4)) * _climax_giveback_conf
+                # branch step5: AMPLIFY the climax harvest magnitude when peak-confirmed is
+                # high. The peak-confirmation makes the harvest more ACCURATE (only true
+                # climaxes with giveback+expansion+sustained-peak), so a STRONGER harvest at
+                # those confirmed points caps DD more without misfiring on continuation. At a
+                # confirmed climax (conf~1) pressure is (1+amp)x stronger -> harvests more ->
+                # caps rally/mixed DD; at weak confirmation (conf~0, continuation) pressure
+                # is ~baseline (and the conf multiplier already drives it to ~0). This adds a
+                # DD-cap lever on top of the let-winners-run Sharpe lever. Continuous (the
+                # (1+amp*conf) factor is smooth in conf); capped magnitude.
+                _climax_amp = 1.0 + 0.6 * _climax_giveback_conf  # 1x at weak conf, up to 1.6x at full confirmation
+                _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4)) * _climax_giveback_conf * _climax_amp
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
@@ -3817,7 +3827,7 @@ class Strategy:
                 _vol_mean_e = float(np.mean(_vol_arr_e))
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
-                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5))) * _climax_giveback_conf
+                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5))) * _climax_giveback_conf * _climax_amp
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
