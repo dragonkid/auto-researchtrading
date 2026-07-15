@@ -3603,6 +3603,32 @@ class Strategy:
                 # Continuous tanh on (vol_ratio - 1.0)/0.4 — smooth transition around vol_ratio=1.
                 _vol_w_pp_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, ~1]
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate)
+                # Exp3 (architectural, indep): CROSS-SYMBOL-MAGNITUDE-AGREEMENT attenuation of
+                # the profit-side giveback-harvest WEIGHT for trend-aligned LONG winners. The
+                # keep _ta_winner_gate already ATTENUATES the pp_pressure VALUE 95pct for
+                # trend-aligned long winners (line ~3360); the magnitude-separator on that GATE
+                # (prior Exp1 row 2987) gave bull +0.022 Sh but sub-noise composite (PP axis
+                # moves a small population). THIS applies the SAME validated cross-symbol
+                # magnitude separator (_port_trend_mag_agree, min |ret_vlong| among agreeing
+                # symbols -- a broad-confirmed-trend measure, noise-robust per prior Exp1) to a
+                # DIFFERENT decision surface: the giveback-harvest WEIGHT _w_pp (the multiplier
+                # on _pp_pressure in the MAX-fusion), NOT the gate. Mechanism: a LONG winner in
+                # a BROAD confirmed uptrend (all 3 symbols trending up together, high
+                # _port_trend_mag_agree) is more likely riding a genuine broad trend -> its
+                # giveback is a transient pullback -> attenuate the giveback-harvest WEIGHT
+                # (harvest LESS aggressively -> let the broad-trend winner ride). Distinct from
+                # the keep's VALUE attenuation (that scales the pressure output; this scales
+                # the WEIGHT in the fusion tuple) and from the pp_min tolerance (that scales
+                # the giveback threshold). NEW cross-component data dep at the fusion weight:
+                # _w_pp reads the cross-symbol magnitude agreement + position direction. GATES:
+                # long-only (current_pos>0, spares crash winning shorts which need full pp
+                # harvest at dead-cat-bounce giveback), in-profit (_pnl_scale>0 via the
+                # existing max(0,_pnl_scale) term; losers byte-identical). Byte-identical when
+                # no broad agreement (_port_trend_mag_agree=0) or for shorts/losers. Max
+                # attenuation 0.30 (reduces _w_pp's 0.20 boost by up to 30pct). Continuous tanh,
+                # no new decision boundary.
+                _w_pp_long_breadth_gate = max(0.0, np.tanh(_port_trend_mag_agree / 0.02)) * (1.0 if current_pos > 0 else 0.0)
+                _w_pp = _w_pp * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
                 # In strong trends (high |ret_long|), trend-aligned winning
                 # positions should hold longer — time pressure is noise in trend
