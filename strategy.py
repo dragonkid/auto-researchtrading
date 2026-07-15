@@ -1191,18 +1191,6 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
-            # branch step2: LONGER-WINDOW (200-bar) trend for the sustained-uptrend vs
-            # down-year separator. mixed is a down-year (96-bar ret_vlong oscillates +/- but
-            # the 200-bar trend is negative); bull is a sustained up-year (200-bar positive);
-            # sideways 2023 recovery ~flat (200-bar ~0). Used ONLY to gate the _w_pp breadth
-            # attenuation so it fires for bull's sustained up-year (positive 200-bar) but NOT
-            # mixed's down-year rally-phases (negative 200-bar) -- separating the bull
-            # let-winners-run population from mixed's round-trip population. 200-bar OLS slope
-            # on log(HL2): each bar carries 1/200 of AR(1) noise -> very smooth, noise-robust
-            # (the validated ret_vlong stability property, extended to a longer window).
-            _vlong2_n = min(200, len(closes) - 1)
-            _hl2_vl2 = (bd.history["high"].values[-_vlong2_n:] + bd.history["low"].values[-_vlong2_n:]) / 2.0
-            ret_vlong2 = _fast_slope(np.log(_hl2_vl2)) * _vlong2_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
@@ -3615,62 +3603,6 @@ class Strategy:
                 # Continuous tanh on (vol_ratio - 1.0)/0.4 — smooth transition around vol_ratio=1.
                 _vol_w_pp_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, ~1]
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate)
-                # Exp3 (architectural, indep): CROSS-SYMBOL-MAGNITUDE-AGREEMENT attenuation of
-                # the profit-side giveback-harvest WEIGHT for trend-aligned LONG winners. The
-                # keep _ta_winner_gate already ATTENUATES the pp_pressure VALUE 95pct for
-                # trend-aligned long winners (line ~3360); the magnitude-separator on that GATE
-                # (prior Exp1 row 2987) gave bull +0.022 Sh but sub-noise composite (PP axis
-                # moves a small population). THIS applies the SAME validated cross-symbol
-                # magnitude separator (_port_trend_mag_agree, min |ret_vlong| among agreeing
-                # symbols -- a broad-confirmed-trend measure, noise-robust per prior Exp1) to a
-                # DIFFERENT decision surface: the giveback-harvest WEIGHT _w_pp (the multiplier
-                # on _pp_pressure in the MAX-fusion), NOT the gate. Mechanism: a LONG winner in
-                # a BROAD confirmed uptrend (all 3 symbols trending up together, high
-                # _port_trend_mag_agree) is more likely riding a genuine broad trend -> its
-                # giveback is a transient pullback -> attenuate the giveback-harvest WEIGHT
-                # (harvest LESS aggressively -> let the broad-trend winner ride). Distinct from
-                # the keep's VALUE attenuation (that scales the pressure output; this scales
-                # the WEIGHT in the fusion tuple) and from the pp_min tolerance (that scales
-                # the giveback threshold). NEW cross-component data dep at the fusion weight:
-                # _w_pp reads the cross-symbol magnitude agreement + position direction. GATES:
-                # long-only (current_pos>0, spares crash winning shorts which need full pp
-                # harvest at dead-cat-bounce giveback), in-profit (_pnl_scale>0 via the
-                # existing max(0,_pnl_scale) term; losers byte-identical). Byte-identical when
-                # no broad agreement (_port_trend_mag_agree=0) or for shorts/losers. Max
-                # attenuation 0.30 (reduces _w_pp's 0.20 boost by up to 30pct). Continuous tanh,
-                # no new decision boundary.
-                _w_pp_long_breadth_gate = max(0.0, np.tanh(_port_trend_mag_agree / 0.02)) * (1.0 if current_pos > 0 else 0.0)
-                # branch step1: add UPTREND-ALIGNMENT gate (ret_vlong>0) so the breadth
-                # attenuation fires ONLY for trend-aligned long winners (bull/rally longs in a
-                # broad uptrend), NOT for counter-trend CRASH BOUNCE longs. Opener (long-only
-                # alone) collapsed crash -1.075: crash's persistent broad DOWN-trend makes
-                # _port_trend_mag_agree HIGH (all 3 symbols agree DOWN), so the long-only gate
-                # fired on crash bounce LONGS (counter-trend losers that pp SHOULD harvest at
-                # giveback) -> their harvest weight attenuated -> rode the giveback -> bigger
-                # losses -> crash collapsed. The uptrend-alignment gate (ret_vlong>0, the
-                # validated _ta_winner_gate multi-day separator) excludes crash bounce longs
-                # (ret_vlong<0) while keeping bull/rally longs (ret_vlong>0). Crash shorts
-                # (current_pos<0) already excluded by long-only.
-                _w_pp_long_align = max(0.0, np.tanh(ret_vlong / 0.02))
-                _w_pp_long_breadth_gate = _w_pp_long_breadth_gate * _w_pp_long_align
-                # branch step2: add SUSTAINED-UP-YEAR gate (ret_vlong2>0, 200-bar) to exclude
-                # mixed's down-year rally-phase longs (ret_vlong>0 in mixed up-phases BUT
-                # ret_vlong2<0 -- the year is down -> those givebacks ROUND-TRIP, unlike bull's
-                # sustained up-year where givebacks recover). Sideways (ret_vlong2~0 flat
-                # recovery) also excluded. Continuous tanh on ret_vlong2/0.02 (noise-robust
-                # 200-bar slope). Byte-identical for non-bull (mixed down-year + sideways flat
-                # + crash excluded by long-only/align).
-                # branch step6: MAGNITUDE DEADZONE on ret_vlong2 -- step2's /0.02 scale let
-                # sideways' weak 200-bar recovery drift (~+0.005) fire partially (tanh(0.25)=0.245)
-                # -> the sideways leak (-0.0004). step3 (/0.04 scale) was byte-identical (still fires
-                # 12pct). A MAGNITUDE DEADZONE (ret_vlong2 - 0.02)/0.02 instead of the pure scale:
-                # sideways ~0.005 -> tanh(-0.75) -> ~0 EXCLUDED; bull ~0.04+ -> tanh(1.0) -> 0.76
-                # fires. Separates bull's STRONG sustained up-year from sideways' WEAK recovery
-                # drift on the MAGNITUDE axis (bull ret_vlong2 ~0.04 vs sideways ~0.005, an 8x
-                # magnitude gap the deadzone exploits). Continuous, no hard boundary.
-                _w_pp_sustained_up = max(0.0, min(1.0, np.tanh((ret_vlong2 - 0.03) / 0.02)))
-                _w_pp_long_breadth_gate = _w_pp_long_breadth_gate * _w_pp_sustained_up
-                _w_pp = _w_pp * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
                 # In strong trends (high |ret_long|), trend-aligned winning
                 # positions should hold longer — time pressure is noise in trend
@@ -3683,15 +3615,6 @@ class Strategy:
                 # Following the regime-asymmetric insight from 5648b3a8: time pressure
                 # removal helped bull/crash but destroyed sideways/rally.
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) * (1.0 - _trend_strength_w)
-                # branch step8: extend the breadth-gate attenuation to the TIME-PRESSURE weight
-                # _w_time for broad-trend long winners (a SECOND decision surface, ADDITIVE to
-                # the _w_pp attenuation at step6). The _w_pp attenuation let broad-trend longs
-                # ride GIVEBACK harvest; this lets them ride TIME-pressure too (time pressure is
-                # noise in trend following -> a broad-confirmed-trend long winner's time-pressure
-                # exit is more likely premature -> attenuate the profit-side time-pressure amp).
-                # Reuses the SAME validated _w_pp_long_breadth_gate (long-only x uptrend-align x
-                # sustained-up-year-magnitude-deadzone). Byte-identical for non-bull (gate 0).
-                _w_time = _w_time * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
