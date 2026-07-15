@@ -1011,24 +1011,26 @@ class Strategy:
         # noise attenuation per symbol) -> no new noise source. Byte-identical when the
         # symbols' ret_vlong cluster (synchronized trends).
         _port_ret_disp = float(np.std(_port_rv_vals)) if len(_port_rv_vals) >= 2 else 0.0
-        # branch step2: TREND-REGIME gate. Exp1 opener crashed crash (-0.307): in a
-        # PERSISTENT BROAD BEAR (crash: _port_down_persist ~0.9), transient dispersion is
-        # bounce noise (one symbol bounces while others stay down) -> shrinking then hurts
-        # crash's trend-aligned winning SHORTS (the crash edge) = the crash-coupling wall.
-        # Suppress the cap as down_persist rises (crash). step2a ALSO added a chop suppressor
-        # (_port_weak_persist_avg) for sideways, but that CRASHED sideways stability
-        # (1.0->0.308): weak_persist_avg wobbles around the 0.45-0.65 gate band under AR(1)
-        # -> the cap stutters on sideways entries -> exit-timing shift -> stab crash (the
-        # size-wobble-under-noise wall). Reverted the chop suppressor: opener's sideways
-        # (-0.052, stab 1.0) is acceptable; the chop suppressor's sideways (Sh +0.035 but
-        # stab 0.308 -> score 0) is NOT (fragile, kills min_stab headroom). Keep ONLY the
-        # bear suppressor: down_persist is a DURATION COUNT (noise-immune as a level); the
-        # 0.45->0.65 ramp sits BELOW crash's solid 0.9 (clean saturated suppress, no
-        # wobble) and ABOVE bull's 0.3 (clean no-suppress). Full cap below down_persist
-        # 0.45, gone by 0.65 (the SAME _down_persist the pp_attenuation _up_persist_gate
-        # uses). Continuous tanh; byte-identical when the cap is inactive (dispersion below
-        # onset) regardless of gate. Reduction-only (cap <= 1.0).
-        _disp_bear_suppress = max(0.0, 1.0 - max(0.0, (_port_down_persist - 0.45) / 0.20))
+        # branch step2/3/4: CRASH-PROTECTION gate on the dispersion cap. The opener
+        # crashed crash (-0.307): in a persistent broad BEAR, transient dispersion is bounce
+        # noise (one symbol bounces while others stay down) -> shrinking then hurts crash's
+        # trend-aligned winning SHORTS (the crash edge) = the crash-coupling wall. Need to
+        # suppress the cap in crash WITHOUT wobbling in sideways (the size-wobble wall:
+        # step2/3 used _port_down_persist 0.45->0.65, but down_persist ~0.5 in sideways sits
+        # in the ramp -> AR(1) wobble -> cap stutters -> sideways stab crashed 1.0->0.30).
+        # step4 FIX: use _port_deep_bear_mag (the MAX |ret_vlong| among symbols, the 96-bar
+        # OLS magnitude) as the crash suppressor -- the SAME signal the deep-bear SIZE cap
+        # (Exp8) and admission tightener (Exp3) use. It CLEANLY separates crash from
+        # sideways/mixed on the MAGNITUDE axis: crash ret_vlong ~-0.04 (deep, well ABOVE the
+        # 0.03 onset -> decisively suppressed, no wobble), sideways ~-0.005 (FAR below ->
+        # cap fully ON = opener's stab-safe -0.052), mixed ~-0.01..-0.02 (below -> cap ON =
+        # mixed gain preserved), bull ~0 (cap ON = pullback DD relief). KEY: deep_bear_mag
+        # is a 96-bar OLS SMOOTH magnitude -> it does NOT dip during short crash bounces
+        # (unlike down_persist, a duration count that wobbles) -> crash shorts stay protected
+        # THROUGH the bounce (the whole point). Ramp 0.025->0.035 (above the existing
+        # PORT_DEEP_BEAR_ONSET 0.03 region); continuous tanh; byte-identical when the cap
+        # is inactive (dispersion below onset) regardless of gate. Reduction-only.
+        _disp_bear_suppress = max(0.0, 1.0 - max(0.0, (_port_deep_bear_mag - 0.025) / 0.010))
         _port_ret_disp_cap = 1.0 - PORT_RET_DISP_MAX_SHRINK * _disp_bear_suppress * max(0.0, min(1.0, np.tanh((_port_ret_disp - PORT_RET_DISP_ONSET) / PORT_RET_DISP_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_ret_disp_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
