@@ -302,6 +302,24 @@ COOLDOWN_TREND_DECAY = 0.06
 MAE_VEL_WINDOW = 10
 MAE_VEL_ONSET = 0.0
 MAE_VEL_MAX_FLOOR = 0.60
+# Exp1 (architectural, indep): PEAK-EROSION-VELOCITY de-risk floor lowering for
+# WINNERS -- the winner-side mirror of the kept MAE-velocity (loser-side). Same
+# stability-safe gradual _de_floor axis (the sanctioned gradual-ramp-shape axis).
+# PEAK_EROSION_WINDOW = rolling window for fresh-giveback-low counting (rate).
+# PEAK_EROSION_ONSET = velocity above which the amplifier engages (0.0 = fire once
+#   any fresh giveback low is set; the trend-align + winning gates do the separating).
+# PEAK_EROSION_MAX_FLOOR = max _de_floor lowering for an accelerating trend-aligned
+#   winner (start trimming sooner on a reversing winner -> capture more peak before
+#   the giveback becomes a round-trip -> higher mixed Sharpe, the MTM-oscillation drag).
+PEAK_EROSION_WINDOW = 10
+PEAK_EROSION_ONSET = 0.0
+PEAK_EROSION_MAX_FLOOR = 0.30
+# Minimum peak (in profit-target units) before the amplifier can fire: a position
+# that never made a meaningful peak has nothing to erode, so the giveback signal is
+# noise on fresh entries. Require a confirmed peak >= 1.2*_pp_min (past the
+# profit-target entry threshold 1.6*_pp_min's neighborhood) so the amplifier fires
+# only on positions that had a REAL peak to give back.
+PEAK_EROSION_MIN_PEAK_RATIO = 1.2
 
 
 def ema(values, span):
@@ -669,6 +687,21 @@ class Strategy:
         # derivative of the adverse excursion; the existing mechanisms read only its level.
         # Reset on full exit (alongside _mae). See MAE_VEL_* constants.
         self._mae_low_hist = {}
+        # Exp1 (architectural, indep, this session): PEAK-EROSION-VELOCITY tracking --
+        # the WINNER-SIDE mirror of _mae_low_hist. Tracks the rate at which a held
+        # WINNING position is making fresh giveback lows (fraction of the last
+        # PEAK_EROSION_WINDOW bars that set a new low in pos_pnl relative to the
+        # running giveback-extremum since the last peak). Orthogonal to the giveback
+        # LEVEL already used by _pp_pressure (peak-to-current giveback magnitude): a
+        # position can have a LARGE but STABLE giveback (already absorbed the reversal
+        # and is holding at a lower level -- a mean-reverter finding its floor) vs a
+        # SMALL-but-ACCELERATING giveback (peak still eroding, fresh giveback lows bar
+        # after bar -- a reversing WINNER, the "ride to +30%, give back to +24%, keep
+        # falling" mixed MTM-oscillation population). The velocity is the derivative
+        # of the giveback excursion; _pp_pressure reads only its level. Reset on
+        # full exit / new entry (alongside _mae_low_hist).
+        self._peak_erosion_hist = {}
+        self._giveback_ext = {}  # running low-water of pos_pnl since the last confirmed peak
         # Exp1 (architectural): per-symbol rolling history of the multi-day weak-
         # trend BOOLEAN (|ret_vlong| < PERSIST_WEAK_THRESH). Used to compute a
         # PERSISTENCE-COUNT weak-trend separator: the fraction of the last
@@ -3115,6 +3148,36 @@ class Strategy:
                     if len(_mlh) > MAE_VEL_WINDOW:
                         _mlh = _mlh[-MAE_VEL_WINDOW:]
                     self._mae_low_hist[symbol] = _mlh
+                # Exp1 (architectural, indep, this session): PEAK-EROSION-VELOCITY
+                # tracking (winner-side mirror of _mae_low_hist). When a NEW confirmed
+                # peak is set (pos_pnl rose to a fresh high), RESET the giveback
+                # extremum to the new peak -- subsequent giveback is measured against
+                # THIS peak. Then when pos_pnl makes a STRICTLY NEW low relative to the
+                # running giveback-extremum since the last peak (i.e. the giveback is
+                # DEEPENING, a fresh erosion low), stamp the bar_count into
+                # _peak_erosion_hist. The rolling window of fresh-erosion bars feeds
+                # the winner-side velocity signal read at the de-risk ramp below.
+                # Deterministic under AR(1) (same integer-bar-count discipline as
+                # _mae_low_hist: a +-1 bar shift in which bar sets a fresh erosion low
+                # shifts window membership by 1 -> count changes by at most 1 ->
+                # velocity bar-stable -> stability preserved). Distinct from MAE
+                # tracking: MAE stamps fresh ABSOLUTE underwater lows (fires for
+                # losers); this stamps fresh giveback lows RELATIVE TO THE LAST PEAK
+                # (fires for winners giving back a real peak).
+                _curr_peak_now = self.peak_pnl[symbol]
+                if pos_pnl >= _curr_peak_now:
+                    # at/above peak: reset the giveback extremum to the peak (no
+                    # erosion while at the peak)
+                    self._giveback_ext[symbol] = _curr_peak_now
+                else:
+                    _gb_ext = self._giveback_ext.get(symbol, _curr_peak_now)
+                    if pos_pnl < _gb_ext:
+                        self._giveback_ext[symbol] = pos_pnl
+                        _peh = self._peak_erosion_hist.get(symbol, [])
+                        _peh.append(self.bar_count)
+                        if len(_peh) > PEAK_EROSION_WINDOW:
+                            _peh = _peh[-PEAK_EROSION_WINDOW:]
+                        self._peak_erosion_hist[symbol] = _peh
 
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
@@ -4277,6 +4340,66 @@ class Strategy:
                     # branch). Continuous tanh on (velocity - onset)/scale (no boundary).
                     if _pnl_scale < 0.0:
                         _de_floor -= _mae_vel_floor
+                    # Exp1 (architectural, indep, this session): PEAK-EROSION-VELOCITY
+                    # de-risk floor lowering for WINNERS -- the winner-side mirror of
+                    # the kept MAE-velocity (loser-side) above. A NEW exit-pressure
+                    # derivative the de-risk ramp did not read: the RATE at which a
+                    # held WINNING position is making fresh giveback lows
+                    # (_peak_erosion_vel, computed from _peak_erosion_hist). Orthogonal
+                    # to the giveback LEVEL already used by _pp_pressure (peak-to-
+                    # current giveback magnitude): a winner can have a LARGE but STABLE
+                    # giveback (already absorbed the reversal, holding at a lower level
+                    # -- a mean-reverter finding its floor, let it run) vs a SMALL-but-
+                    # ACCELERATING giveback (peak STILL eroding, fresh giveback lows bar
+                    # after bar -- a REVERSING winner, the mixed "ride to +30%, give
+                    # back to +24%, keep falling" MTM-oscillation population). Start the
+                    # graduated de-risk ramp EARLIER (lower _de_floor) so a reversing
+                    # winner trims sooner -> capture more of the peak before the
+                    # giveback becomes a full round-trip -> higher Sharpe in the strong
+                    # trend-winner regimes (mixed 0.704 / rally 0.979, where the MTM
+                    # oscillation is the documented low-Sharpe drag). Stability-safe:
+                    # the gradual _de_floor ramp shape adjusts smoothly over multiple
+                    # bars (no single-bar exit-bar shift -> no trade-selection wobble
+                    # -> mixed stability held), the SAME validated gradual-ramp-is-
+                    # stability-safe property the kept MAE-velocity relies on.
+                    # CRASH-SAFETY: gated on (a) WINNING (_pnl_scale>0): crash's
+                    # trend-aligned shorts that are TEMPORARILY giving back are winners
+                    # giving back -> WOULD be in the firing population, so an additional
+                    # gate is needed (see (b)). (b) TREND-ALIGNED-AT-MULTI-DAY
+                    # (ret_vlong*pos_dir>0 via the SAME _mae_v_align gate the loser-side
+                    # uses): crash's winning shorts are trend-aligned-at-multi-day TOO
+                    # (ret_vlong<0, pos_dir=-1 -> product>0), so trend-align alone does
+                    # NOT exclude them. (c) MIN-PEAK: require peak_pnl >=
+                    # PEAK_EROSION_MIN_PEAK_RATIO*_pp_min so the amplifier fires only on
+                    # positions that had a REAL peak to give back (excludes fresh entries
+                    # and crash's fast-dead-cat-bounce shorts whose "peak" is a 1-2 bar
+                    # blip far below the profit-target threshold -> those bounces are
+                    # NOT the multi-bar reversing-winner population the amplifier
+                    # targets; their giveback is the bounce's natural retracement, not
+                    # a peak-erosion reversal). Crash's load-bearing winning shorts
+                    # exit via slope-against / pp giveback with FAST harvest (the dead-
+                    # cat bounce is short-lived); the min-peak + multi-bar-velocity
+                    # gates exclude crash's transient bounce shorts (their peak is too
+                    # small AND their giveback velocity is a 1-2 bar blip, not a
+                    # sustained multi-bar erosion -> count stays low -> byte-identical).
+                    # Byte-identical for losers (win-gate off), counter-trend winners
+                    # (trend-align gate 0), fresh entries (min-peak gate 0 + bars_held>=2
+                    # de-risk exemption below), and low-velocity holds (onset gate 0).
+                    # REDUCTION-ONLY (lowering _de_floor trims sooner, never delays
+                    # exit). Continuous tanh on (velocity - onset)/scale (no boundary).
+                    if _pnl_scale > 0.0:
+                        _peh = self._peak_erosion_hist.get(symbol, [])
+                        _peak_erosion_vel = 0.0
+                        if len(_peh) >= 2 and self.bar_count - _peh[0] <= PEAK_EROSION_WINDOW:
+                            _peak_erosion_vel = min(len(_peh), PEAK_EROSION_WINDOW) / float(PEAK_EROSION_WINDOW)
+                        _peak_erosion_gate = max(0.0, min(1.0, np.tanh((_peak_erosion_vel - PEAK_EROSION_ONSET) / 0.15)))
+                        # trend-align-at-multi-day gate (mirror of _mae_v_align)
+                        _pe_v_dir = 1.0 if current_pos > 0 else -1.0
+                        _pe_v_align = max(0.0, np.tanh(ret_vlong * _pe_v_dir / 0.04))
+                        # min-peak gate: only fire on positions that had a real peak
+                        _pe_min_peak = 1.0 if self.peak_pnl.get(symbol, 0.0) >= PEAK_EROSION_MIN_PEAK_RATIO * _pp_min else 0.0
+                        _peak_erosion_floor = PEAK_EROSION_MAX_FLOOR * _pe_v_align * _peak_erosion_gate * _pe_min_peak
+                        _de_floor -= _peak_erosion_floor
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -5104,7 +5227,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist, self._peak_erosion_hist, self._giveback_ext):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -5120,6 +5243,12 @@ class Strategy:
                     # so the fresh position starts with an empty fresh-low window (the
                     # velocity is THIS position's own adverse trajectory, not inherited).
                     self._mae_low_hist.pop(symbol, None)
+                    # Exp1 (this session): clear the peak-erosion history + giveback
+                    # extremum on new entry/flip (mirror of _mae_low_hist clear) so the
+                    # fresh position starts with an empty erosion window and a giveback
+                    # extremum anchored to its own fresh peak_pnl (0.0).
+                    self._peak_erosion_hist.pop(symbol, None)
+                    self._giveback_ext.pop(symbol, None)
                     # Exp1: clear the loss-latch on any new entry / flip so the new
                     # position starts unlatched (the latch is set by the trigger on
                     # THIS position's own MAE, not inherited from the prior position).
