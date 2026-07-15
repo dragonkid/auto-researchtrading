@@ -3660,7 +3660,7 @@ class Strategy:
                 # recovery) also excluded. Continuous tanh on ret_vlong2/0.02 (noise-robust
                 # 200-bar slope). Byte-identical for non-bull (mixed down-year + sideways flat
                 # + crash excluded by long-only/align).
-                _w_pp_sustained_up = max(0.0, np.tanh(ret_vlong2 / 0.02))
+                _w_pp_sustained_up = max(0.0, np.tanh(ret_vlong2 / 0.04))
                 _w_pp_long_breadth_gate = _w_pp_long_breadth_gate * _w_pp_sustained_up
                 _w_pp = _w_pp * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
