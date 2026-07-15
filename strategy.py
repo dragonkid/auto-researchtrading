@@ -3668,7 +3668,7 @@ class Strategy:
                 # fires. Separates bull's STRONG sustained up-year from sideways' WEAK recovery
                 # drift on the MAGNITUDE axis (bull ret_vlong2 ~0.04 vs sideways ~0.005, an 8x
                 # magnitude gap the deadzone exploits). Continuous, no hard boundary.
-                _w_pp_sustained_up = max(0.0, min(1.0, np.tanh((ret_vlong2 - 0.02) / 0.02)))
+                _w_pp_sustained_up = max(0.0, min(1.0, np.tanh((ret_vlong2 - 0.03) / 0.02)))
                 _w_pp_long_breadth_gate = _w_pp_long_breadth_gate * _w_pp_sustained_up
                 _w_pp = _w_pp * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
