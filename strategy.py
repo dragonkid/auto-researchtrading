@@ -3768,7 +3768,18 @@ class Strategy:
                 # ramp on peak age (no boundary); byte-identical for fresh peaks (age 0).
                 _peak_age = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
                 _climax_peak_age_gate = max(0.0, min(1.0, np.tanh((_peak_age - 2.0) / 2.0)))  # 0 age<=2, ~1 age>=4
-                _climax_giveback_conf = max(0.0, min(1.0, np.tanh(_giveback_ratio / CLIMAX_GIVEBACK_SCALE))) * _climax_peak_age_gate
+                # branch step3c: LONG-ONLY peak-age gate. Step3b regressed crash -0.0031:
+                # the peak-age gate delayed the harvest for SHORTS too (crash dead-cat-bounce
+                # shorts need the harvest to fire FAST at the bounce). Apply the peak-age
+                # requirement to LONGS only (let long trend winners run, requiring a sustained
+                # peak before harvesting); SHORTS keep the fast harvest (only giveback, no
+                # age requirement -> crash bounce shorts harvest at first giveback =
+                # immediate, crash-protected). The asymmetry reflects a real structural
+                # difference: long winners RIDE grinding uptrends (continuation risk, need
+                # sustained-peak confirmation), short winners are BOUNCE plays (fast
+                # reversal, harvest immediately at the bounce).
+                _climax_age_side = _climax_peak_age_gate if current_pos > 0 else 1.0  # longs: age-gated; shorts: immediate
+                _climax_giveback_conf = max(0.0, min(1.0, np.tanh(_giveback_ratio / CLIMAX_GIVEBACK_SCALE))) * _climax_age_side
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4)) * _climax_giveback_conf
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
