@@ -556,6 +556,11 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
+        # STRUCTURAL_EXPLORATION: per-symbol bar count of the last peak_pnl update (peak
+        # age). Used by the peak-confirmed climax harvest to require a SUSTAINED peak (the
+        # peak has not been exceeded for K bars = confirmed reversal, not a transient intra-
+        # oscillation dip). Reset on entry.
+        self._peak_bar = {}
         # Architectural: per-symbol per-voter directional history (8-bar rolling).
         # Used to compute per-voter directional persistence (fraction of last
         # K bars where voter signal sign matched). High-persistence voters
@@ -3120,6 +3125,7 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
+                    self._peak_bar[symbol] = self.bar_count  # STRUCTURAL_EXPLORATION: record peak bar
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
@@ -3746,7 +3752,23 @@ class Strategy:
                 # run) and rises as the position reverses off its peak (true climax ->
                 # harvest). This rewrites the core mechanism from 1D expansion to a 2D
                 # expansion x giveback composite (see CLIMAX_GIVEBACK_SCALE header).
-                _climax_giveback_conf = max(0.0, min(1.0, np.tanh(_giveback_ratio / CLIMAX_GIVEBACK_SCALE)))
+                # fresh/new peak (grinding uptrend continuation -> NO harvest, let winner
+                # run) and rises as the position reverses off its peak (true climax ->
+                # harvest). This rewrites the core mechanism from 1D expansion to a 2D
+                # expansion x giveback composite (see CLIMAX_GIVEBACK_SCALE header).
+                # Branch step2: require a SUSTAINED peak (peak age >= K bars). Step1's raw
+                # giveback confirmation helped rally (+0.0027 let continuation winners run)
+                # BUT regressed mixed (-0.0017): mixed's OSCILLATING peaks have giveback on
+                # every intra-oscillation dip, and the peak re-forms next bar -> the harvest
+                # fired on a TRANSIENT dip, cutting mixed's still-oscillating winners. Fix:
+                # the climax harvest should fire only when the peak is CONFIRMED stale (has
+                # not been exceeded for K bars = a genuine reversal, not a transient dip that
+                # re-peaks). A peak that just updated (age 0-1) is still being made -> NO
+                # harvest even with giveback (let the oscillator re-peak). Continuous tanh
+                # ramp on peak age (no boundary); byte-identical for fresh peaks (age 0).
+                _peak_age = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
+                _climax_peak_age_gate = max(0.0, min(1.0, np.tanh((_peak_age - 2.0) / 2.0)))  # 0 age<=2, ~1 age>=4
+                _climax_giveback_conf = max(0.0, min(1.0, np.tanh(_giveback_ratio / CLIMAX_GIVEBACK_SCALE))) * _climax_peak_age_gate
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4)) * _climax_giveback_conf
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
@@ -5153,6 +5175,7 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._peak_bar[symbol] = self.bar_count  # STRUCTURAL_EXPLORATION: init peak age at entry
                     # Exp1 (this session): clear the MAE-velocity history on new entry/flip
                     # so the fresh position starts with an empty fresh-low window (the
                     # velocity is THIS position's own adverse trajectory, not inherited).
