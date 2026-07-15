@@ -801,7 +801,6 @@ class Strategy:
             _eq_hist = _eq_hist[-8:]
         self._equity_ema_hist = _eq_hist
         _port_eq_mom_shrink = 1.0
-        _eq_mom = 0.0  # top-level default; portfolio equity-EMA 8-bar trajectory (set below)
         if len(_eq_hist) >= 8 and self._peak_equity > 1e-10:
             _eq_mom = (self._equity_ema - _eq_hist[0]) / self._peak_equity  # 8-bar rate of change / peak
             # Shrink only when momentum negative; max 15% shrink at deep negative momentum.
@@ -4227,43 +4226,6 @@ class Strategy:
                         # boundary). Byte-identical at portfolio peak (both terms 0).
                         _port_dd_active = max(0.0, np.tanh((1.0 - _port_dd_atten - 0.30) / 0.10))
                         _de_floor -= (0.13 * (1.0 - _port_dd_atten) + 0.07 * _port_dd_active) * _exit_dd_gate
-                    # Exp2 (architectural, indep): PORTFOLIO-EQUITY-TRAJECTORY de-risk floor
-                    # lowering for LOSERS -- the DERIVATIVE complement to the Exp3/Exp4
-                    # LEVEL-gated floor lowering above. The existing keeps lower _de_floor for
-                    # losers via _port_dd_atten (which reads the DD-FRACTION LEVEL: 1-equity/
-                    # peak). A portfolio at PEAK equity that JUST started declining has dd_frac
-                    # ~0 -> _port_dd_atten ~1.0 -> the level-gated floor lowering is ~0 (the
-                    # level gate MISSES the early phase of a decline). The TRAJECTORY (8-bar
-                    # rate of change of the smoothed equity EMA, _eq_mom -- already computed
-                    # top-level for the entry-side _port_eq_mom_shrink) is NEGATIVE in that
-                    # early-decline phase BEFORE the level develops -> it is ORTHOGONAL to the
-                    # level (1st derivative vs 0th). Mechanism: a LOSING position while the
-                    # portfolio equity is ACTIVELY declining is at correlated-regime-hit risk
-                    # (the decline is fresh, not yet deep) -> start the graduated de-risk ramp
-                    # EARLIER (lower _de_floor) -> trim the loser sooner -> smaller realized
-                    # loss -> higher Sharpe in the negative-Sharpe regimes (the SAME goal as
-                    # the Exp3/Exp4 keeps but on the EARLY-decline population the level gate
-                    # misses). Distinct from _port_eq_mom_shrink (that shrinks ENTRY size on
-                    # the trajectory; this lowers the EXIT de-risk floor on the trajectory --
-                    # a different decision surface). NEW cross-component data dep at the exit
-                    # de-risk floor: reads the portfolio equity trajectory (1st derivative).
-                    # GATES: (a) LOSERS only (_pnl_scale<0 -> already in the `if _pnl_scale<0`
-                    # block; winners byte-identical). (b) NEGATIVE trajectory (_eq_mom<0 ->
-                    # portfolio actively declining; positive trajectory = portfolio rising ->
-                    # byte-identical, no trim). (c) SAME _exit_dd_gate as the keeps
-                    # (sustained_loss x trend_gate) -- spares sideways fresh dips / mean-
-                    # reverters (the validated fresh-dip-vs-extending-loser separator) so the
-                    # trajectory trim does NOT cut sideways mean-reversion recoveries (the
-                    # documented sideways wall). Gradual (de-risk floor ramp, stability-safe
-                    # per a3503b6c keep finding); reduction-only; byte-identical at portfolio
-                    # peak (trajectory ~0) and when equity rising. Max lowering 0.08 (smaller
-                    # than the Exp3 keep's 0.13 since this is an ADDITIVE early-decline trim on
-                    # top of the level-gated keeps, and the trajectory is noisier than the level
-                    # -> conservative magnitude to avoid the size/exit-wobble-under-noise wall;
-                    # /0.01 scale matches the entry-side _port_eq_mom_shrink calibration for the
-                    # same signal). Continuous tanh, no new decision boundary.
-                    _eq_mom_neg = max(0.0, min(1.0, np.tanh(-_eq_mom / 0.01)))
-                    _de_floor -= 0.08 * _eq_mom_neg * _exit_dd_gate
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
