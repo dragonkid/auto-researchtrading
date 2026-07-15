@@ -513,6 +513,31 @@ PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (b
 COUNTER_VEL_SHRINK_MAX = 0.30  # max shrink at deep counter-move velocity (step2: 0.18->0.30 probe rally gain scaling)
 COUNTER_VEL_SCALE = 0.005      # 3-bar return magnitude at which shrink saturates (step4: 0.008->0.005 widen further)
 
+# Exp1 (architectural, indep, this session): MATURE-PULLBACK entry shrink for trend-aligned
+# LONGS. The catch-22 finding (prior Exp1 row 3086): bull's big losers cannot be predicted
+# from their OWN adverse-trajectory before the ATR stop / de-risk ramp closes them (high
+# MAE-velocity confirms only AFTER the position is gone; at low pressure the velocity is
+# below onset). Every trajectory-based exit lever is walled. This tests the structurally
+# different PRE-COMMIT axis: identify the MARKET CONDITION that produces bull's big losers
+# (a long entry placed DEEP into a mature within-uptrend correction that keeps falling) at
+# ENTRY and shrink the size BEFORE committing. NEW data dependency the entry subsystem does
+# NOT read: the pullback DEPTH = (recent 24-bar peak - current close) / recent peak,
+# NORMALIZED by recent vol (so a 3% pullback in calm bull is "deep" while 3% in high-vol
+# crash is "shallow" -- the SAME 3% means different continuation risk at different vol).
+# DISTINCT from _cv_shrink (3-bar counter-move VELOCITY -- a brief dip, not a mature
+# correction), _port_dd_atten (portfolio EQUITY DD, lagging -- bull's first big loser
+# happens BEFORE portfolio DD), and _fade_shrink (EMA-of-voter-MARGIN, a conviction signal
+# not a price-path signal). The 24-bar peak captures a multi-day correction (vs the 3-bar
+# _cv window which is a transient dip); vol-normalization isolates a mature correction from
+# ordinary trend noise. Gated on trend-aligned-at-multi-day (ret_vlong>0: bull/rally long in
+# an uptrend; SPARES crash bounce longs [ret_vlong<0] and all shorts), reduction-only (max
+# 0.18), smooth tanh on the vol-normalized pullback depth, first-bar-only. Targets bull DD
+# at the only reachable phase (pre-commit); rally byte-identical if rally pullbacks are
+# shallow-vol-normalized (the gating question this experiment answers).
+PULLBACK_DEPTH_MAX = 0.18      # max shrink at deep vol-normalized pullback
+PULLBACK_DEPTH_SCALE = 1.2     # vol-normalized pullback depth at which shrink saturates (vol-normalized units)
+PULLBACK_LOOKBACK = 24         # window for the recent peak (multi-day correction scale)
+
 
 class Strategy:
     def __init__(self):
@@ -2200,6 +2225,23 @@ class Strategy:
                 _cv_counter_bear = max(0.0, _cv_ret3)   # short entered after an up-move
                 _cv_shrink_bull = 1.0 - COUNTER_VEL_SHRINK_MAX * _cv_ta_bull * max(0.0, min(1.0, np.tanh(_cv_counter_bull / COUNTER_VEL_SCALE)))
                 _cv_shrink_bear = 1.0 - COUNTER_VEL_SHRINK_MAX * _cv_ta_bear * max(0.0, min(1.0, np.tanh(_cv_counter_bear / COUNTER_VEL_SCALE)))
+                # Exp1 (architectural, indep): MATURE-PULLBACK DEPTH entry shrink for trend-aligned
+                # LONGS (see PULLBACK_DEPTH_MAX header). NEW data dep: vol-normalized pullback depth
+                # from a 24-bar peak. Distinct from _cv_shrink (3-bar velocity / transient dip): a
+                # multi-day mature correction registers a deep pullback-from-peak even when the
+                # last-3-bar velocity is modest (the fall accumulated over many bars). The vol
+                # normalization (divide pullback% by realized vol) isolates a mature correction from
+                # ordinary trend noise: 3% pullback / 1.5% bar-vol = 2.0 (deep) vs 3% / 0.8% = 3.75
+                # in calmer bull (deeper). Gated on trend-aligned-at-multi-day (ret_vlong>0 -> bull/
+                # rally long in uptrend; SPARES crash bounce longs ret_vlong<0 and all shorts).
+                # Reduction-only, smooth tanh, first-bar-only.
+                _pb_pk = float(np.max(closes[-PULLBACK_LOOKBACK:])) if len(closes) >= PULLBACK_LOOKBACK else float(np.max(closes))
+                _pb_depth_pct = max(0.0, (_pb_pk - closes[-1]) / max(_pb_pk, 1e-10))
+                # vol-normalize: divide by realized vol (per-bar) so the depth is in "vol units"
+                _pb_vol_unit = max(realized_vol, 1e-6)
+                _pb_depth_vn = _pb_depth_pct / _pb_vol_unit
+                _pb_ta_bull = max(0.0, np.tanh(ret_vlong / 0.01))  # ~1 bull/rally aligned long, ~0 ct/crash
+                _pb_shrink_bull = 1.0 - PULLBACK_DEPTH_MAX * _pb_ta_bull * max(0.0, min(1.0, np.tanh(_pb_depth_vn / PULLBACK_DEPTH_SCALE)))
                 # Exp5 (architectural, indep): volume-RISING trend-ALIGNED entry boost —
                 # bilateral counterpart to the Exp3 decline shrink. A trend-aligned entry on
                 # RISING volume has strong participation confirming the trend (rally longs on
@@ -2551,7 +2593,7 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _pb_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
