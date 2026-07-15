@@ -76,36 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exp1 (architectural, indep this session): POSITION-CACHED ENTRY-LOCKED
-# portfolio-DD stop-loss TIGHTENING. The ATR stop (_stop_abs) currently reads
-# ONLY per-symbol structural volatility (ATR_pct clamped [0.018,0.035]); it has
-# NO portfolio-state dependency. The fat-tail-loser signature (bull PF1.7 @74.5pct
-# WR, crash PF1.0 @73.4pct WR -- both: many small winners, FEW LARGE LOSERS that
-# cluster during portfolio drawdowns) means the clustered LOSERS are the DD source.
-# _port_dd_atten shrinks entry $ SIZE during DD (smaller loss at same %); the
-# loss-latch caps the TARGET of CONFIRMED deep losers; Exp4 lowers the SOFT-exit
-# threshold for sustained losers during DD (cut 1 bar earlier via the de-risk ramp).
-# NONE of these tightens the HARD-STOP % itself -- the realized-loss-per-stopout on
-# the _sl_pressure saturation path that catches FAST plunges (where soft pressures
-# have not yet built). This caches a stop-TIGHTENING multiplier ONCE at entry from
-# entry-bar portfolio-DD state (1 - _port_dd_atten) x trend-strength (rsi_trend_str):
-# a position opened DURING a portfolio drawdown in a TRENDING regime is at
-# correlated-regime-hit risk -> a tighter stop for its whole life -> smaller worst-
-# case realized loss per clustered stop-out -> cuts the DD that compounds from
-# clustered losers. Trend-gate (rsi_trend_str) spares sideways mean-reverters (the
-# validated separator: a tighter stop in chop would whipsaw-stop the oscillating
-# mean-reverters that recover). Cached at entry (deterministic under AR(1) noise:
-# computed once, never recomputed per bar -> the stop is a CONSTANT for the hold ->
-# _sl_pressure ramps smoothly as pos_pnl moves -> exit bar deterministic -> zero
-# size-wobble-under-noise, same stability-safe pattern as _short_hold_cache /
-# _conc_shrink_held). Reduction-only (stop can only tighten, never widen ->
-# STOP_TIGHTEN_MAX <= 1.0). Byte-identical at portfolio peak (dd_frac=0 ->
-# _port_dd_atten=1.0 -> multiplier 1.0 -> stop unchanged) and in chop (trend gate 0
-# -> multiplier 1.0) -> rally-at-peak, sideways byte-identical. Max tightening 20pct
-# (stop floor 0.018 is respected: tightened stop = max(STOP_TIGHTEN_FLOOR,
-# _stop_abs * mult)).
-STOP_TIGHTEN_MAX = 0.20   # max fractional stop tightening at deep portfolio DD + strong trend
-STOP_TIGHTEN_FLOOR = 0.016  # tightened stop cannot go below this (above pure noise band)
 # Exp1 (architectural, indep): POSITION-CACHED ENTRY-LOCKED short-side hold-
 # extension. The prior session (b636bb1a opener) proved crash Sharpe can cross
 # ZERO via a short-side trend-aligned hold-extension (mirror of the long-only
@@ -642,16 +612,6 @@ class Strategy:
         # -> zero per-bar wobble -> stability preserved). See SHORT_HOLD_CACHED_EXT.
         # Reset on full exit; set to 0.0 at long entry; default 0.0 (no effect).
         self._short_hold_cache = {}
-        # Exp1 (architectural, indep this session): per-symbol POSITION-CACHED
-        # portfolio-DD stop-tightening multiplier. Computed ONCE at entry from
-        # entry-bar (1 - _port_dd_atten) x rsi_trend_str, held CONSTANT for the
-        # position's life (deterministic under AR(1) noise -> the stop is a
-        # constant -> _sl_pressure ramps smoothly -> exit bar deterministic).
-        # Applied to _stop_abs during the hold (line ~3132). Reduction-only
-        # (multiplier in [1-STOP_TIGHTEN_MAX, 1.0]); default 1.0 (no effect) at
-        # portfolio peak / in chop / for uncached symbols. Reset on full exit.
-        # See STOP_TIGHTEN_MAX.
-        self._stop_tighten = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2609,11 +2569,6 @@ class Strategy:
                     # fresh long must not inherit it). Application is gated on
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
-                    # Exp1: cache the portfolio-DD stop-tightening multiplier at
-                    # long entry (deterministic, held constant for the hold).
-                    _stop_tighten_dd = 1.0 - _port_dd_atten  # ~0 at peak, ~1 deep DD
-                    _stop_tighten_trend = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))  # ~0 chop, ~1 trend
-                    self._stop_tighten[symbol] = 1.0 - STOP_TIGHTEN_MAX * _stop_tighten_dd * _stop_tighten_trend
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
@@ -2692,11 +2647,6 @@ class Strategy:
                     # for eligible shorts (set at entry), 0.0 for non-eligible.
                     _short_eligible = _short_align_entry * _short_mag_gate  # ~1 crash trend-aligned deep-downtrend short, ~0 otherwise
                     self._short_hold_cache[symbol] = -1.0 if _short_eligible > 0.50 else 0.0
-                    # Exp1: cache the portfolio-DD stop-tightening multiplier at
-                    # short entry (deterministic, held constant for the hold).
-                    _stop_tighten_dd = 1.0 - _port_dd_atten
-                    _stop_tighten_trend = max(0.0, min(1.0, np.tanh(rsi_trend_str / 0.20)))
-                    self._stop_tighten[symbol] = 1.0 - STOP_TIGHTEN_MAX * _stop_tighten_dd * _stop_tighten_trend
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -3180,15 +3130,6 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Exp1: apply the CACHED entry-locked portfolio-DD stop-tightening
-                # multiplier. Deterministic (computed once at entry, constant for the
-                # hold) -> the stop level is bar-stable under AR(1) noise -> _sl_pressure
-                # ramps smoothly as pos_pnl moves -> exit bar deterministic (no
-                # size-wobble-under-noise). Default 1.0 (no effect) for uncached symbols /
-                # portfolio-peak / chop entries. Respect a tightened-stop floor so the
-                # stop never collapses into pure noise.
-                _stop_tighten_mult = self._stop_tighten.get(symbol, 1.0)
-                _stop_abs = max(STOP_TIGHTEN_FLOOR, min(0.035, _stop_abs * _stop_tighten_mult))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
@@ -5163,7 +5104,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist, self._stop_tighten):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
