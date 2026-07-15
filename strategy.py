@@ -494,30 +494,6 @@ PORT_VOL_SPIKE_MAX_SHRINK = 0.20  # max shrink at full saturation (-> 0.80x)
 PORT_VOL_AVG_ONSET = 0.95  # branch step7: 1.05->0.95 push onset lower (more bars), watch sideways/rally spillover
 PORT_VOL_AVG_SCALE = 0.20
 PORT_VOL_AVG_MAX_SHRINK = 0.55  # branch step17: 45->55 with ct-gated sustain (bull ceiling lifted, push to cross +0.003)
-# Exp1 (architectural, indep, this session): CROSS-SYMBOL RETURN-DISPERSION portfolio size
-# cap. NEW cross-symbol data dep: the STANDARD DEVIATION of the 3 symbols' 96-bar
-# ret_vlong (a cross-sectional SPREAD measure). Every existing portfolio signal
-# AGGREGATES per-symbol values (avg/max/min/sum of down_persist, weak_persist,
-# deep_bear_mag, vol_ratio, trend_mag_agree) -- NONE measures the DISPERSION (how far
-# apart the symbols' multi-day returns are). High dispersion = the 3 symbols are
-# diverging (a rotational/transition market where one leg trends up while another
-# trends down -> the trend voters disagree across assets -> lower-conviction, more
-# misjudged entries). Low dispersion = synchronized broad move (bull/rally/crash all
-# trend together -> values cluster -> no shrink). Used as a shrink-only SIZE cap
-# (applied to `size` via _port_weak_cap): up to 18% shrink at high dispersion. The
-# ret_vlong values are already collected in _port_rv_vals (96-bar OLS log-HL2 slope*n,
-# the SAME inputs used by _port_deep_bear_mag / _port_trend_mag_agree); std is a
-# smooth deterministic function of them -> no new noise source (averages 96 bars of
-# AR(1) noise per symbol, ~1/sqrt(96) attenuation). Byte-identical when dispersion is
-# low (synchronized trends where all 3 ret_vlong cluster). Direction-agnostic general
-# principle (no regime label): a market whose legs diverge multi-day is internally
-# uncertain -> take smaller risk. Distinct from the walled cross-alt DIVERGENCE EXIT
-# signals (those were per-pair price-divergence exit triggers that over-harvested
-# sideways chop; this is a portfolio SIZE cap on the multi-day return spread, never
-# an exit trigger). Composes with the avg/max vol caps above.
-PORT_RET_DISP_ONSET = 0.012   # ret_vlong std above which cap engages (0.012 = the symbols' 96-bar returns diverge by ~1.2pct)
-PORT_RET_DISP_SCALE = 0.010   # ramp width (0.012->0.022 saturates)
-PORT_RET_DISP_MAX_SHRINK = 0.18  # max size shrink at full saturation (-> 0.82x)
 # Exp2 (architectural, indep): TREND-ALIGNED COUNTER-MOVE-VELOCITY entry shrink. The
 # prior session's crash diagnosis: LOSING crash shorts are "dead-cat-bounce-then-resume-
 # down" -- the bounce CONTINUES long enough to stop out the short. Exp1 (range-position
@@ -660,16 +636,6 @@ class Strategy:
         # Cached at entry (deterministic); keeps a fading-conviction entry smaller for
         # the whole hold. Default 1.0 (no effect) if uncached.
         self._fade_shrink_held = {}
-        # branch step5: sustain the cross-symbol return-dispersion entry shrink through
-        # scale-in (mirrors _conc_shrink_held / _vol_shrink_held / _cv_shrink_held /
-        # _avgvol_shrink_held / _fade_shrink_held). Cached at entry (deterministic); keeps a
-        # rotational/dispersion entry smaller for the whole hold. The fix for the
-        # size-wobble-under-noise wall: the per-bar dispersion cap wobbles (the deep_bear_mag
-        # gate wobbles in sideways' transient down-legs) -> scale-in full_target wobbles ->
-        # exit/entry-bar shift -> stab crash. Caching the cap at entry makes the scale-in
-        # full_target use a CONSTANT cap (set once at entry) -> no per-bar wobble on the
-        # held position's scale-in -> stability preserved. Default 1.0 (no effect) if uncached.
-        self._disp_shrink_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1010,44 +976,6 @@ class Strategy:
         _port_vol_ratio_avg = (sum(_port_vol_ratio_vals) / len(_port_vol_ratio_vals)) if _port_vol_ratio_vals else 0.0
         _port_vol_avg_cap = 1.0 - PORT_VOL_AVG_MAX_SHRINK * max(0.0, min(1.0, np.tanh((_port_vol_ratio_avg - PORT_VOL_AVG_ONSET) / PORT_VOL_AVG_SCALE)))
         _port_weak_cap = _port_weak_cap * _port_vol_avg_cap
-        # Exp1 (architectural, indep, this session): CROSS-SYMBOL RETURN-DISPERSION size cap.
-        # NEW cross-symbol aggregation: the STD of the 3 symbols' 96-bar ret_vlong (the
-        # cross-sectional SPREAD). Every existing portfolio signal aggregates (avg/max/min/
-        # sum) -- none measures dispersion. High dispersion = rotational/transition market
-        # (legs diverge multi-day -> trend voters disagree across assets -> lower-conviction
-        # entries); low dispersion = synchronized broad move -> no shrink. Shrink-only SIZE
-        # cap; composes with the vol/bear caps above. See PORT_RET_DISP_* constants.
-        # Deterministic: std of the already-collected _port_rv_vals (96-bar OLS, ~1/sqrt(96)
-        # noise attenuation per symbol) -> no new noise source. Byte-identical when the
-        # symbols' ret_vlong cluster (synchronized trends).
-        _port_ret_disp = float(np.std(_port_rv_vals)) if len(_port_rv_vals) >= 2 else 0.0
-        # branch step2/3/4: CRASH-PROTECTION gate on the dispersion cap. The opener
-        # crashed crash (-0.307): in a persistent broad BEAR, transient dispersion is bounce
-        # noise (one symbol bounces while others stay down) -> shrinking then hurts crash's
-        # trend-aligned winning SHORTS (the crash edge) = the crash-coupling wall. Need to
-        # suppress the cap in crash WITHOUT wobbling in sideways (the size-wobble wall:
-        # step2/3 used _port_down_persist 0.45->0.65, but down_persist ~0.5 in sideways sits
-        # in the ramp -> AR(1) wobble -> cap stutters -> sideways stab crashed 1.0->0.30).
-        # step4 FIX: use _port_deep_bear_mag (the MAX |ret_vlong| among symbols, the 96-bar
-        # OLS magnitude) as the crash suppressor -- the SAME signal the deep-bear SIZE cap
-        # (Exp8) and admission tightener (Exp3) use. It CLEANLY separates crash from
-        # sideways/mixed on the MAGNITUDE axis: crash ret_vlong ~-0.04 (deep, well ABOVE the
-        # 0.03 onset -> decisively suppressed, no wobble), sideways ~-0.005 (FAR below ->
-        # cap fully ON = opener's stab-safe -0.052), mixed ~-0.01..-0.02 (below -> cap ON =
-        # mixed gain preserved), bull ~0 (cap ON = pullback DD relief). KEY: deep_bear_mag
-        # is a 96-bar OLS SMOOTH magnitude -> it does NOT dip during short crash bounces
-        # (unlike down_persist, a duration count that wobbles) -> crash shorts stay protected
-        # THROUGH the bounce (the whole point). Ramp 0.025->0.035 (above the existing
-        # PORT_DEEP_BEAR_ONSET 0.03 region); continuous tanh; byte-identical when the cap
-        # is inactive (dispersion below onset) regardless of gate. Reduction-only.
-        _disp_bear_suppress = max(0.0, 1.0 - max(0.0, (_port_deep_bear_mag - 0.025) / 0.010))
-        _port_ret_disp_cap = 1.0 - PORT_RET_DISP_MAX_SHRINK * _disp_bear_suppress * max(0.0, min(1.0, np.tanh((_port_ret_disp - PORT_RET_DISP_ONSET) / PORT_RET_DISP_SCALE)))
-        # branch step5: do NOT compose into _port_weak_cap (that feeds per-bar `size` ->
-        # scale-in full_target wobbles as the gate wobbles -> stab crash). Instead apply
-        # _port_ret_disp_cap as a SEPARATE first-bar entry multiplier (cached at entry via
-        # _disp_shrink_held for scale-in). Keeps the entry-time shrink deterministic through
-        # the hold (the validated held-shrink pattern).
-        _port_weak_cap = _port_weak_cap
         # Exp3: MAX-aggregation deep-bear MAGNITUDE admission tightener (composes with
         # Exp2's weak_persist avg admit tightener). Same signal as Exp8 SIZE cap (raw
         # |ret_vlong| max-aggregated), applied to ADMISSION threshold. Byte-identical
@@ -2623,12 +2551,11 @@ class Strategy:
                     _frac_weak = _weak_persist  # ~1 mixed (persistently weak), ~0 rally (transient)
                     _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
                     _entry_frac_boost_bull = 1.0 + 0.15 * _frac_trend_align * _frac_weak * _frac_dd_headroom
-                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b * _port_ret_disp_cap
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _consensus_boost_bull * _cv_shrink_bull * _fade_shrink_b
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bull  # Exp2 branch: cache for scale-in sustain
                     self._fade_shrink_held[symbol] = _fade_shrink_b  # branch step4: cache for scale-in sustain
-                    self._disp_shrink_held[symbol] = _port_ret_disp_cap  # branch step5: cache for scale-in sustain (wobble-free)
                     # branch step16: gate the avg-vol SUSTAIN on counter-trend-at-multi-day.
                     # bull entry ct-at-multi-day = ret_vlong<0 (long in downtrend = crash bounce
                     # long). Sustain the shrink ONLY for ct entries (crash bounce longs); bull
@@ -2643,12 +2570,11 @@ class Strategy:
                     # current_pos<0 anyway, but clearing keeps the state clean.
                     self._short_hold_cache[symbol] = 0.0
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s * _port_ret_disp_cap
+                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _consensus_boost_bear * _cv_shrink_bear * _fade_shrink_s
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                     self._cv_shrink_held[symbol] = _cv_shrink_bear  # Exp2 branch: cache for scale-in sustain
                     self._fade_shrink_held[symbol] = _fade_shrink_s  # branch step4: cache for scale-in sustain
-                    self._disp_shrink_held[symbol] = _port_ret_disp_cap  # branch step5: cache for scale-in sustain (wobble-free)
                     # branch step16: gate avg-vol sustain on ct-at-multi-day (bear entry ct =
                     # ret_vlong>0 = short in uptrend = rally pullback short; crash trend-aligned
                     # shorts ret_vlong<0 -> no sustain -> no exit-timing disruption).
@@ -3089,10 +3015,6 @@ class Strategy:
                     # the whole hold instead of ramping back to un-shrunk `size` after
                     # bar 1. Default 1.0 (no effect) if uncached.
                     _fade_held = self._fade_shrink_held.get(symbol, 1.0)
-                    # branch step5: sustain the dispersion cap through scale-in (cached at
-                    # entry, wobble-free). Keeps a rotational/dispersion entry smaller for the
-                    # whole hold without per-bar gate wobble on scale-in full_target.
-                    _disp_held = self._disp_shrink_held.get(symbol, 1.0)
                     # Exp5 (architectural, indep, BRANCH CANDIDATE): DIRECTIONAL
                     # multi-day-downtrend-gated sustained persist_boost. Exp2 (this
                     # session, discarded) showed sustaining _persist_boost through scale-in
@@ -3150,7 +3072,7 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _fade_held * _disp_held * _persist_sustain
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _cv_held * _avgvol_held * _fade_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -5182,7 +5104,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._disp_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cv_shrink_held, self._avgvol_shrink_held, self._fade_shrink_held, self._pnl_path, self._target_hist, self._hold_ext_ema, self._local_hold_ext_ema, self._short_hold_cache, self._loss_latch, self._loss_latch_elig_bar, self._loss_latch_bar, self._mae_low_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
