@@ -3753,18 +3753,16 @@ class Strategy:
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                _w_vc = 0.0  # Exp4 (architectural simplification, this session): ABLATE the
-                # volume-climax soft-exit source from the MAX-fusion. Hypothesis: _vc_pressure
-                # (profit-side, vol-z>2 climax) is a 6th MAX-fusion term that is ABSORBED -- on
-                # the profit side, _pp_pressure (giveback) and _ve_pressure (vol-of-price
-                # expansion) and _sl_slope_pressure fire at similar climax events; the MAX
-                # takes only the dominant, so _vc_pressure contributes 0 to _soft_max whenever
-                # another profit-side term exceeds it. If absorbed, ablating is inert-or-
-                # positive (fewer correlated-noise sources in the fusion, simpler code). If
-                # load-bearing (a climax where vol-z spikes but giveback/vol-expansion lag),
-                # removing regresses rally (the documented target). Set _w_vc=0.0 (zero weight)
-                # rather than deleting the lines, so the ablation is one-line reversible and
-                # the _vol_z computation remains inspectable. _w_vc was max(0,_pnl_scale).
+                _w_vc = 0.0  # Exp4 (branch opener): ABLATE _vc_pressure for LONG winners
+                # (premature harvest on rally/mixed uptrend continuation). branch step4: make
+                # the ablation LONG-only symmetric with step3's _ve gate -- keep _vc_pressure
+                # for SHORT winners (crash: a volume-climax spike can precede a dead-cat
+                # bounce -> harvest the short before the bounce). Opener zeroed _w_vc
+                # globally and crash was byte-identical (vc absorbed for crash shorts), so
+                # restoring it for shorts is near-inert for crash but makes the long/short
+                # split consistent with _ve (longs ablated, shorts kept). _w_vc = profit-side
+                # x short-only.
+                _w_vc = max(0.0, _pnl_scale) * (1.0 if current_pos < 0 else 0.0)
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
