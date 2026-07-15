@@ -3357,17 +3357,7 @@ class Strategy:
                 # are the safety: attenuation ONLY fires on gradual pullbacks in persistent uptrends,
                 # so sharp reversals (gates off -> attenuation=0) keep full pp protection. If this
                 # still crosses +0.003 the axis has headroom; if it drops below, the floor is ~0.80.
-                # branch step5: push the trend-aligned-winner pp attenuation to FULL
-                # (0.95 -> 1.0) for longs, stacking with the long-side climax-harvest
-                # removal (vc+ve). The branch established long trend winners should run
-                # through vol/volume expansion (continuation not reversal); removing the
-                # RESIDUAL 5pct pp giveback on trend-aligned longs (full suppression) lets
-                # them ride pullbacks maximally. Risk: rally DD rises past the 5pct knee
-                # (winners ride deeper pullbacks); monitor -- if DD>5.5pct or stability
-                # crashes, revert to 0.95. Shorts unaffected (_ta_winner_gate is long-only
-                # via _long_only_gate). Magnitude axis was pushed 0.35->0.95 (prior keeps);
-                # 1.0 is the untested extreme.
-                _pp_pressure = _pp_pressure * (1.0 - 1.0 * _ta_winner_gate)
+                _pp_pressure = _pp_pressure * (1.0 - 0.95 * _ta_winner_gate)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
@@ -3724,15 +3714,7 @@ class Strategy:
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
-                # branch step3: GATED ablation -- keep _ve_pressure for SHORT winners
-                # (crash: vol-of-price expansion precedes dead-cat bounces -> harvest the
-                # short before the bounce, load-bearing), ablate it for LONG winners
-                # (rally/mixed: vol expansion during a grinding uptrend is trend-
-                # CONTINUATION not reversal -> premature harvest -> net-negative, +0.0024
-                # rally Sharpe from ablation in step2). Step2 (full ablation) regressed
-                # crash -0.0031; this gates the ablation to longs only so crash (short
-                # winners) keeps full _ve_pressure. _w_ve = profit-side x short-only.
-                _w_ve = max(0.0, _pnl_scale) * (1.0 if current_pos < 0 else 0.0)
+                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
                 # Exp3 (architectural simplification, this session): removed the dead
                 # _ep_pressure (early-profit-lock) and _ar_pressure (adverse-recovery)
                 # terms. Both were already zeroed (_ep_pressure=0.0 since the
@@ -3763,16 +3745,7 @@ class Strategy:
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                _w_vc = 0.0  # Exp4 (branch opener): ABLATE _vc_pressure for LONG winners
-                # (premature harvest on rally/mixed uptrend continuation). branch step4: make
-                # the ablation LONG-only symmetric with step3's _ve gate -- keep _vc_pressure
-                # for SHORT winners (crash: a volume-climax spike can precede a dead-cat
-                # bounce -> harvest the short before the bounce). Opener zeroed _w_vc
-                # globally and crash was byte-identical (vc absorbed for crash shorts), so
-                # restoring it for shorts is near-inert for crash but makes the long/short
-                # split consistent with _ve (longs ablated, shorts kept). _w_vc = profit-side
-                # x short-only.
-                _w_vc = max(0.0, _pnl_scale) * (1.0 if current_pos < 0 else 0.0)
+                _w_vc = max(0.0, _pnl_scale)  # profit-side only
 
                 # ARCHITECTURAL (Exp3, v6 session): BREAK-EVEN STAGNATION EXIT PRESSURE.
                 # Under scoring v6 (proper 200-bar warmup), the strategy LOSES in bull/
