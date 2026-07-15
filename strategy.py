@@ -4238,59 +4238,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Exp (architectural, indep): PORTFOLIO-DD-ADAPTIVE de-risk floor lowering
-                    # for trend-aligned LONG WINNERS giving back DEEPLY -- the gap population NO
-                    # existing DD lever reaches. Prior-session root-cause (verifiable): every
-                    # portfolio-DD-adaptive de-risk floor lever (Exp3 keep continuous+deep ramp,
-                    # Exp4 keep exit-thresh) AND the MAE-velocity floor (a3503b6c keep) is gated
-                    # on _pnl_scale<0 (CURRENTLY LOSING). The pp-attenuation for trend-aligned
-                    # long winners is GATED OFF at giveback_ratio>0.35 via _gb_mag_gate (fades
-                    # 0.15->0.35). So a trend-aligned long that rode to +5% then gives back to
-                    # +0.5% during a portfolio DD is STILL IN PROFIT (pos_pnl>0 -> _pnl_scale>0 ->
-                    # ALL DD de-risk floor lowerings OFF) AND beyond the pp-attenuation zone
-                    # (giveback>0.35 -> _ta_winner_gate=0 -> pp fires full strength, which only
-                    # harvests at the giveback threshold, NOT a graduated pre-DD trim). This
-                    # position stays FULL-SIZE while giving back deeply across multiple bars --
-                    # exactly the ride-through-deep-pullback that accumulates into bull_2021's
-                    # 10.79pct DD (the 20x dd_gate crush on bull score). The DD is baked in BEFORE
-                    # the position crosses into loss (where the existing levers finally fire).
-                    # MECHANISM (the prior-session-sanctioned NON-pp-path route to bull DD):
-                    # lower the graduated de-risk RAMP floor (NOT a per-bar size cap -- avoids the
-                    # size-wobble-under-noise wall; NOT the pp path -- walled at giveback>0.35; NOT
-                    # a binary exit-threshold change -- wobbles the exit bar) for this gap
-                    # population so the position begins graduating partial-exit SOONER while still
-                    # in profit -> trims the giving-back winner before it fully round-trips ->
-                    # smaller DD peak -> higher bull score (dd_gate relief dominates per score
-                    # decomposition at bull DD 10.79pct deep in the exp tail).
-                    # GATES (each excludes a distinct unwanted population, all validated clean
-                    # separators from prior keeps): (a) LONG-ONLY (current_pos>0): excludes
-                    # crash's trend-aligned WINNING SHORTS (ret_vlong<0,pos_dir=-1,product>0) --
-                    # crash shorts give back during bounces but should RIDE the downtrend, not
-                    # de-risk early (the keep 249d8241 long-only pattern). (b) MULTI-DAY UPTREND-
-                    # ALIGNED (ret_vlong>0): excludes crash's counter-trend bounce LONGS
-                    # (ret_vlong<0 during crash) and mixed's down-phase longs (ret_vlong<0 in
-                    # mixed's down legs) -- those are NOT the bull-DD-source population. (c) DEEP
-                    # GIVEBACK (giveback_ratio>0.35): the zone BEYOND the pp-attenuation -- this is
-                    # the gap; shallow giveback (<0.35) is still pp-attenuated (let the winner
-                    # ride the small pullback). (d) PORTFOLIO-DD-ACTIVE (1-_port_dd_atten): byte-
-                    # identical at portfolio peak (dd_frac=0 -> 0); fires during DD episodes
-                    # (the DD-source population only matters when the portfolio is actually
-                    # drawing down). The DD-gate naturally fires DEEPER for bull (DD 10.79pct ->
-                    # _port_dd_atten low -> high) than rally (DD 5.11pct -> shallower) -- the depth
-                    # separation between bull (catastrophic give-back) and rally (recovering
-                    # pullback). Reduction-only (lowers _de_floor -> trims sooner, never delays
-                    # exit); gradual (de-risk ramp, stability-safe per a3503b6c finding: gradual
-                    # ramp changes pass stability where binary exit-threshold changes crash it);
-                    # composes with the existing trend-align winner RELAXATION (which WIDENS the
-                    # ramp for shallow-giveback winners -- this NARROWS it for deep-giveback DD
-                    # winners; the giveback onset keeps them from conflicting). Continuous tanh,
-                    # no new decision boundary. Max lowering 0.13 (same scale as the Exp3 keep
-                    # continuous term). Byte-identical for shorts, ct-at-multi-day, shallow
-                    # giveback, and at portfolio peak.
-                    _de_dd_giveback_long = 1.0 if current_pos > 0 else 0.0
-                    _de_dd_giveback_trend = max(0.0, np.tanh(ret_vlong / 0.02))  # ~0 ct/down, ~1 uptrend (long-only so pos_dir=+1)
-                    _de_dd_giveback_deep = max(0.0, min(1.0, np.tanh((_giveback_ratio - 0.35) / 0.20)))  # 0 at 0.35, ~1 at 0.55+
-                    _de_floor -= 0.13 * (1.0 - _port_dd_atten) * _de_dd_giveback_long * _de_dd_giveback_trend * _de_dd_giveback_deep
                     # Exp1 (architectural, indep, this session): ADVERSE-EXCURSION-VELOCITY
                     # de-risk floor lowering. A NEW exit-pressure derivative the de-risk ramp
                     # did not read: the RATE at which a held position is making fresh adverse
