@@ -3660,9 +3660,14 @@ class Strategy:
                 # recovery) also excluded. Continuous tanh on ret_vlong2/0.02 (noise-robust
                 # 200-bar slope). Byte-identical for non-bull (mixed down-year + sideways flat
                 # + crash excluded by long-only/align).
-                _w_pp_sustained_up = max(0.0, np.tanh(ret_vlong2 / 0.04))
+                _w_pp_sustained_up = max(0.0, np.tanh(ret_vlong2 / 0.02))
                 _w_pp_long_breadth_gate = _w_pp_long_breadth_gate * _w_pp_sustained_up
-                _w_pp = _w_pp * (1.0 - 0.30 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
+                # branch step4: amplify the attenuation magnitude 0.30 -> 0.50 (let broad-trend
+                # long winners ride givebacks MORE) to push the bull gain past the +0.003 keep
+                # threshold. The bull gain is Sharpe (DD unchanged); amplifying rides more
+                # giveback -> more bull return. Watch bull stability (riding givebacks can
+                # wobble the exit timing under noise).
+                _w_pp = _w_pp * (1.0 - 0.50 * max(0.0, _pnl_scale) * _w_pp_long_breadth_gate)
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
                 # In strong trends (high |ret_long|), trend-aligned winning
                 # positions should hold longer — time pressure is noise in trend
