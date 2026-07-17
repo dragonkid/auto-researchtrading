@@ -303,29 +303,6 @@ MAE_VEL_WINDOW = 10
 MAE_VEL_ONSET = 0.0
 MAE_VEL_MAX_FLOOR = 0.60
 
-# RECENT-ADVERSE-MOMENTUM de-risk floor lowering (Exp1, this session).
-# A NEW position-level derivative ORTHOGONAL to MAE-velocity (rate of fresh MAE
-# lows). MAE-velocity counts bars that set a NEW underwater low; a position
-# OSCILLATING in a narrowing range above its (deep) MAE without setting fresh
-# lows has MAE-velocity ~0 even while pos_pnl trends steadily DOWN toward the
-# MAE. RECENT-ADVERSE-MOMENTUM = the 3-bar rate of pos_pnl DECLINE normalized by
-# the stop magnitude: captures ACTIVE downward drift regardless of whether new
-# lows are being set. A trend-aligned-at-multi-day LOSER whose pos_pnl is
-# falling at a high rate over the last 3 bars is in an active adverse move ->
-# lower the graduated de-risk ramp's _de_floor -> trims sooner -> smaller
-# realized loss -> higher Sharpe (same gradual-ramp-is-stability-safe action
-# the a3503b6c keep validated). Distinct signal from MAE-velocity: a position
-# can have low MAE-velocity (no fresh lows, holding above its MAE) but HIGH
-# adverse-momentum (trending down toward it), and vice versa (a fresh-low spike
-# with momentum already exhausted). Same crash-safety gates as the keep:
-# LOSING (pos_pnl<0 -> crash's trend-aligned WINNING shorts excluded) +
-# trend-aligned-at-multi-day (counter-trend losers excluded). Gradual only.
-ADV_MOM_BARS = 3       # window for the recent pos_pnl momentum
-ADV_MOM_ONSET = 0.35    # branch step1: 0.15->0.35 require a DEEP 3-bar decline/stop to exclude
-                        # mixed's shallow mean-reverting chop dips (which mean-revert) while
-                        # keeping rally's deep extending bleeds (the trim target)
-ADV_MOM_MAX_FLOOR = 0.30  # max _de_floor lowering (smaller than MAE_VEL: complementary, not redundant)
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -4059,40 +4036,6 @@ class Strategy:
                     # the gradual action does not wobble mixed's selection, mixed holds.
                     _mae_vel_floor = MAE_VEL_MAX_FLOOR * _mae_v_align * _mae_vel_gate
                     # (action applied to _de_floor below; _exit_thresh left at Exp4's value)
-                    # Exp1 (architectural, indep, this session): RECENT-ADVERSE-MOMENTUM de-risk
-                    # floor lowering -- a NEW position-level derivative ORTHOGONAL to MAE-velocity
-                    # (the rate of fresh MAE lows). MAE-velocity counts bars that set a NEW
-                    # underwater low; a position oscillating in a narrowing range above its
-                    # (deep) MAE WITHOUT setting fresh lows has MAE-velocity ~0 even while
-                    # pos_pnl trends steadily DOWN toward that MAE. RECENT-ADVERSE-MOMENTUM = the
-                    # ADV_MOM_BARS-bar rate of pos_pnl DECLINE normalized by the stop magnitude:
-                    # captures ACTIVE downward drift regardless of whether new lows are being
-                    # set. A trend-aligned-at-multi-day LOSER whose pos_pnl is falling at a high
-                    # rate over the last few bars is in an active adverse move -> lower the
-                    # graduated de-risk ramp's _de_floor -> trims sooner -> smaller realized
-                    # loss -> higher Sharpe. Same gradual-ramp-is-stability-safe action the
-                    # a3503b6c keep validated (the floor lowering trims smoothly over multiple
-                    # bars -> no single-bar exit-bar shift -> no trade-selection wobble -> stab
-                    # preserved). CRASH-SAFETY: gated on the SAME population as the keep --
-                    # LOSING (_pnl_scale<0: crash's trend-aligned shorts are WINNERS -> pos_pnl>0
-                    # -> excluded -> byte-identical) AND trend-aligned-at-multi-day (reuses
-                    # _mae_v_align, the validated ret_vlong*pos_dir/0.04 gate: counter-trend
-                    # losers excluded). The momentum signal reads the _pnl_path (12-bar pos_pnl
-                    # trajectory, already maintained at line ~2658 for the emission MTM-path
-                    # throttle -- no new state). Continuous tanh on (momentum - onset)/scale
-                    # (no boundary). REDUCTION-ONLY (lowering _de_floor trims sooner, never
-                    # delays exit); composes with the existing floor-lowerings (MAE-velocity,
-                    # Exp3/Exp4 portfolio-DD) multiplicatively on distinct loser populations.
-                    # Smaller max (ADV_MOM_MAX_FLOOR 0.30 < MAE_VEL 0.60) since it is complementary
-                    # to MAE-velocity (both can fire on the same position -> capped sum stays
-                    # within the de-risk floor's safe [0,1] operating band).
-                    _adv_mom_floor = 0.0
-                    _pp_mom = self._pnl_path.get(symbol, [])
-                    if len(_pp_mom) >= ADV_MOM_BARS + 1:
-                        _mom_delta = _pp_mom[-1] - _pp_mom[-(ADV_MOM_BARS + 1)]  # <0 when declining
-                        _mom_mag = max(0.0, -_mom_delta) / abs(STOP_LOSS_PCT)  # decline / stop
-                        _adv_mom_gate = max(0.0, min(1.0, np.tanh((_mom_mag - ADV_MOM_ONSET) / 0.10)))
-                        _adv_mom_floor = ADV_MOM_MAX_FLOOR * _mae_v_align * _adv_mom_gate
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -4334,7 +4277,6 @@ class Strategy:
                     # branch). Continuous tanh on (velocity - onset)/scale (no boundary).
                     if _pnl_scale < 0.0:
                         _de_floor -= _mae_vel_floor
-                        _de_floor -= _adv_mom_floor
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the

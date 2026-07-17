@@ -6,14 +6,20 @@ You are running a **Council Mode session**. The normal experiment loop has detec
 
 1. **Read context**: Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline`.
 2. **Analyze**: Identify the current best score, recent experiment history, and what has been tried.
-3. **Generate 3-5 proposals**, each from a **distinct philosophy**:
+   Treat named score windows as temporal development environments, not pure
+   market regimes. A per-window delta locates a behavioral difference but does
+   not establish its cause. Do not propose calendar/environment detectors.
+3. **Generate exactly 3 proposals**, each from a **distinct philosophy**:
    - **Simplification** — remove a component; test if performance holds without it
    - **Contrarian** — opposite of current approach (e.g., momentum → mean-reversion)
    - **Regime-shift** — what if market conditions shifted? (different vol regime, correlation breakdown)
    - **Scale-change** — different timeframe, asset weighting, or position sizing approach
    - **Radical** — completely different approach to the problem
 4. **Anonymize & rank**: Label as Proposal A/B/C/D/E. Evaluate each on: pros, cons, overfitting risk, regime robustness, complexity cost. Output `FINAL RANKING: 1. Proposal X, 2. Proposal Y...`
-5. **Execute in ranked order**: Apply #1, commit, backtest. If it improves score → keep and stop. If not → revert, try #2, then #3, etc.
+5. **Execute in ranked order**: Apply #1, commit, backtest. Council proposals
+   obey the same anti-overfit policy as normal research: at most 3 proposals,
+   no parameter follow-up on a proposal, and any internal winner is only a
+   `candidate_keep` pending sealed promotion. Do not inspect promotion data.
 6. **Output final verdict** (CRITICAL — the outer shell parses this):
 
 If **any proposal improved** the score:
@@ -38,8 +44,9 @@ You MUST output exactly one of these two lines as the very last thing before exi
 
 - Modify `prepare.py`, `backtest.py`, `regime_test.py`, or anything in `benchmarks/`.
 - Install new packages. Only numpy, pandas, scipy, and standard library.
-- Look at holdout data (2025-01 onwards).
-- Skip proposals — you must test at least 3 before declaring PASS.
+- Look at sealed promotion data (2026Q2), OKX/HL metrics, BNB/HYPE promotion
+  metrics, or `.autoresearch/private/`.
+- Test exactly 3 distinct mechanism families before declaring PASS.
 
 ## Council log
 
@@ -81,10 +88,28 @@ COUNCIL_PASS / COUNCIL_ACCEPT Proposal X (philosophy)
 
 Also record each proposal test in `results.tsv` using the 10-column schema (same as the normal experiment loop):
 ```
-commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	mixed_2025	status	description
+commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	mixed_2025	recent_2026q1	status	description
 ```
 
-Use status `council_discard` or `council_keep` to distinguish from normal experiments.
+Use status `council_discard` or `candidate_keep`. A Council candidate is not a
+baseline until the outer runner records `promoted_keep`.
+
+## Mandatory robustness criteria
+
+In addition to the legacy composite criterion, a candidate requires:
+- `robust_composite` (median score − 0.5×MAD) improvement by +0.003 plus
+  +0.001 per new free parameter/state/control-flow dependency;
+- improvement in at least 60% of development environments;
+- no single regime/token contributing >70% of positive gain;
+- at least 30 affected completed trades;
+- six development regimes including recent_2026q1.
+
+The sealed gate is one-shot and veto-only. FAIL closes the mechanism family;
+never use it to generate another proposal.
+
+Run `uv run python scripts/trade_population_diff.py <baseline-hash> <candidate-hash>`
+to measure affected trades; never estimate it. Then run the mandatory internal decision with:
+`uv run python internal_candidate.py run_baseline.log run.log --affected-trades <N> --complexity-points <N>`.
 
 ## Scoring formula
 
@@ -99,8 +124,8 @@ Per-regime score = base × stability_factor × flip_streak_gate
   stability_factor = clamp((stability-0.50)/(0.80-0.50), 0, 1)   # AR(1) correlated-noise test; applied only when base>0
   flip_streak_gate = 1/(1 + flip_streak_drag_per_bar/0.5)         # applied only when score>0
 
-Hard cutoffs: <10 trades, >10% DD, >15% capital loss → -999
-Soft DD penalty: smooth exponential above 5% DD (3%→0.97x, 5%→0.95x, 6%→0.74x, 10%→0.33x)
+Hard cutoffs: <10 trades or >16% capital loss → -999. DD has no hard cutoff.
+Soft DD penalty: smooth exponential above 5% DD (3%→0.97x, 5%→0.95x, 6%→0.57x, 10%→0.075x)
 
 Composite = mean(regime_scores) - 0.3 * std(regime_scores)
 ```

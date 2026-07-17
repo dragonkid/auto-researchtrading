@@ -8,6 +8,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TAG="${1:?Usage: ./autoresearch.sh <tag> [max_rounds] [council_threshold] [provider] [model]}"
 BRANCH="autotrader/${TAG}"
 RESULTS="results.tsv"
+SESSION_ID="${TAG}-$(date '+%Y%m%d-%H%M%S')"
 MAX_ROUNDS="${2:-0}"
 COUNCIL_THRESHOLD="${3:-5}"
 # Provider/model are optional. When PROVIDER is set, credentials (base_url +
@@ -97,8 +98,9 @@ case "$MODEL" in
     ;;
 esac
 
-# Ensure Ctrl+C stops the entire script
-trap 'echo ""; echo "Interrupted. Cleaning up..."; git checkout -- strategy.py 2>/dev/null; exit 130' INT TERM
+# Ensure Ctrl+C stops the entire script. Leave strategy.py untouched here; the
+# next launch restores the latest promoted baseline via active_baseline_hash().
+trap 'echo ""; echo "Interrupted. Cleaning up..."; exit 130' INT TERM
 
 # Initialize: create branch if it doesn't exist
 if ! git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
@@ -117,16 +119,25 @@ echo "Provider: $PROVIDER  (base_url: $PROVIDER_BASE_URL)"
 echo "Model: $MODEL"
 echo "Max rounds: ${MAX_ROUNDS:-unlimited} (each round = up to 20 experiments, exits on 5 consecutive discards)"
 echo "Council threshold: $COUNCIL_THRESHOLD consecutive discards"
+echo "Promotion policy: candidate -> sealed one-shot gate -> promoted baseline"
 echo ""
 
 # Count consecutive discards from the tail of results.tsv
+active_baseline_hash() {
+  awk -F'\t' '
+    NF >= 2 && $(NF-1)=="promoted_keep" { promoted=$1 }
+    NF >= 2 && $(NF-1)=="keep" { legacy=$1 }
+    END { print (promoted != "" ? promoted : legacy) }
+  ' "$RESULTS"
+}
+
 count_consecutive_discards() {
   if [ ! -f "$RESULTS" ]; then
     echo 0
     return
   fi
-  # Read status column (5th field), count consecutive "discard" from bottom
-  tail -n +2 "$RESULTS" | awk -F'\t' '{print $9}' | tail -r | awk '
+  # Status is always the penultimate field (supports legacy and current schemas).
+  tail -n +2 "$RESULTS" | awk -F'\t' 'NF >= 2 {print $(NF-1)}' | tail -r | awk '
     /^discard$/ { count++; next }
     { exit }
     END { print count+0 }
@@ -156,6 +167,14 @@ run_council() {
     2>&1) || true
 
   COUNCIL_COUNT=$council_num
+
+  # Council winners are candidates only. The sealed gate runs at the next outer
+  # loop boundary; never report ACCEPT before promotion succeeds.
+  if awk -F'\t' 'NF >= 2 && $(NF-1)=="candidate_keep" {found=1} NF >= 2 && ($(NF-1)=="promoted_keep" || $(NF-1)=="discard_oos") {found=0} END {exit !found}' "$RESULTS"; then
+    echo ""
+    echo "Council #${council_num}: candidate found — pending sealed promotion"
+    return 0
+  fi
 
   # Parse verdict from output
   if echo "$council_output" | grep -q "COUNCIL_VERDICT: ACCEPT"; then
@@ -195,8 +214,32 @@ while true; do
     break
   fi
 
-  # Clean up any leftover state from interrupted experiments
-  git checkout -- strategy.py 2>/dev/null || true
+  # Clean up interrupted candidates by restoring the promoted baseline, not HEAD.
+  # HEAD may itself be an unpromoted experiment commit.
+  ACTIVE_BASELINE=$(active_baseline_hash)
+  if [ -n "$ACTIVE_BASELINE" ]; then
+    git checkout "$ACTIVE_BASELINE" -- strategy.py 2>/dev/null || true
+  fi
+
+  # Resolve a candidate from the previous round BEFORE launching another agent.
+  # The validator runs in an isolated worktree and prints only PASS/FAIL; detailed
+  # OOS/cross-source metrics stay under .autoresearch/private and never enter the
+  # agent context. One failed gate closes the family — no holdout-driven retry.
+  if awk -F'\t' 'NF >= 2 && $(NF-1)=="candidate_keep" {found=1} NF >= 2 && ($(NF-1)=="promoted_keep" || $(NF-1)=="discard_oos") {found=0} END {exit !found}' "$RESULTS"; then
+    CAND_HASH=$(awk -F'\t' 'NF >= 2 && $(NF-1)=="candidate_keep" {h=$1} END {print h}' "$RESULTS")
+    BASE_HASH=$(uv run python -c 'from promotion_runner import previous_baseline; print(previous_baseline("results.tsv") or "")')
+    FAMILY="candidate-${CAND_HASH}"
+    PROMOTION_JSON=$(uv run python promotion_runner.py \
+      --session "$SESSION_ID" --family "$FAMILY" 2>/dev/null || true)
+    if echo "$PROMOTION_JSON" | grep -q '"promotion_gate": "PASS"'; then
+      echo "Promotion gate: PASS"
+      uv run python -c 'from promotion_runner import resolved_candidate_row; print(resolved_candidate_row("results.tsv", "promoted_keep", "PROMOTION PASS; detailed metrics sealed owner-side"))' >> "$RESULTS"
+    else
+      echo "Promotion gate: FAIL — mechanism family closed"
+      [ -n "$BASE_HASH" ] && git checkout "$BASE_HASH" -- strategy.py 2>/dev/null || true
+      uv run python -c 'from promotion_runner import resolved_candidate_row; print(resolved_candidate_row("results.tsv", "discard_oos", "PROMOTION FAIL; mechanism family closed; no metric feedback"))' >> "$RESULTS"
+    fi
+  fi
 
 echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
 
@@ -211,7 +254,7 @@ ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL" \
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
     --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
     -- \
-    "Working directory: $PROJECT_DIR. Run a research session. FIRST: Read program-stateless.md — it contains MANDATORY diagnostic steps and the EXIT RULE you must follow. Then read results.tsv (from 3rd-last keep onward) and run 'git log main..HEAD --oneline' for context. For each experiment: modify strategy.py, commit, backtest, record to results.tsv, then decide whether to continue or exit. Follow the EXIT RULE in program-stateless.md exactly — you CANNOT exit without having attempted at least 2 architectural changes among your discards." \
+    "Working directory: $PROJECT_DIR. Run a research session. FIRST: Read program-stateless.md — it contains the mandatory anti-overfitting policy and EXIT RULE. The active baseline is the latest promoted_keep (legacy keep only if none exists); candidate_keep is never a baseline. Do not inspect sealed promotion data or private logs. For each experiment: modify strategy.py, commit, backtest, measure affected trades with scripts/trade_population_diff.py, run internal_candidate.py, record to results.tsv, then decide whether to continue or exit. A candidate_keep must exit immediately for outer-loop promotion." \
     || {
       echo "Claude exited with error (code $?), continuing after cooldown..."
       sleep 5

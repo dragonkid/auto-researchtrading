@@ -1,5 +1,7 @@
 """
-Regime robustness test: run the strategy across different market regimes.
+Temporal-environment robustness test: run the strategy across fixed development
+windows. These are chronological stress environments, not claims that every bar
+inside a window belongs to one statistically pure market regime.
 Computes a composite score = mean(scores) - k*std(scores) (k=0.3) to reward
 strategies that work across ALL market conditions.
 
@@ -8,23 +10,32 @@ Usage: uv run regime_test.py
 """
 
 import math
+import statistics
 import time
 from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
 
 from prepare import load_data, run_backtest, compute_score, TIME_BUDGET
 
-# Regimes for parameter search.
-# 5 regimes covering 2021-2025: 4 historical + 2025 full year (added 2026-06-22).
+# Temporal development environments for parameter search.
+# Keep broad chronological windows rather than subdividing until each segment is
+# homogeneous: finer labels increase selection feedback and encourage window-
+# specific gates. Each environment receives one vote regardless of duration.
 # 2025 added as single regime (not split) to avoid introducing subjective break-point
 # selection freedom. 2025 provides ~350 trades of new market structure (slow grinding
 # decline Q1, fast反弹 Q2, low-vol chop Q3-Q4, crash Q4) the agent has never seen.
-# Data volume increase ~50% (4->5 regimes) reduces overfitting space at constant DOF.
+# Data volume increase ~50% (4->5 environments) reduced overfitting space at constant DOF.
 SEARCH_REGIMES = [
     ("bull_2021", "2021-01-01", "2021-10-31", "Bull market / main uptrend"),
     ("crash_bear", "2021-11-01", "2022-12-31", "Luna + FTX crash / deep bear"),
-    ("sideways", "2023-01-01", "2023-12-31", "Sideways recovery"),
+    # Legacy key retained for results.tsv compatibility. Empirically this was a
+    # low-vol recovery / rotational uptrend, not a pure sideways/chop regime.
+    ("sideways", "2023-01-01", "2023-12-31", "Low-vol recovery / rotational uptrend (legacy key: sideways)"),
     ("rally_2024", "2024-01-01", "2024-12-31", "ETF + election rally"),
     ("mixed_2025", "2025-01-01", "2025-12-31", "Mixed 2025 (decline + rally + chop + crash)"),
+    # Short recent fold is intentionally overweight (one environment vote for 90
+    # days) as a recency veto. Robust median/MAD and concentration gates prevent it
+    # from promoting a candidate by itself. Q2 stays sealed for promotion.
+    ("recent_2026q1", "2026-01-01", "2026-03-31", "Recent development: 2026 Q1 (intentionally overweight recency veto)"),
 ]
 
 # Holdout regime — NEVER used during autoresearch search.
@@ -33,7 +44,7 @@ SEARCH_REGIMES = [
 # 2026-01~06 is a slow grinding decline (-24%) the strategy has never seen —
 # a true OOS generalization test on unseen market structure.
 HOLDOUT_REGIMES = [
-    ("recent", "2026-01-01", "2026-06-12", "Recent market (holdout)"),
+    ("recent_2026q2", "2026-04-01", "2026-06-12", "Sealed promotion window: 2026 Q2"),
 ]
 
 # Consistency penalty weight: higher k = stricter consistency requirement.
@@ -149,7 +160,7 @@ def _run_regime_worker(args: tuple) -> dict:
 
 
 def compute_composite_score(results: list[dict]) -> float:
-    """Composite = mean(scores) - k*std(scores). Returns -999 if any regime failed."""
+    """Composite = mean(scores) - k*std(scores); -999 if any environment failed."""
     scores = []
     for r in results:
         if "error" in r or r.get("score", -999) <= -999:
@@ -164,6 +175,20 @@ def compute_composite_score(results: list[dict]) -> float:
     std_score = math.sqrt(variance)
 
     return mean_score - CONSISTENCY_K * std_score
+
+
+def compute_robust_composite(results: list[dict]) -> float:
+    """Median score minus 0.5*MAD; resistant to one-regime spikes."""
+    scores = []
+    for r in results:
+        if "error" in r or r.get("score", -999) <= -999:
+            return -999.0
+        scores.append(r["score"])
+    if not scores:
+        return -999.0
+    median = statistics.median(scores)
+    mad = statistics.median(abs(s - median) for s in scores)
+    return median - 0.5 * mad
 
 
 if __name__ == "__main__":
@@ -181,7 +206,7 @@ if __name__ == "__main__":
     results = []
     regime_order = {r[0]: i for i, r in enumerate(regimes)}
 
-    print(f"Running {len(regimes)} regimes in parallel...\n")
+    print(f"Running {len(regimes)} temporal environments in parallel...\n")
     with ProcessPoolExecutor(max_workers=len(regimes)) as executor:
         futures = {executor.submit(_run_regime_worker, r): r for r in regimes}
 
@@ -209,7 +234,7 @@ if __name__ == "__main__":
     # Summary table
     print()
     print("=" * 120)
-    print(f"{'Regime':<15} {'Period':<25} {'Sharpe':>8} {'AnnRet%':>10} {'MaxDD%':>8} {'Trades':>7} {'Win%':>7} {'PF':>6} {'Score':>8}")
+    print(f"{'Environment':<15} {'Period':<25} {'Sharpe':>8} {'AnnRet%':>10} {'MaxDD%':>8} {'Trades':>7} {'Win%':>7} {'PF':>6} {'Score':>8}")
     print("-" * 120)
     for (name, start, end, desc), r in zip(regimes, results):
         if "error" in r:
@@ -227,9 +252,10 @@ if __name__ == "__main__":
             )
     print("=" * 120)
 
-    # Composite score (only for search regimes)
+    # Composite score (only for development environments)
     if not use_holdout:
         composite = compute_composite_score(results)
+        robust_composite = compute_robust_composite(results)
         scores = [r["score"] for r in results if "error" not in r]
         mean_s = sum(scores) / len(scores) if scores else 0
         var_s = sum((s - mean_s) ** 2 for s in scores) / len(scores) if scores else 0
@@ -260,6 +286,7 @@ if __name__ == "__main__":
         # Parseable output for autoresearch agent
         print("---")
         print(f"composite_score:    {composite:.6f}")
+        print(f"robust_composite:   {robust_composite:.6f}")
         print(f"raw_composite:      {raw_composite:.6f}")
         print(f"mean_score:         {mean_s:.6f}")
         print(f"std_score:          {std_s:.6f}")

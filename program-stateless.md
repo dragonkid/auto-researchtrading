@@ -18,23 +18,32 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 
 - Modify `prepare.py`, `backtest.py`, `regime_test.py`, `noise_test.py`, or anything in `benchmarks/`.
 - Install new packages. Only numpy, pandas, scipy, and standard library.
-- Look at holdout data (2025-01 onwards).
+- Look at sealed promotion data (2026-04-01 onwards), OKX results, HL results,
+  BNB/HYPE promotion results, or `.autoresearch/private/`. These are owner-only.
 
 ### Phase priority rule
-Focus on maximizing composite_score (= mean regime scores - 0.3*std). Stability test is ENABLED — applies to regimes with positive score.
+The six score windows are **temporal development environments**, not pure
+statistical regime labels. Never infer causation from a window name or add a
+gate that detects a calendar environment. Focus on robust improvement across
+environments. Stability test is enabled for positive-score environments.
 
 **Scoring v3 incentive balance (2026-06-25).** Under the current formula `signal_quality × ... × return_bonus(APY)`, Sharpe gain dominates DD reduction **11-36x** on 4/5 regimes under realistic improvement margins (+0.2 Sharpe vs −0.5% DD vs +2% APY). The dd_gate knee at 5% is a **leverage-farming blocker**, not a target — it exists so that uniform leverage scaling (raise LEVERAGE_K → APY and DD scale 1:1) drops composite, NOT so that shaving rally DD from 5.1% to 4.9% is a worthwhile experiment. When choosing your next direction, weight the marginal score gains: a change that raises Sharpe or APY is an order of magnitude more score-efficient than an equivalent-effort change that only lowers DD. Apply the existing saturation rule (Phase 1 step 2) honestly — if a direction has 10+ prior discards, switch to a structurally different axis rather than retrying the same wall with a new gate variant.
 
 ## Session protocol
 
-You run **independent experiments (exit after 5 consecutive architectural discards) + one exploration branch (no fixed depth, terminates on stagnation)** per session. Independent and branch budgets do not share slots.
+You run independent experiments plus at most one exploration branch. **A branch has
+a hard maximum of 5 total steps (opener included)**. This is a multiple-testing
+control: do not keep tuning the same fixed windows until they fit.
 
 Each experiment may be a **single-variable change OR a multi-variable structural change** — whichever is appropriate for the hypothesis. Multi-variable changes are especially encouraged for stability improvements, where architectural modifications (voter weighting, signal fusion, ensemble method changes) inherently require coordinated edits. You can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements. **Exploration branches** (see below) let you iterate on a promising direction without reverting — use them when a regime-level signal is strong.
 
 ### Phase 1: Read context (once per session)
 
 1. Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline -n 30`.
-   **Baseline integrity check (do this first):** the current baseline is the most recent `keep` row in results.tsv. Verify it actually reflects HEAD: the keep row's commit hash should be an ancestor of HEAD (`git merge-base --is-ancestor <hash> HEAD`). If the most recent `session-summary` row declares a NEWER baseline ("NEW BASELINE <hash> <score>" / "SUPERSEDES ...") than the last `keep` row, the keep row was lost in a past rollback — trust the session-summary's declared baseline hash + score instead, and immediately re-append a proper `keep` row for that commit so the next session reads it correctly. Going forward, rollbacks use `git checkout -- strategy.py` (path-scoped) and never touch results.tsv, so keep rows will no longer disappear.
+   **Baseline integrity check (do this first):** the active baseline is the most
+   recent `promoted_keep` row. If none exists, use the most recent legacy `keep`.
+   A `candidate_keep` is pending owner-side validation and is NEVER a baseline.
+   Verify the selected hash is an ancestor of HEAD. Never inspect promotion logs.
 2. **Analyze**: What worked? What failed? What hasn't been tried? **Saturation check**: grep `results.tsv` descriptions for directions you're considering. If a direction has 10+ prior experiments with mostly `discard`, it's saturated — switch to something structurally different.
 3. **Extract structural knowledge from prior sessions**: grep `results.tsv` for `session-summary` rows and descriptions containing "load-bearing", "CROSS-EXPERIMENT", or "CONCLUSION". Prior sessions have already proven which components are load-bearing (removing them regresses a regime) and which directions are dead ends. Do NOT re-attempt a removal/change that a prior session already confirmed catastrophic. Build on confirmed mechanism insights instead of rediscovering them.
 4. **Incremental viability check**: count the most recent non-architectural experiments (descriptions without "architectural") and their keep rate. If the last 10+ non-architectural experiments are ALL discards, incremental changes are exhausted at this baseline — all experiments this session MUST be architectural (new code structure, new control flow, new data dependencies). If non-architectural keeps exist in recent history, you may attempt incremental experiments freely.
@@ -62,7 +71,9 @@ For each experiment:
 - 5 consecutive discards, not all architectural → continue with architectural experiments until you've attempted at least 5 architectural, then stop.
 - A `keep` resets the consecutive discard count.
 
-1. **Propose one change**: Pick one specific, testable idea. After your first experiment in this session, you may base your next idea on the regime-level insights you just observed (e.g., "Exp A showed sideways +0.24 but crash -1.44 — try a different condition that protects crash").
+1. **Propose one change**: Pick one specific, testable idea. Environment-level
+   deltas locate where behavior changed; they do NOT prove a causal regime
+   mechanism. Verify any causal claim with trade/population instrumentation.
 2. **Implement**: Edit `strategy.py` with your change.
 3. **Commit**:
    ```
@@ -77,18 +88,43 @@ For each experiment:
 
    **Keep/discard rules:**
 
-   An experiment qualifies as `keep` if ALL of the following are met:
+   An experiment qualifies only as a **`candidate_keep`** if ALL of the following are met. A candidate is NOT the baseline until the outer runner records `promoted_keep` after a sealed one-shot gate:
    - `composite_score` improved vs baseline by **at least +0.003** (absolute delta). Sub-noise improvements (<0.003) are `discard` even if positive — they are in-sample noise-floor and accumulate overfitting without meaningful signal. This threshold was restored 2026-06-20 after "any positive delta" let ~27 keeps through at avg +0.0008 each, none of which improved cross-exchange Sharpe.
    - `mean_score` improved vs baseline (average per-regime score must go up).
    - No regime score dropped more than 50% vs baseline (e.g., baseline 1.023 → floor is 0.512). If any regime breaches this gate, the experiment cannot be a direct KEEP — open an exploration branch to recover the regressed regime first.
    - No regime's total loss exceeds 16% (final equity < 84% of initial — hard safety net). High DD below this is handled by dd_gate's exp penalty, not a cliff.
+   - `robust_composite` (median score − 0.5×MAD) must improve by the
+     complexity-adjusted threshold: +0.003 base plus +0.001 for each new free
+     parameter/state/control-flow dependency beyond the first. Record the count.
+   - At least 60% of development environments must improve. Median delta must be
+     positive. If >70% of positive gain comes from one regime or one trained
+     token, it is concentration-overfit and cannot be a candidate.
+   - The changed mechanism must affect at least 30 completed trades across the
+     development matrix. Fewer trades means the estimate is too small-N for
+     automatic promotion.
 
    See the Scoring formula section below for the full `compute_score` formula.
 
-   **Computing scores:** `regime_test.py` outputs `composite_score:`, `raw_composite:`, `mean_score:`, per-regime `score` / `raw_score` / `stability_factor` / `flip_streak_gate`, and other metrics directly.
+   **Computing scores:** `regime_test.py` outputs `composite_score:`,
+   `robust_composite:`, `raw_composite:`, `mean_score:`, per-regime `score` /
+   `raw_score` / `stability_factor` / `flip_streak_gate`, and other metrics.
+   Compute `<N>` with `uv run python scripts/trade_population_diff.py
+   <baseline-hash> <candidate-hash>`; never estimate or self-report it. Then use
+   `uv run python internal_candidate.py run_baseline.log run.log
+   --affected-trades <N> --complexity-points <N>` for the breadth,
+   concentration, affected-trade, and complexity-adjusted decision. Do not
+   substitute judgment for a failed policy result.
 
-   If keep: append a `keep` line with all per-regime scores. The new baseline for ALL subsequent experiments is now this keep. **CRITICAL: after a keep, you MUST compare the next experiment against this new keep's scores, not the session-start baseline.** Read the last `keep` row in results.tsv to get the current baseline values.
-   If discard: **check exploration branch eligibility** (see below). If not eligible, roll back strategy.py ONLY with `git checkout <last-keep-commit> -- strategy.py && git commit -m "discard: <reason>" strategy.py` (find the last keep commit via `git log --oneline | grep -m1 keep` or the most recent `keep`/baseline row's commit hash). Then append a `discard` line to results.tsv. **NEVER use `git revert` or `git reset --hard`** — see the results.tsv durability rule below for why.
+   If candidate: append `candidate_keep`, commit, and EXIT immediately. Do not
+   run another experiment. The outer runner performs the sealed gate once. It
+   exposes only PASS/FAIL. PASS creates `promoted_keep`; FAIL creates
+   `discard_oos` with action `CLOSE_MECHANISM_FAMILY`, restores the prior promoted baseline, and permanently closes
+   this mechanism family. You may not use promotion failure to tune a follow-up.
+   The active baseline is the latest `promoted_keep` (legacy `keep` only if no
+   promoted row exists), never a `candidate_keep`.
+   If discard: check branch eligibility. If not eligible, roll back strategy.py
+   ONLY to the latest `promoted_keep` (or legacy `keep` if no promoted row), then
+   append `discard`. Never roll back to `candidate_keep`.
 
    **results.tsv DESCRIPTION HYGIENE (write only verifiable content):** the description field is BOTH a historical record AND a live input every future session reads as established fact — so an unverified guess written here propagates as truth. The current baseline's own `keep`-row description is inherited by every subsequent session. Therefore:
    - **DO record:** (a) reproducible measured numbers from THIS experiment (per-regime raw/score/stability deltas, Sharpe, trade counts), and (b) the keep/discard decision basis (which gate/criterion was met or breached).
@@ -96,9 +132,11 @@ For each experiment:
    - **Do NOT write speculative cross-experiment diagnoses** (e.g. naming a mechanism "the X killer" for a regime). These get inherited by the baseline keep row and misdirect every future session toward an unverified premise. Precedent: one baseline keep row promoted a correlational observation (entry-side share + win rate) into a named causal diagnosis without ever measuring the causal link by direction-split PnL; when finally measured it was wrong, and it had already misdirected ~20 sessions. State only what you measured; let later sessions form their own hypotheses from the raw numbers rather than inheriting a conclusion.
 
    **results.tsv DURABILITY RULE (root-cause fix for lost keep rows):** results.tsv must NEVER be touched by a rollback. Past sessions lost `keep` rows because the experiment commit bundled strategy.py + the results.tsv row together, and `git revert HEAD~N..HEAD` then rolled back BOTH — erasing the keep row and corrupting the baseline for the next session. To prevent this permanently:
-   - Roll back ONLY strategy.py, using `git checkout <last-keep-commit> -- strategy.py` (restores the file to the keep state without rewriting history and without touching results.tsv). NEVER `git revert` an experiment — revert operates on whole commits and will take results.tsv rows with it.
+   - Roll back ONLY strategy.py using `git checkout <promoted-baseline-hash> -- strategy.py`. Resolve that hash from the latest `promoted_keep` row (legacy `keep` only if none exists). Never `git revert` an experiment.
    - results.tsv is strictly append-only and is never the target of any rollback. Every keep/discard/branch/session-summary row, once appended and committed, stays forever.
-   - It is fine for one commit to contain both strategy.py and the results.tsv row, because rollback now uses `git checkout -- strategy.py` (path-scoped) instead of `git revert` (commit-scoped). The append for the rollback's own `discard` row is a fresh, separate append on top.
+   - Experiment/result commits may contain both files because rollback is path-scoped:
+     `git checkout <promoted-baseline-hash> -- strategy.py`. Never use bare
+     `git checkout -- strategy.py`, which restores unpromoted HEAD logic.
 
 ### Exploration branches (iterate before reverting)
 
@@ -112,17 +150,23 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 
 **Rules:**
 - **Justification required**: State explicitly (1) what the new architecture does differently, (2) which regime regressed and why, (3) your hypothesis for fixing it in the next step.
-- **No fixed max depth**: the branch continues as long as you're making progress. Branch budget is INDEPENDENT of independent exploration — they don't share slots. If 7 consecutive branch steps show no improvement (raw_composite delta ≤ 0 vs the previous branch step), terminate the branch early. There is no other depth ceiling — a branch that keeps improving can iterate as many steps as needed.
+- **Hard max depth: 5 total steps including opener.** At most two numeric free
+  parameters may be tuned within one family. Needing additional separator gates
+  is evidence against robustness, not permission to add another step.
 - **Each iteration**: commit normally, run regime_test, record in results.tsv with prefix `branch:` (e.g., `branch: fix rally regression from linreg slope gate`). Each branch step may freely modify strategy.py — you're iterating on the new architecture, not just tweaking one parameter.
-- **Success (keep the branch)**: if at any point during the branch the FULL keep criteria are met vs the **current baseline** (the most recent `keep` row in results.tsv), it's a real `keep`. Record as `keep` and update baseline. All subsequent experiments compare against this new keep.
-- **Failure (revert the branch)**: if the branch terminates without meeting keep criteria (either via 7 consecutive no-progress steps or because you decided to stop), roll back **strategy.py ONLY** to the most recent `keep` state: `git checkout <last-keep-commit> -- strategy.py && git commit -m "discard: branch <name> reverted to <keep-hash>" strategy.py`. Find `<last-keep-commit>` from the most recent `keep`/baseline row in results.tsv (its commit hash column). **CRITICAL: do NOT use `git revert HEAD~N..HEAD` — that is what historically destroyed keep rows, because the range includes the commits that appended them to results.tsv. `git checkout -- strategy.py` is path-scoped: it restores only the strategy file and never rewrites results.tsv or any other file.** results.tsv stays append-only — every prior keep/branch/discard row is preserved. Then append ONE summary `discard` line explaining the branch attempt and why it failed. NEVER `git reset --hard`. NEVER edit or delete existing rows in results.tsv — they are permanent records.
+- **Success (candidate)**: if the full internal criteria pass, record
+  `candidate_keep` and exit for sealed promotion. It is not yet a baseline.
+- **Failure (revert the branch)**: terminate at 5 total steps or after 2
+  consecutive no-progress steps. Roll back strategy.py ONLY to the latest
+  `promoted_keep` (legacy `keep` only if no promoted row exists). Never use git
+  revert/reset; results.tsv remains append-only.
 - **One branch per session**: you may only open one exploration branch per round. After a branch concludes (keep or revert), the session ends. The next round starts fresh with full context from results.tsv. Note: if branch reverts and you still have unused independent-exploration slots, the session still ends — branch revert is a strong enough signal that the round should conclude and reset with fresh context.
 - **Exit rule interaction**: branch experiments count as architectural if the opening experiment was architectural.
 - **Intermediate regression is OK**: within a branch, stability may temporarily drop further as you restructure. Only the FINAL state of the branch is judged against keep criteria vs original baseline. Don't abandon a branch just because step 2 made things worse — you have as many steps as needed to recover, until the 7-step stagnation guard triggers.
 
 **Typical session shape:**
 - Independent exploration: normal discard/revert cycle while searching for a promising direction
-- Once a direction shows promise → open exploration branch (separate budget, no fixed depth)
+- Once a direction shows promise → open one exploration branch (hard cap 5 total steps)
 - Branch concludes (keep or revert) → session ends
 
 **Example flow (success):**
@@ -135,8 +179,8 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 **Example flow (failure with full exploration):**
 1-3. Exp 1-3 (independent): three different directions, all discard
 4. Exp 4 (independent): new exit mechanism → crash +0.5, sideways -0.010 → **open exploration branch**
-5-13. Branch steps 2-10: iterate on sideways fixes (fast exit path, regime-specific logic, hybrid exit, etc.) → sideways stays at -0.002 throughout
-14. After 7 consecutive no-progress steps → revert all branch commits, record discard, session ends
+5-6. Branch steps 2-3: two consecutive no-progress results → revert strategy.py,
+record discard, session ends.
 
 ### Structural-exploration mode (for breaking structural rigidity)
 
@@ -156,11 +200,12 @@ When the strategy is at a **structural local optimum** — every incremental ang
 
 **Branch mechanics:**
 - The structural-exploration experiment auto-opens a branch (does NOT count as the session's one exploration branch for normal-experiment budget — it IS the branch).
-- Budget: **15 steps** (not 7). Historical structural successes took 14 steps to rebuild balance.
-- Stagnation guard: **10 consecutive no-progress steps** (raw_composite delta ≤ 0 vs previous step) → terminate. This is looser than the 7-step guard for normal branches, because structural rebuilds have plateaus.
-- Progress requirement: raw_composite must be **monotonically non-decreasing over any 3-step window** (a step may regress, but 3 consecutive regressions = terminate). This allows exploration detours while preventing drift.
-- Success: if at any step the FULL normal keep criteria are met vs the original baseline (composite +0.003, mean improved, all gates pass), it's a real `keep`.
-- Failure: if the branch terminates without meeting keep criteria, revert strategy.py ONLY to the last keep, record `STRUCTURAL_EXPLORATION` discard summary.
+- Budget: **5 total steps**, including structural rewrites. The historical
+  10–16-step pattern is now treated as fixed-window hyperparameter overfit.
+- Stagnation guard: 2 consecutive no-progress steps → terminate.
+- Progress requirement: terminate after 2 consecutive no-progress steps.
+- Success: a full internal pass becomes `candidate_keep`, then exits for sealed promotion.
+- Failure: restore the promoted baseline and record a structural-exploration discard.
 
 **Frequency limit:** at most ONE structural-exploration branch per session. If it reverts, the session ends — do not open a second one.
 
@@ -190,17 +235,20 @@ After your last experiment (or when the exit rule triggers), exit. The outer loo
 
 **results.tsv is append-only.** Never delete, modify, or rewrite existing rows. Only append new rows at the end. **CRITICAL: never use write/overwrite on results.tsv — use shell `echo >> results.tsv` or equivalent append operation. If you need to fix a row, append a corrected row with a note; do NOT edit or remove the original. Keep rows are permanent historical records.**
 
-New schema (10 columns, tab-separated):
+Current schema (12 columns, tab-separated):
 ```
-commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	mixed_2025	status	description
+commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	mixed_2025	recent_2026q1	status	description
 ```
 
-Legacy rows (6 columns) may remain in the file for historical reference but are ignored when computing the per-regime baseline. Always append new rows using the 10-column schema.
+Legacy rows may remain for historical reference. New rows use the current
+12-column schema. Parsers identify status as the penultimate field so old rows
+remain readable.
 
-- `score` = composite_score (mean - 0.3*std)
-- `mean_score` = average across 5 regimes
+- `score` = legacy composite_score; candidate selection additionally requires
+  `robust_composite` and the breadth/concentration/sample/complexity gates above.
+- `mean_score` = average across 6 development regimes
 - `std_score` = std across regimes (lower = more consistent)
-- `bull_2021 / crash_bear / sideways / rally_2024 / mixed_2025` = per-regime scores extracted from lines matching `^regime_<name>_score:` in run.log (e.g., `regime_bull_2021_score: 27.123456` → store `27.12`)
+- The six regime columns are extracted from `^regime_<name>_score:` lines.
 - Append one line per experiment. Use the short commit hash, or `-` for discarded.
 
 ## Scoring formula
@@ -235,12 +283,17 @@ Multiplicative structure: any dimension being terrible collapses the entire scor
 The DD penalty is a smooth exponential — no cliff at any specific DD level. DD 3%→0.97, DD 5%→0.95, DD 6%→0.57, DD 8%→0.21, DD 10%→0.075, DD 18%→0.001.
 The composite rewards strategies that perform **consistently across all market conditions**.
 
-Search regimes (5 non-overlapping periods):
+Temporal development environments (6 non-overlapping periods; one vote each,
+not claims of internally homogeneous regimes):
 - bull_2021: 2021-01 ~ 2021-10 (bull market)
 - crash_bear: 2021-11 ~ 2022-12 (Luna/FTX crash + deep bear)
-- sideways: 2023-01 ~ 2023-12 (sideways recovery)
+- sideways: 2023-01 ~ 2023-12 (legacy key; empirically low-vol recovery / rotational uptrend, not pure chop)
 - rally_2024: 2024-01 ~ 2024-12 (ETF + election rally)
 - mixed_2025: 2025-01 ~ 2025-12 (mixed 2025: decline + rally + chop + crash)
+- recent_2026q1: 2026-01 ~ 2026-03 (intentionally overweight short recency-veto environment; cannot promote alone)
+
+Sealed promotion: 2026Q2 + OKX + BNB. You cannot inspect these metrics. The
+latest future quarter and HL remain forward-audit data and are never optimized.
 
 ## Primary Objective: Maximize composite_score
 
